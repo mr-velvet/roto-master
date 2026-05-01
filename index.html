@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<title>Rotoscope PoC — fidelidade web ↔ aseprite</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --fg: #e0e0e0;
+    --dim: #777;
+    --accent: #ff00c8;
+    --accent2: #00ff50;
+    --accent3: #ffaa00;
+    --line: #222;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'IBM Plex Mono', 'Consolas', 'Monaco', monospace;
+    height: 100%;
+    overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; }
+  header {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 18px;
+    flex-shrink: 0;
+  }
+  .title {
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 12px;
+  }
+  .title span { color: var(--accent); }
+  .title em { color: var(--accent3); font-style: normal; }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preset-btn {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .preset-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .preset-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(255, 0, 200, 0.08);
+  }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    min-height: 0;
+  }
+  .canvas-wrap {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    padding: 20px;
+    gap: 14px;
+  }
+  .canvas-stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
+  canvas {
+    max-width: 100%;
+    max-height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .transport {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .transport-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .btn-play {
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    padding: 8px 18px;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-width: 90px;
+  }
+  .btn-play:hover:not(:disabled) { background: rgba(0,255,80,0.1); }
+  .btn-play.playing { color: var(--accent); border-color: var(--accent); }
+  .btn-play:disabled { opacity: 0.4; cursor: not-allowed; }
+  .frame-info {
+    flex: 1;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .frame-info b { color: var(--accent3); font-weight: normal; }
+  .scrub {
+    width: 100%;
+    appearance: none;
+    background: transparent;
+    height: 18px;
+  }
+  .scrub::-webkit-slider-runnable-track { height: 2px; background: var(--line); }
+  .scrub::-webkit-slider-thumb {
+    appearance: none;
+    width: 10px;
+    height: 14px;
+    background: var(--accent3);
+    margin-top: -6px;
+    cursor: pointer;
+  }
+  .controls {
+    border-left: 1px solid var(--line);
+    padding: 18px;
+    overflow-y: auto;
+    background: #050505;
+  }
+  .controls h2 {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .controls h2.export { color: var(--accent3); margin-top: 8px; }
+  .ctrl { margin-bottom: 14px; }
+  .ctrl label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+  .ctrl label .val {
+    color: var(--accent2);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type=range] {
+    width: 100%;
+    appearance: none;
+    background: transparent;
+    height: 18px;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line); }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none;
+    width: 10px;
+    height: 14px;
+    background: var(--accent);
+    margin-top: -6px;
+    cursor: pointer;
+  }
+  .timing-panel {
+    border-top: 1px solid var(--line);
+    margin-top: 18px;
+    padding-top: 14px;
+  }
+  .timing-row {
+    display: grid;
+    grid-template-columns: 1fr 90px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .timing-row label {
+    font-size: 11px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .timing-row input {
+    background: #0a0a0a;
+    color: var(--accent2);
+    border: 1px solid var(--line);
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .timing-row input:focus { outline: none; border-color: var(--accent3); }
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .ctrl-row input[type=checkbox] {
+    accent-color: var(--accent3);
+    cursor: pointer;
+  }
+  .ctrl-row label {
+    font-size: 11px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    user-select: none;
+  }
+  .btn-export {
+    width: 100%;
+    background: transparent;
+    color: var(--accent3);
+    border: 1px solid var(--accent3);
+    padding: 10px;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.15s;
+  }
+  .btn-export:hover:not(:disabled) { background: rgba(255, 170, 0, 0.1); }
+  .btn-export:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
+  .progress {
+    margin-top: 12px;
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.6;
+    min-height: 32px;
+  }
+  .progress .ok { color: var(--accent2); }
+  .progress .err { color: #ff3050; }
+  .progress .stage { color: var(--accent3); }
+  .progress-bar {
+    height: 3px;
+    background: var(--line);
+    margin-top: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: var(--p, 0%);
+    background: var(--accent3);
+    transition: width 0.1s linear;
+  }
+  .footer {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.6;
+  }
+  .footer code { color: var(--accent2); }
+  .footer b { color: var(--accent3); font-weight: normal; }
+
+  /* mode toggle */
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--line);
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .mode-tab {
+    background: transparent;
+    color: var(--dim);
+    border: 0;
+    padding: 6px 14px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-right: 1px solid var(--line);
+  }
+  .mode-tab:last-child { border-right: 0; }
+  .mode-tab.active {
+    color: var(--accent);
+    background: rgba(255, 0, 200, 0.08);
+  }
+  .mode-tab:hover:not(.active) { color: var(--accent2); }
+
+  /* dual-thumb range pra marcar in/out */
+  .range-wrap {
+    position: relative;
+    height: 24px;
+    padding: 0 6px;
+  }
+  .range-wrap .track {
+    position: absolute;
+    top: 11px;
+    left: 6px;
+    right: 6px;
+    height: 2px;
+    background: var(--line);
+  }
+  .range-wrap .track-active {
+    position: absolute;
+    top: 11px;
+    height: 2px;
+    background: var(--accent3);
+  }
+  .range-wrap input[type=range] {
+    position: absolute;
+    top: 0;
+    left: 6px;
+    right: 6px;
+    width: calc(100% - 12px);
+    height: 24px;
+    margin: 0;
+    background: transparent;
+    pointer-events: none;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .range-wrap input[type=range]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: transparent;
+  }
+  .range-wrap input[type=range]::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 12px;
+    height: 16px;
+    background: var(--accent);
+    margin-top: -7px;
+    cursor: pointer;
+    pointer-events: auto;
+    border: 0;
+  }
+  .range-wrap input.in-range::-webkit-slider-thumb {
+    background: var(--accent2);
+  }
+  .range-wrap input.out-range::-webkit-slider-thumb {
+    background: var(--accent3);
+  }
+  .markers-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+    padding: 0 6px;
+  }
+  .markers-row b { font-weight: normal; }
+  .markers-row .in-val { color: var(--accent2); }
+  .markers-row .out-val { color: var(--accent3); }
+</style>
+</head>
+<body>
+  <header>
+    <div class="title">ROTOSCOPE <span>POC</span> — fidelidade <em>web ↔ .aseprite</em></div>
+    <div class="presets" id="presets"></div>
+  </header>
+  <main>
+    <div class="canvas-wrap">
+      <div class="canvas-stage">
+        <canvas id="gl"></canvas>
+      </div>
+      <div class="transport">
+        <div class="transport-row">
+          <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="source">vídeo original</button>
+            <button class="mode-tab" data-mode="rotoscope">rotoscopia</button>
+          </div>
+          <button class="btn-play" id="btn-play">▶ play</button>
+          <div class="frame-info" id="frame-info">— / —</div>
+        </div>
+        <!-- dual-thumb range pra marcar [in, out] no vídeo -->
+        <div class="range-wrap" id="range-wrap">
+          <div class="track"></div>
+          <div class="track-active" id="track-active"></div>
+          <input type="range" class="in-range" id="in-range" min="0" max="100" step="0.01" value="0">
+          <input type="range" class="out-range" id="out-range" min="0" max="100" step="0.01" value="100">
+        </div>
+        <div class="markers-row">
+          <span>in: <b class="in-val" id="in-val">0.00s</b></span>
+          <span class="playhead" id="playhead-info">cursor: <b>0.00s</b></span>
+          <span>out: <b class="out-val" id="out-val">0.00s</b></span>
+        </div>
+      </div>
+    </div>
+    <aside class="controls">
+      <h2>Trecho do vídeo</h2>
+      <div class="timing-panel" style="border:0;margin:0;padding:0">
+        <div class="timing-row">
+          <label>início (s)</label>
+          <input type="number" id="cap-start" value="0" min="0" step="0.1">
+        </div>
+        <div class="timing-row">
+          <label>fim (s)</label>
+          <input type="number" id="cap-end" value="3" min="0.1" step="0.1">
+        </div>
+        <div class="timing-row">
+          <label>fps</label>
+          <input type="number" id="cap-fps" value="12" min="1" max="60" step="1">
+        </div>
+        <div class="timing-row">
+          <label>escala (%)</label>
+          <input type="number" id="cap-scale" value="100" min="10" max="200" step="10">
+        </div>
+        <div class="ctrl-row">
+          <input type="checkbox" id="cap-overlay" checked>
+          <label for="cap-overlay">overlay frame # (validação)</label>
+        </div>
+      </div>
+
+      <h2 style="margin-top:24px">Efeitos</h2>
+      <div id="sliders"></div>
+
+      <div class="timing-panel">
+        <h2 class="export">Exportar .aseprite</h2>
+        <button class="btn-export" id="btn-export">Exportar arquivo</button>
+        <div class="progress" id="progress">Defina parâmetros, dê play pra preview ou clique exportar.</div>
+        <div class="progress-bar" id="pbar"></div>
+      </div>
+
+      <div class="footer">
+        <b>Modo "vídeo original":</b> reproduz o vídeo nativo, sem efeito. Use os marcadores <b style="color:var(--accent2)">in</b> e <b style="color:var(--accent3)">out</b> pra delimitar o trecho.<br><br>
+        <b>Modo "rotoscopia":</b> reconstrói o trecho com efeitos em frames discretos a <code>1000/fps ms</code>. <b>O que toca aqui é o que vai pro .aseprite.</b><br><br>
+        Overlay "FRAME k/N" gravado no pixel pra validação cruzada com o Aseprite.
+      </div>
+    </aside>
+  </main>
+
+  <video id="vid" src="video.mp4" muted playsinline loop crossorigin="anonymous" preload="auto" style="display:none"></video>
+
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
