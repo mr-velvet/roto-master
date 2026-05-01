@@ -7,11 +7,14 @@
 // =============================================================
 
 import { STATE } from './state.js';
-import { vid, resizeCanvasToDims } from './gl.js';
 import { bindUI as bindPlaybackUI, bootMode } from './playback.js';
 import {
   buildUI, wireHandlers, setProgress, initRangeUI, refreshRangeUI, updateInfo, dom,
 } from './ui.js';
+import { initFileLoader, bindFileLoader } from './file_loader.js';
+
+// Body começa em estado "sem vídeo" — esconde canvas/transport até user carregar.
+document.body.classList.add('no-video');
 
 // 1) Construir UI (presets + sliders)
 buildUI();
@@ -27,21 +30,14 @@ bindPlaybackUI({
 // 3) Wire de event handlers (play, range, export, resize)
 wireHandlers();
 
-// 4) Inicializar quando metadata do vídeo estiver pronta
-function onMetadataReady() {
-  STATE.videoDurS = vid.duration;
-  // defaults razoáveis: in=0, out=min(3, duração total)
-  STATE.inS = 0;
-  STATE.outS = Math.min(3, vid.duration);
-  resizeCanvasToDims(vid.videoWidth, vid.videoHeight);
-  initRangeUI();
-  refreshRangeUI();
-  setProgress('<span class="stage">Vídeo carregado.</span> Use os marcadores pra delimitar trecho, depois mude pra "rotoscopia" e exporte.', 0);
-  updateInfo();
-  bootMode('source');
-}
-if (vid.readyState >= 1 && isFinite(vid.duration) && vid.duration > 0) {
-  onMetadataReady();
-} else {
-  vid.addEventListener('loadedmetadata', onMetadataReady);
-}
+// 4) File loader: quando vídeo carrega, (re)inicializa transport e modo source
+bindFileLoader({
+  onLoaded: () => {
+    initRangeUI();
+    refreshRangeUI();
+    setProgress('<span class="stage">Vídeo carregado.</span> Use os marcadores pra delimitar trecho, depois mude pra "rotoscopia" e exporte.', 0);
+    updateInfo();
+    bootMode('source');
+  },
+});
+initFileLoader();

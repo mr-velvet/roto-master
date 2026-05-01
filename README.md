@@ -29,30 +29,34 @@ O arquivo exportado abre no Aseprite com:
 ## Estrutura
 
 ```
-index.html          # shell + CSS + entry point
-js/
-  main.js           # init em ordem
-  state.js          # PARAMS, PRESETS, SLIDERS, STATE
-  shaders.js        # VS_SRC, FS_SRC do efeito
-  gl.js             # bootstrap WebGL + render path + plain shader + pixel IO
-  capture.js        # seek/await + resample + overlay + buildTimeline + paint
-  aseprite.js       # ByteWriter + buildAseprite (formato binário)
-  playback.js       # source/rotoscope loops + setMode
-  ui.js             # DOM refs + handlers + export
-video.mp4           # vídeo de demo (substituir / fazer file picker na Fase 3)
+server.js           # Express estático + /api/health (deploy did.lu)
+package.json        # express
+Dockerfile          # node:20-alpine
+did.json            # manifest da plataforma did.lu
+public/
+  index.html        # shell + CSS + entry point
+  js/
+    main.js         # init em ordem
+    state.js        # PARAMS, PRESETS, SLIDERS, STATE
+    shaders.js      # VS_SRC, FS_SRC do efeito
+    gl.js           # bootstrap WebGL + render path + plain shader + pixel IO
+    capture.js      # seek/await + resample + overlay + buildTimeline + paint
+    aseprite.js     # ByteWriter + buildAseprite (formato binário)
+    playback.js     # source/rotoscope loops + setMode
+    ui.js           # DOM refs + handlers + export
+    file_loader.js  # file picker + drag-drop de vídeo
 ```
 
 ## Rodar local
 
-Não tem build. Servir a pasta com qualquer HTTP server:
-
 ```sh
-python -m http.server 4783
-# ou
-npx serve . -p 4783
+npm install
+npm start
+# ou só servir o estático:
+python -m http.server 4783 -d public
 ```
 
-Abrir `http://localhost:4783/`.
+Abrir `http://localhost:5021/` (ou 4783).
 
 ## Status
 

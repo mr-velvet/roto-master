@@ -37,7 +37,70 @@
   }
   .title span { color: var(--accent); }
   .title em { color: var(--accent3); font-style: normal; }
-  .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  .header-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+  .file-picker {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .btn-load {
+    background: transparent;
+    color: var(--accent3);
+    border: 1px solid var(--accent3);
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-load:hover { background: rgba(255, 170, 0, 0.1); }
+  .file-name {
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-name b { color: var(--accent2); font-weight: normal; }
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 255, 80, 0.08);
+    border: 2px dashed var(--accent2);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .drop-overlay.active { display: flex; }
+  .drop-overlay span {
+    color: var(--accent2);
+    font-size: 14px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .empty-hint {
+    color: var(--dim);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.8;
+  }
+  .empty-hint b { color: var(--accent2); font-weight: normal; }
+  .empty-hint em { color: var(--accent3); font-style: normal; }
   .preset-btn {
     background: transparent;
     color: var(--fg);
@@ -82,6 +145,10 @@
     min-height: 0;
     width: 100%;
   }
+  body.no-video #gl { display: none; }
+  body:not(.no-video) #empty-hint { display: none; }
+  body.no-video .transport { display: none; }
+  body.no-video #btn-export { opacity: 0.4; pointer-events: none; }
   canvas {
     max-width: 100%;
     max-height: 100%;
@@ -380,13 +447,25 @@
 <body>
   <header>
     <div class="title">ROTOSCOPE <span>POC</span> — fidelidade <em>web ↔ .aseprite</em></div>
-    <div class="presets" id="presets"></div>
+    <div class="header-row">
+      <div class="presets" id="presets"></div>
+      <div class="file-picker">
+        <button class="btn-load" id="btn-load">▸ carregar vídeo</button>
+        <input type="file" id="file-input" accept="video/*" style="display:none">
+        <span class="file-name" id="file-name">nenhum vídeo carregado</span>
+      </div>
+    </div>
   </header>
   <main>
-    <div class="canvas-wrap">
+    <div class="canvas-wrap" id="canvas-wrap">
       <div class="canvas-stage">
         <canvas id="gl"></canvas>
+        <div class="empty-hint" id="empty-hint">
+          <b>arraste um vídeo aqui</b><br>
+          ou clique em <em>carregar vídeo</em> no topo
+        </div>
       </div>
+      <div class="drop-overlay" id="drop-overlay"><span>solte o vídeo</span></div>
       <div class="transport">
         <div class="transport-row">
           <div class="mode-tabs">
@@ -453,7 +532,7 @@
     </aside>
   </main>
 
-  <video id="vid" src="video.mp4" muted playsinline loop crossorigin="anonymous" preload="auto" style="display:none"></video>
+  <video id="vid" muted playsinline loop crossorigin="anonymous" preload="auto" style="display:none"></video>
 
   <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 

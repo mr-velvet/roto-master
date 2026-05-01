@@ -1,10 +1,10 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-04-30 (extraída de `random-experiments/cga-video-fx/web-aseprite-poc/` modularizada e funcional, pronta pra Fase 3 — file picker, deploy `roto.did.lu`, color mode Indexed).
+Última atualização: 2026-04-30 (Fase 3 em curso — file picker ✓, embrulhado pra deploy did.lu ✓, deploy `roto.did.lu` em andamento).
 
 ## status atual
 
-PoC funcional e modular. Roda local em `http://localhost:4783/`. Captura `video.mp4` fixo + efeitos CRT/glitch/scanlines/etc, exporta `.aseprite` válido (abre no Aseprite com layer `ref` locked-reference + layer `draw` editável + FPS correto).
+PoC funcional e modular, agora com file picker (drag-drop) e estrutura de deploy did.lu pronta. Express serve `public/` na porta 5021 com `/api/health`. `did.json` declara `database: false, logto: false`. Roda local via `npm start` em `http://localhost:5021/`.
 
 ## como chegamos aqui (timeline)
 
@@ -56,7 +56,14 @@ Ficou quebrada com 3 bugs e sensação de "gambiarra amarrada". Pausada com cont
 **Bonus:** `<video loop>` nativo (vídeos curtos repetem sozinho enquanto user ajusta efeitos).
 
 ### Fase 3 (este repo, a partir de agora)
-Promovido pra repo dedicado `~/ved/roto-master/`. Próximos passos abaixo.
+Promovido pra repo dedicado `~/ved/roto-master/`. Em andamento.
+
+**Feito (2026-04-30):**
+- File picker / drag-drop (`public/js/file_loader.js`): `URL.createObjectURL` + `revokeObjectURL` no swap. Body começa com classe `no-video` (esconde canvas/transport até user carregar). Drop overlay no `.canvas-wrap`. Botão "carregar vídeo" no header. `vid` sem `src` fixo.
+- Embrulhamento pra deploy did.lu: assets movidos pra `public/`, `server.js` (Express estático + `/api/health`), `package.json` (express only), `Dockerfile` (node:20-alpine, porta 5021), `.dockerignore`, `did.json` (port 5021, `database: false`, `logto: false`). `video.mp4` removido do repo.
+
+**Próximo:**
+- Deploy `roto.did.lu` via `gcloud compute ssh` na VM `adorable-claude` + `deploy.sh`.
 
 ## arquitetura (estado atual)
 

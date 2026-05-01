@@ -1,0 +1,6 @@
+{
+  "name": "roto-master",
+  "port": 5021,
+  "database": false,
+  "logto": false
+}
