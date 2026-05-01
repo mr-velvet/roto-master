@@ -1,10 +1,10 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-04-30 (Fase 3 em curso — file picker ✓, embrulhado pra deploy did.lu ✓, deploy `roto.did.lu` em andamento).
+Última atualização: 2026-04-30 (Fase 3 ✓ — file picker, embrulhamento e deploy `roto.did.lu` no ar).
 
 ## status atual
 
-PoC funcional e modular, agora com file picker (drag-drop) e estrutura de deploy did.lu pronta. Express serve `public/` na porta 5021 com `/api/health`. `did.json` declara `database: false, logto: false`. Roda local via `npm start` em `http://localhost:5021/`.
+PoC funcional, modular, em produção: **https://roto.did.lu** (HTTPS via Caddy, container `roto-master` na porta 5031, healthcheck OK). File picker drag-drop carrega qualquer vídeo via `URL.createObjectURL`. Express serve `public/` com `/api/health`. `did.json` declara `domain: "roto.did.lu", database: false, logto: false`. Local via `npm start` em `http://localhost:5031/`.
 
 ## como chegamos aqui (timeline)
 
@@ -64,6 +64,24 @@ Promovido pra repo dedicado `~/ved/roto-master/`. Em andamento.
 
 **Próximo:**
 - Deploy `roto.did.lu` via `gcloud compute ssh` na VM `adorable-claude` + `deploy.sh`.
+
+**Tentativa 2 de deploy (2026-04-30) — sucesso:**
+- `did.json` ganhou campo `domain: "roto.did.lu"`. Tarball reenviado, `deploy.sh roto-master` rodou.
+- DNS, Caddy, compose, container — tudo limpo e correto.
+- `https://roto.did.lu/api/health` → 200 OK.
+
+**Tentativa 1 de deploy (2026-04-30) — abortada e revertida:**
+- Tarball SCP'ado pra `/home/manu/platform/roto-master/`, `deploy.sh roto-master` rodou.
+- Container subiu saudável na porta 5031, mas:
+  - DNS ficou em `roto-master.did.lu` (não `roto.did.lu`) — `new-app.sh` hardcoda `DOMAIN="${APP_NAME}.did.lu"` sem suporte a override.
+  - `compose-update.py` duplicou chave `PORT` no compose (regex não tolera linha em branco no bloco `environment:` que `new-app.sh` emite quando `--no-db`).
+- Estado revertido com `kill-app.sh roto-master --force`. Compose, Caddyfile, DNS, container e dir todos limpos.
+- Bugs delegados pro Claude da VM corrigir nos scripts (`new-app.sh`, `deploy.sh`, `compose-update.py`):
+  1. `did.json` ganha campo opcional `domain` que `deploy.sh` propaga via `--domain` pra `new-app.sh` (fallback `${APP_NAME}.did.lu`).
+  2. `new-app.sh` não emite linha vazia quando `DB_ENV` vazio.
+  3. `compose-update.py` regex tolerante a linhas em branco (defesa em profundidade).
+
+**Porta escolhida pra `roto-master`:** 5031 (5021 já é `proposta-api`, 5022–5030 ocupadas).
 
 ## arquitetura (estado atual)
 

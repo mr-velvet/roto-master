@@ -1,6 +1,7 @@
 {
   "name": "roto-master",
-  "port": 5021,
+  "port": 5031,
+  "domain": "roto.did.lu",
   "database": false,
   "logto": false
 }
