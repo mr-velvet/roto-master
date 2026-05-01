@@ -70,6 +70,12 @@ Promovido pra repo dedicado `~/ved/roto-master/`. Em andamento.
 - DNS, Caddy, compose, container — tudo limpo e correto.
 - `https://roto.did.lu/api/health` → 200 OK.
 
+**Auth Logto (2026-04-30):**
+- `did.json` virou `logto: true, database: true, migrations: "migrations/"`. Migration `001_videos.sql` cria tabela `videos`.
+- `kill-app.sh roto-master --force` deixou Caddyfile + DNS órfãos (não suporta `domain` customizado — outro patch pendente nos scripts da plataforma). Limpado manualmente: `sed -i` no Caddyfile + `gcloud dns record-sets delete`.
+- `new-app.sh` criou tudo, mas a etapa de Logto INSERT não retornou erro visível e o app não foi registrado. Recuperado via script `insert-logto.sh` rodando o INSERT manualmente. Logto App ID: `36iz4iomybe4r1n67a7jc`. Hardcoded em `public/js/auth.js`.
+- App rodando em `https://roto.did.lu` com gating de login Google funcional.
+
 **Tentativa 1 de deploy (2026-04-30) — abortada e revertida:**
 - Tarball SCP'ado pra `/home/manu/platform/roto-master/`, `deploy.sh roto-master` rodou.
 - Container subiu saudável na porta 5031, mas:

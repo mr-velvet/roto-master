@@ -3,7 +3,7 @@
 
 const LOGTO_ENDPOINT = 'https://auth.did.lu';
 // Substituído após primeiro deploy (new-app.sh imprime o ID criado).
-const LOGTO_APP_ID = '__LOGTO_APP_ID__';
+const LOGTO_APP_ID = '36iz4iomybe4r1n67a7jc';
 
 let logtoClient = null;
 let currentUser = null;
