@@ -27,6 +27,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/config', require('./routes/config'));
+app.use('/api/videos', require('./routes/videos'));
 
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api/')) {

@@ -76,6 +76,24 @@ Promovido pra repo dedicado `~/ved/roto-master/`. Em andamento.
 - `new-app.sh` criou tudo, mas a etapa de Logto INSERT não retornou erro visível e o app não foi registrado. Recuperado via script `insert-logto.sh` rodando o INSERT manualmente. Logto App ID: `36iz4iomybe4r1n67a7jc`. Hardcoded em `public/js/auth.js`.
 - App rodando em `https://roto.did.lu` com gating de login Google funcional.
 
+**Lista de vídeos + criar novo + navegação (2026-04-30):**
+- Schema `videos` (já criado): `id, owner_sub, owner_email, name, gcs_path, gcs_url, size_bytes, duration_s, width, height, edit_state, share_id, created_at, updated_at`.
+- `routes/videos.js`: GET (lista), POST (cria com nome — gcs_path/url vazios), GET /:id, PATCH /:id, DELETE /:id. Tudo sob `requireUser`, escopado por `owner_sub`.
+- Frontend modular: `videos_api.js` (cliente API), `video_list.js` (renderiza grid + modal "novo vídeo"), `router.js` (hash-based: `#/list` ou `#/v/:id`), `main.js` orquestra (auth → router → list/editor).
+- Modais custom (regra UI): `#name-modal` pra criar vídeo, `#confirm-modal` pra deletar. Sem `prompt()` ou `confirm()` nativos.
+- Editor abre em estado vazio quando user clica num vídeo (sem upload ainda — upload é a próxima sessão). Botão "‹ voltar" no header retorna pra lista.
+
+**Próximos passos (próxima sessão):**
+- Upload do vídeo pro GCS (`PATCH /api/videos/:id` com multipart, valida 100MB, sobe pro `gs://didlu-imagestore/roto-master/videos/<uuid>.<ext>`, atualiza `gcs_url`/`size_bytes`/dimensões).
+- Auto-save de `edit_state` (PARAMS, in/out, fps, scale, preset) com debounce 1s + flush no `beforeunload`.
+- Restaurar estado ao abrir vídeo já editado.
+- Share link público via `share_id`.
+
+**Patches pendentes nos scripts da plataforma** (em `/home/manu/platform/scripts/` — pasta NÃO é git repo, sincronizar com `mr-velvet/adorable-devops` está em débito):
+- `kill-app.sh` não suporta `domain` customizado (deixa Caddyfile/DNS órfãos).
+- `new-app.sh` etapa Logto: INSERT às vezes falha silencioso (recuperação manual via `/tmp/insert-logto.sh`).
+- `new-app.sh`, `deploy.sh`, `compose-update.py` — patches já aplicados na VM mas não sincronizados.
+
 **Tentativa 1 de deploy (2026-04-30) — abortada e revertida:**
 - Tarball SCP'ado pra `/home/manu/platform/roto-master/`, `deploy.sh roto-master` rodou.
 - Container subiu saudável na porta 5031, mas:

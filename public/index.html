@@ -547,6 +547,242 @@
     cursor: pointer;
   }
   .btn-logout:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ===== Lista de vídeos ===== */
+  body.view-list > main { display: none; }
+  body.view-list .file-picker,
+  body.view-list .presets,
+  body.view-list .btn-back { display: none; }
+  body.view-list .list-only { display: flex; }
+  body:not(.view-list) .list-only { display: none; }
+  body:not(.view-list) .btn-back { display: inline-block; }
+
+  #video-list {
+    flex: 1;
+    flex-direction: column;
+    padding: 28px 32px 60px;
+    overflow-y: auto;
+    display: none;
+  }
+  body.view-list #video-list { display: flex; }
+  .list-header {
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .list-title {
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .list-title b { color: var(--accent); font-weight: normal; }
+  .btn-new-video {
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    padding: 8px 18px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-new-video:hover { background: rgba(0,255,80,0.1); }
+  .video-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .video-card {
+    background: #0a0a0a;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.15s;
+    overflow: hidden;
+  }
+  .video-card:hover { border-color: var(--accent2); }
+  .video-card-thumb {
+    aspect-ratio: 16 / 9;
+    background: #050505;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .video-card-thumb.empty .placeholder {
+    color: var(--dim);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .video-card-thumb .meta {
+    position: absolute;
+    bottom: 6px;
+    right: 8px;
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    background: rgba(0,0,0,0.6);
+    padding: 2px 6px;
+  }
+  .video-card-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .video-card-name {
+    font-size: 12px;
+    color: var(--fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .video-card-meta {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .video-card-delete {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    background: rgba(0,0,0,0.6);
+    color: var(--dim);
+    border: 0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.15s;
+  }
+  .video-card:hover .video-card-delete { opacity: 1; }
+  .video-card-delete:hover { color: #ff3050; }
+  #video-list-empty {
+    color: var(--dim);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    line-height: 1.8;
+    padding: 60px 0;
+    text-align: center;
+  }
+  #video-list-empty em { color: var(--accent2); font-style: normal; }
+  #video-list-empty .err { color: #ff3050; }
+
+  /* botão voltar no header (só aparece no modo editor) */
+  .btn-back {
+    background: transparent;
+    color: var(--dim);
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-right: 8px;
+  }
+  .btn-back:hover { color: var(--accent2); border-color: var(--accent2); }
+  .video-name-display {
+    font-size: 11px;
+    color: var(--accent3);
+    letter-spacing: 0.1em;
+    margin-right: 16px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ===== Modais ===== */
+  .modal-bg {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    padding: 24px 28px;
+    max-width: 420px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .modal h3 {
+    font-size: 11px;
+    letter-spacing: 0.25em;
+    color: var(--accent3);
+    text-transform: uppercase;
+    font-weight: normal;
+  }
+  .modal p {
+    font-size: 12px;
+    color: var(--fg);
+    line-height: 1.6;
+  }
+  .modal input[type=text] {
+    background: #0a0a0a;
+    color: var(--accent2);
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 13px;
+  }
+  .modal input[type=text]:focus { outline: none; border-color: var(--accent2); }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .modal-actions button {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--dim);
+    padding: 8px 16px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .modal-actions button.primary {
+    color: var(--accent2);
+    border-color: var(--accent2);
+  }
+  .modal-actions button.primary:hover { background: rgba(0,255,80,0.1); }
+  .modal-actions button.danger {
+    color: #ff3050;
+    border-color: #ff3050;
+  }
+  .modal-actions button.danger:hover { background: rgba(255,48,80,0.1); }
+  .modal-actions button:hover:not(.primary):not(.danger) {
+    color: var(--fg);
+    border-color: var(--fg);
+  }
+  .modal-err {
+    color: #ff3050;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    min-height: 14px;
+  }
 </style>
 </head>
 <body class="app-loading">
@@ -562,6 +798,8 @@
   <header>
     <div class="title">ROTOSCOPE <span>POC</span> — fidelidade <em>web ↔ .aseprite</em></div>
     <div class="header-row">
+      <button class="btn-back" id="btn-back">‹ voltar</button>
+      <span class="video-name-display" id="video-name-display"></span>
       <div class="presets" id="presets"></div>
       <div class="file-picker">
         <button class="btn-load" id="btn-load">▸ carregar vídeo</button>
@@ -575,6 +813,15 @@
       </div>
     </div>
   </header>
+
+  <section id="video-list">
+    <div class="list-header">
+      <div class="list-title">meus <b>vídeos</b></div>
+      <button class="btn-new-video" id="btn-new-video">+ novo vídeo</button>
+    </div>
+    <div class="video-list-grid" id="video-list-grid"></div>
+    <div id="video-list-empty"></div>
+  </section>
   <main>
     <div class="canvas-wrap" id="canvas-wrap">
       <div class="canvas-stage">
@@ -650,6 +897,30 @@
       </div>
     </aside>
   </main>
+
+  <div class="modal-bg" id="name-modal">
+    <div class="modal">
+      <h3>novo vídeo</h3>
+      <p style="color:var(--dim); font-size:11px; letter-spacing:0.1em; text-transform:uppercase;">dê um nome ao vídeo (você pode mudar depois)</p>
+      <input type="text" id="name-modal-input" placeholder="ex: skate na praça" maxlength="200">
+      <div class="modal-err" id="name-modal-err"></div>
+      <div class="modal-actions">
+        <button id="name-modal-cancel">cancelar</button>
+        <button class="primary" id="name-modal-confirm">criar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="confirm-modal">
+    <div class="modal">
+      <h3>confirmar</h3>
+      <p id="confirm-modal-msg"></p>
+      <div class="modal-actions">
+        <button id="confirm-modal-no">cancelar</button>
+        <button class="danger" id="confirm-modal-yes">apagar</button>
+      </div>
+    </div>
+  </div>
 
   <video id="vid" muted playsinline loop crossorigin="anonymous" preload="auto" style="display:none"></video>
 
