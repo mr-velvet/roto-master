@@ -2,6 +2,7 @@
   "name": "roto-master",
   "port": 5031,
   "domain": "roto.did.lu",
-  "database": false,
-  "logto": false
+  "database": true,
+  "logto": true,
+  "migrations": "migrations/"
 }

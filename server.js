@@ -1,10 +1,16 @@
 const express = require('express');
 const path = require('path');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 5031;
 
 app.set('query parser', 'simple');
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+app.locals.pool = pool;
+
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', (req, res, next) => {
   const start = Date.now();
@@ -19,6 +25,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'roto-master' });
 });
+
+app.use('/api/config', require('./routes/config'));
 
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api/')) {

@@ -6,38 +6,70 @@
 //  Play, scrub e export consomem EXATAMENTE o mesmo array.
 // =============================================================
 
-import { STATE } from './state.js';
 import { bindUI as bindPlaybackUI, bootMode } from './playback.js';
 import {
   buildUI, wireHandlers, setProgress, initRangeUI, refreshRangeUI, updateInfo, dom,
 } from './ui.js';
 import { initFileLoader, bindFileLoader } from './file_loader.js';
+import { initAuth, signIn, signOut, getUser } from './auth.js';
 
-// Body começa em estado "sem vídeo" — esconde canvas/transport até user carregar.
-document.body.classList.add('no-video');
+const $loginErr = document.getElementById('login-err');
+const $btnSignin = document.getElementById('btn-signin');
+const $btnLogout = document.getElementById('btn-logout');
+const $userAvatar = document.getElementById('user-avatar');
+const $userEmail = document.getElementById('user-email');
 
-// 1) Construir UI (presets + sliders)
-buildUI();
-
-// 2) Injetar callbacks de UI no playback (evita import circular)
-bindPlaybackUI({
-  setProgress, updateInfo,
-  $btnPlay: dom.$btnPlay,
-  $btnExport: dom.$btnExport,
-  $modeTabs: dom.$modeTabs,
+$btnSignin.addEventListener('click', async () => {
+  $loginErr.textContent = '';
+  try { await signIn(); }
+  catch (e) { $loginErr.textContent = 'Falha no login: ' + e.message; }
 });
 
-// 3) Wire de event handlers (play, range, export, resize)
-wireHandlers();
-
-// 4) File loader: quando vídeo carrega, (re)inicializa transport e modo source
-bindFileLoader({
-  onLoaded: () => {
-    initRangeUI();
-    refreshRangeUI();
-    setProgress('<span class="stage">Vídeo carregado.</span> Use os marcadores pra delimitar trecho, depois mude pra "rotoscopia" e exporte.', 0);
-    updateInfo();
-    bootMode('source');
-  },
+$btnLogout.addEventListener('click', async () => {
+  try { await signOut(); } catch(e) { console.warn(e); }
 });
-initFileLoader();
+
+(async () => {
+  let result;
+  try {
+    result = await initAuth();
+  } catch (e) {
+    document.body.classList.remove('app-loading');
+    document.body.classList.add('app-unauth');
+    $loginErr.textContent = 'Erro inicializando auth: ' + e.message;
+    return;
+  }
+
+  if (!result.authenticated) {
+    document.body.classList.remove('app-loading');
+    document.body.classList.add('app-unauth');
+    if (result.error) $loginErr.textContent = result.error;
+    return;
+  }
+
+  const u = getUser();
+  if (u.userPicture) $userAvatar.src = u.userPicture; else $userAvatar.style.display = 'none';
+  $userEmail.textContent = u.userEmail || u.userId;
+
+  document.body.classList.remove('app-loading');
+  document.body.classList.add('no-video');
+
+  buildUI();
+  bindPlaybackUI({
+    setProgress, updateInfo,
+    $btnPlay: dom.$btnPlay,
+    $btnExport: dom.$btnExport,
+    $modeTabs: dom.$modeTabs,
+  });
+  wireHandlers();
+  bindFileLoader({
+    onLoaded: () => {
+      initRangeUI();
+      refreshRangeUI();
+      setProgress('<span class="stage">Vídeo carregado.</span> Use os marcadores pra delimitar trecho, depois mude pra "rotoscopia" e exporte.', 0);
+      updateInfo();
+      bootMode('source');
+    },
+  });
+  initFileLoader();
+})();
