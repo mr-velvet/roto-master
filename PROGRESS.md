@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 (patch v3 antidelírio, protótipo v2 descartado)
+Última atualização: 2026-05-04 (protótipo v2 aprovado como **modelo de referência** para a implementação)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -18,7 +18,21 @@ A visão do produto foi reformulada em 2026-05-03 (patch v2: workbench do usuár
 - **Não confundir "menu global pra alternar Galeria/Ateliê" com "atalhos contextuais em todo header"**. O menu já é a forma. Repetir é ruído.
 - **Asset é cidadão central**, não label técnico. Se entrar na ferramenta e não ver "isto é um asset" como objeto tangível na tela, a UI errou.
 
-A implementação atual (descrita abaixo) ainda não reflete a visão. Próximo passo: **refazer protótipo navegável v2 em contexto limpo**, lendo seção 6 antes de escrever qualquer linha. O protótipo v1 (módulo personagem isolado) foi **preservado** em `prototype-v1-personagem/` como referência histórica e fonte de reaproveitamento (estética Atelier 2087, viewport 3D, presets de câmera).
+A implementação em produção ainda não reflete a visão. **O protótipo navegável v2** (em `prototype/`) foi aprovado em 2026-05-04 como **modelo de referência da UI** para a implementação real — quando descer pra código de produção, espelhar as decisões dele (metáfora Galeria↔Ateliê com diferenciação visual deliberada, transição animada entre espaços, sidebar do Ateliê listando 4 subseções diretamente, asset como objeto tangível, publicação como ato deliberado). O protótipo v1 (módulo personagem isolado) continua **preservado** em `prototype-v1-personagem/` como referência histórica e fonte de reaproveitamento do Fluxo D (estética Atelier 2087, viewport 3D, presets de câmera).
+
+### Modelo de referência (protótipo v2)
+
+Decisões da UI a preservar quando implementar de verdade:
+
+- **Dois espaços, não duas abas.** Galeria (projetos+assets) e Ateliê (workbench do usuário) com paletas distintas — Galeria fria/ink puro, Ateliê quente/cobre — e header que muda de cor entre os dois.
+- **Alternador binário no canto direito do header** é a única forma de trocar de espaço. Sem botão "workbench" replicado em cantos contextuais.
+- **Transição animada (~500ms)** ao trocar de espaço: overlay full-screen com label do destino + "entrando…". Anuncia a mudança em vez de só pular.
+- **Sidebar do Ateliê** lista as 4 subseções (Vídeos, Personagens, Enquadramentos, Câmeras salvas) diretamente, sem item-pai "Workbench". A sidebar *é* a workbench.
+- **Detalhe do projeto sem botão "+ novo asset"** — chamada redigida explicando que asset nasce ao publicar.
+- **Card de vídeo no Ateliê** mostra dois selos: origem (upload/url/genérico/personagem) e estado de publicação ("publicado em Projeto X" ou "rascunho").
+- **Editor com publicação como ritual** — modal próprio com escolha de projeto-destino, aviso explícito de sobrescrita ao republicar, transição animada de volta pra Galeria após confirmar.
+- **Breadcrumb persistente no header** mostra o caminho real ("Galeria › Projeto X › Asset Y" ou "Ateliê › Vídeos › nome do vídeo"). Sem botões "voltar" duplicados.
+- Reaproveitar a estética **Atelier 2087** (paleta cobre, Fraunces serif itálica, JetBrains Mono).
 
 ## Estado atual (em uma frase)
 
@@ -60,23 +74,17 @@ App em produção em **https://roto.did.lu** com login Google (Logto), lista de 
 
 ## Próximos passos (próxima sessão)
 
-**Antes de qualquer código novo:** validar a visão da ferramenta com protótipo navegável atualizado.
+**Protótipo v2 aprovado em 2026-05-04 como modelo de referência da UI.** Próxima etapa é descer pra arquitetura técnica e começar a implementação real espelhando as decisões do protótipo.
 
 ### Em ordem de prioridade
 
-0. **Refazer protótipo `prototype/`** refletindo `docs/visao-da-ferramenta.md`:
-   - Home global = lista de projetos do usuário.
-   - Dentro do projeto: Assets como entrada principal (com filtros por estágio: a fazer / em andamento / feito); Workbench acessada via menu.
-   - Workbench com subseções independentes (Vídeos, Personagens, Enquadramentos, Câmeras salvas) — sem acoplamento forçado.
-   - Ação destacada "+ Criar vídeo" com escolha de fluxo (A: upload, B: URL, C: genérico, D: caminho personagem).
-   - Fluxo D ainda detalhado conforme `modulo-personagem.md`, mas com personagens/enquadramentos sendo recursos independentes da workbench (não filhos do personagem).
-   - Banner "MODO PROTÓTIPO — sem chamadas reais à IA, dados em localStorage" no topo.
-1. **Upload do vídeo pro GCS.** `PATCH /api/videos/:id` multipart, valida ≤100MB, sobe pra `gs://didlu-imagestore/roto-master/videos/<uuid>.<ext>` (URL via `https://st.did.lu/...`). Atualiza `gcs_url`/`size_bytes`/`width`/`height`/`duration_s`. No editor, ao detectar `v.gcs_url` em `showEditor()`, atribui `vid.src = v.gcs_url` e dispara o fluxo de "vídeo carregado" sem precisar do file picker.
-2. **Auto-save de `edit_state`.** Debounce 1s + flush no `beforeunload`. Inclui PARAMS, in/out, fps, scale, preset selecionado.
-3. **Restaurar `edit_state` ao abrir vídeo.** Aplicar antes do primeiro render.
-4. **Share link público.** Rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do vídeo. Frontend tem rota `#/s/:share_id` que abre versão read-only.
-
-Os passos 1–4 acima vinham da sessão anterior e ainda fazem sentido tecnicamente, mas devem ser revisitados após a nova visão — provavelmente o schema vai precisar ganhar `projects`, `assets`, e o `videos` atual vira recurso da workbench.
+0. **Definir schema de dados** refletindo as entidades da visão: `projects`, `assets`, expandir `videos` (origem tipada, `published_asset_id`), adicionar `personagens`, `enquadramentos`, `cameras_salvas`. Tudo escopado por `owner_sub` (workbench é do usuário; projeto v1 também é monoacessante).
+1. **Implementar a UI espelhando `prototype/`** — chrome global com alternador Galeria/Ateliê, transição animada entre espaços, sidebar do Ateliê com 4 subseções diretas, telas Home/Projeto/Editor com a estética Atelier 2087.
+2. **Upload do vídeo pro GCS.** `PATCH /api/videos/:id` multipart, valida ≤100MB, sobe pra `gs://didlu-imagestore/roto-master/videos/<uuid>.<ext>` (URL via `https://st.did.lu/...`). Atualiza `gcs_url`/`size_bytes`/`width`/`height`/`duration_s`. No editor, ao detectar `v.gcs_url`, atribui `vid.src = v.gcs_url` e dispara o fluxo de "vídeo carregado" sem precisar do file picker.
+3. **Ato de publicar** — modal de publicação (escolha de projeto-destino, aviso de sobrescrita ao republicar), gera `.aseprite`, sobe pro GCS, cria `asset` no projeto, vincula `video.published_asset_id`. Após confirmar, transiciona pra Galeria → Detalhe do projeto.
+4. **Auto-save de `edit_state`.** Debounce 1s + flush no `beforeunload`. Inclui PARAMS, in/out, fps, scale, preset selecionado. Restaurar ao reabrir vídeo.
+5. **Fluxo D (módulo personagem)** — implementar conforme `docs/modulo-personagem.md`, reaproveitando viewport 3D + presets de câmera de `prototype-v1-personagem/`. Vídeos gerados aparecem em Ateliê → Vídeos com selo de origem "personagem".
+6. **Share link público.** Rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do `.aseprite` do asset publicado.
 
 ## Estrutura do projeto
 
@@ -163,7 +171,7 @@ Bugs ainda **não corrigidos** nos scripts da VM:
 - **Visão da ferramenta (referência mestra, com patch v3 antidelírio):** `docs/visao-da-ferramenta.md` — ler **inteiro**, especialmente seção 6.
 - **Módulo personagem (especialização):** `docs/modulo-personagem.md`
 - **Protótipo navegável v1** (módulo personagem isolado — preservado como referência histórica): `prototype-v1-personagem/`
-- ~~**Protótipo navegável v2**~~ — tentativa em 2026-05-04 descartada (violou anti-padrões da seção 6.5). A refazer em contexto limpo após releitura completa da visão.
+- **Protótipo navegável v2** (refeito em 2026-05-04, contexto limpo): `prototype/` — foco na metáfora Galeria/Ateliê, com diferenciação visual deliberada entre os dois espaços (paleta, densidade, header) e transição animada (~500ms) que anuncia o destino. Tudo em vanilla JS + localStorage, sem build.
 - Projeto irmão (CLI de geração de vídeo, será absorvido como Fluxo D na workbench): `~/ved/motion-ref-gen/`
 - Asset humanoide Mixamo + experimento Three.js base do viewport 3D: `~/ved/random-experiments/skeleton-animation/`
 - Spec do `.aseprite`: https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md

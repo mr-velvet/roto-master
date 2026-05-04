@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>roto-master · protótipo navegável v2</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body data-space="galeria" data-screen="home">
+
+  <!-- banner de protótipo (sempre visível) -->
+  <div class="proto-banner">
+    <span class="dot"></span>
+    MODO PROTÓTIPO — sem chamadas reais à IA, dados em localStorage
+    <button class="reset-seed" data-action="reset-seed" title="Resetar dados seed">↺ resetar</button>
+  </div>
+
+  <!-- chrome global -->
+  <header class="chrome">
+    <div class="chrome-left">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">roto<span class="brand-sep">·</span>master</span>
+      </div>
+      <div class="space-label">
+        <span class="space-label-here">você está em</span>
+        <span class="space-label-name" data-bind="space-name">Galeria</span>
+      </div>
+    </div>
+
+    <nav class="chrome-center" aria-label="caminho atual">
+      <ol class="breadcrumb" data-bind="breadcrumb">
+        <li>Galeria</li>
+      </ol>
+    </nav>
+
+    <div class="chrome-right">
+      <!-- alternador entre os dois espaços. Único controle de troca. -->
+      <div class="space-switch" role="tablist" aria-label="alternar entre Galeria e Ateliê">
+        <button class="space-switch-btn is-active" data-action="goto-space" data-space="galeria" role="tab" aria-selected="true">
+          <span class="space-switch-icon">▦</span>
+          <span class="space-switch-name">Galeria</span>
+        </button>
+        <button class="space-switch-btn" data-action="goto-space" data-space="atelie" role="tab" aria-selected="false">
+          <span class="space-switch-icon">✦</span>
+          <span class="space-switch-name">Ateliê</span>
+        </button>
+        <div class="space-switch-thumb" aria-hidden="true"></div>
+      </div>
+
+      <div class="user-pill">
+        <span class="user-pill-avatar">m</span>
+        <span class="user-pill-email">manu@did.lu</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- transição entre espaços (overlay animado) -->
+  <div class="space-transition" data-bind="transition" aria-hidden="true">
+    <div class="space-transition-inner">
+      <div class="space-transition-label" data-bind="transition-label">Ateliê</div>
+      <div class="space-transition-sub">entrando…</div>
+    </div>
+  </div>
+
+  <!-- main -->
+  <main class="stage">
+
+    <!-- ========================================================
+         GALERIA · HOME (lista de projetos)
+         ======================================================== -->
+    <section class="screen screen-gal-home" data-screen="home">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">Galeria</div>
+            <h1 class="page-head-title"><em>Seus</em> projetos</h1>
+            <p class="page-head-sub">Cada projeto reúne os assets já entregues ou em vias de. Um asset nasce ao publicar um vídeo do seu Ateliê.</p>
+          </div>
+          <div class="page-head-actions">
+            <button class="btn btn-primary" data-action="new-project">
+              <span class="btn-icon">+</span>
+              novo projeto
+            </button>
+          </div>
+        </div>
+
+        <div class="project-grid" data-bind="project-grid">
+          <!-- cards de projeto preenchidos via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         GALERIA · PROJETO (lista de assets)
+         ======================================================== -->
+    <section class="screen screen-gal-project" data-screen="project">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">
+              <button class="link-back" data-action="goto-home">‹ Galeria</button>
+              <span class="sep">/</span>
+              Projeto
+            </div>
+            <h1 class="page-head-title" data-bind="project-name">—</h1>
+            <p class="page-head-sub" data-bind="project-sub">—</p>
+          </div>
+          <div class="page-head-actions">
+            <div class="filter-chips" role="tablist" data-bind="asset-filter">
+              <button class="chip is-active" data-filter="all">todos</button>
+              <button class="chip" data-filter="pendente">pendentes</button>
+              <button class="chip" data-filter="feito">feitos</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="asset-grid" data-bind="asset-grid">
+          <!-- cards de asset preenchidos via JS -->
+        </div>
+
+        <!-- chamada para publicar (não é botão de criar asset) -->
+        <div class="empty-call" data-bind="empty-call">
+          <div class="empty-call-mark">◇</div>
+          <p>
+            Assets nascem ao <strong>publicar um vídeo</strong> do seu Ateliê neste projeto.
+            Vai pro Ateliê, abre um vídeo no editor e clica em <em>publicar como asset</em>.
+          </p>
+          <button class="btn btn-ghost" data-action="goto-atelie-videos">
+            ✦ ir pro Ateliê → Vídeos
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         ATELIÊ · com sidebar de 4 subseções
+         ======================================================== -->
+    <section class="screen screen-atelie" data-screen="atelie">
+      <aside class="atelie-side">
+        <div class="atelie-side-head">
+          <div class="atelie-side-eyebrow">Ateliê</div>
+          <div class="atelie-side-tagline"><em>seu</em> espaço de fabricação</div>
+        </div>
+        <nav class="atelie-nav" aria-label="subseções do ateliê">
+          <button class="atelie-nav-item is-active" data-action="goto-atelie-sub" data-sub="videos">
+            <span class="atelie-nav-icon">▶</span>
+            <span class="atelie-nav-label">Vídeos</span>
+            <span class="atelie-nav-count" data-bind="count-videos">0</span>
+          </button>
+          <button class="atelie-nav-item" data-action="goto-atelie-sub" data-sub="personagens">
+            <span class="atelie-nav-icon">☻</span>
+            <span class="atelie-nav-label">Personagens</span>
+            <span class="atelie-nav-count" data-bind="count-personagens">0</span>
+          </button>
+          <button class="atelie-nav-item" data-action="goto-atelie-sub" data-sub="enquadramentos">
+            <span class="atelie-nav-icon">▭</span>
+            <span class="atelie-nav-label">Enquadramentos</span>
+            <span class="atelie-nav-count" data-bind="count-enquadramentos">0</span>
+          </button>
+          <button class="atelie-nav-item" data-action="goto-atelie-sub" data-sub="cameras">
+            <span class="atelie-nav-icon">◉</span>
+            <span class="atelie-nav-label">Câmeras salvas</span>
+            <span class="atelie-nav-count" data-bind="count-cameras">0</span>
+          </button>
+        </nav>
+        <div class="atelie-side-foot">
+          <p>Tudo aqui é <em>seu</em>. Nada chega à Galeria sem você publicar.</p>
+        </div>
+      </aside>
+
+      <div class="atelie-stage">
+        <!-- VÍDEOS -->
+        <div class="atelie-sub" data-sub="videos">
+          <div class="page-head">
+            <div class="page-head-meta">
+              <div class="page-head-eyebrow">Ateliê / Vídeos</div>
+              <h2 class="page-head-title"><em>Vídeos</em> em fabricação</h2>
+              <p class="page-head-sub">Matéria-prima da rotoscopia. Cada vídeo é seu até você publicar como asset.</p>
+            </div>
+            <div class="page-head-actions">
+              <button class="btn btn-primary btn-lg" data-action="new-video">
+                <span class="btn-icon">+</span>
+                criar vídeo
+              </button>
+            </div>
+          </div>
+
+          <div class="video-grid" data-bind="video-grid"></div>
+        </div>
+
+        <!-- PERSONAGENS -->
+        <div class="atelie-sub" data-sub="personagens" hidden>
+          <div class="page-head">
+            <div class="page-head-meta">
+              <div class="page-head-eyebrow">Ateliê / Personagens</div>
+              <h2 class="page-head-title"><em>Personagens</em></h2>
+              <p class="page-head-sub">Reusáveis. Um personagem alimenta vários vídeos. Cada personagem tem variações de aparência exploratórias.</p>
+            </div>
+            <div class="page-head-actions">
+              <button class="btn btn-primary" data-action="new-personagem">
+                <span class="btn-icon">+</span>
+                novo personagem
+              </button>
+            </div>
+          </div>
+          <div class="personagem-grid" data-bind="personagem-grid"></div>
+        </div>
+
+        <!-- ENQUADRAMENTOS -->
+        <div class="atelie-sub" data-sub="enquadramentos" hidden>
+          <div class="page-head">
+            <div class="page-head-meta">
+              <div class="page-head-eyebrow">Ateliê / Enquadramentos</div>
+              <h2 class="page-head-title"><em>Enquadramentos</em></h2>
+              <p class="page-head-sub"><em>Especificação de câmera</em> — não é foto. Posição, rotação, FOV. Reusável com qualquer personagem.</p>
+            </div>
+            <div class="page-head-actions">
+              <button class="btn btn-primary" data-action="new-enquadramento">
+                <span class="btn-icon">+</span>
+                novo enquadramento
+              </button>
+            </div>
+          </div>
+          <div class="enquadramento-grid" data-bind="enquadramento-grid"></div>
+        </div>
+
+        <!-- CÂMERAS SALVAS -->
+        <div class="atelie-sub" data-sub="cameras" hidden>
+          <div class="page-head">
+            <div class="page-head-meta">
+              <div class="page-head-eyebrow">Ateliê / Câmeras salvas</div>
+              <h2 class="page-head-title"><em>Câmeras</em> salvas</h2>
+              <p class="page-head-sub">Presets pessoais de posição/rotação/FOV. Aparecem na lista quando você está produzindo um enquadramento.</p>
+            </div>
+          </div>
+          <div class="camera-list" data-bind="camera-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         EDITOR (trânsito Ateliê ↔ Galeria)
+         ======================================================== -->
+    <section class="screen screen-editor" data-screen="editor">
+      <div class="editor-shell">
+        <div class="editor-canvas">
+          <div class="editor-frame" data-bind="editor-frame">
+            <div class="editor-frame-stub">[ preview do vídeo · mock ]</div>
+          </div>
+          <div class="editor-transport">
+            <div class="transport-row">
+              <button class="t-btn">⏮</button>
+              <button class="t-btn t-btn-play">▶</button>
+              <button class="t-btn">⏭</button>
+              <div class="t-bar">
+                <div class="t-track">
+                  <div class="t-thumb t-in"></div>
+                  <div class="t-thumb t-out" style="left: 78%"></div>
+                  <div class="t-fill" style="left: 0; right: 22%"></div>
+                </div>
+              </div>
+              <div class="t-time">00:00 / 00:08</div>
+            </div>
+          </div>
+        </div>
+        <aside class="editor-side">
+          <div class="editor-side-head">
+            <div class="editor-side-eyebrow" data-bind="editor-context">Ateliê / Vídeos</div>
+            <h2 class="editor-side-title" data-bind="editor-name">—</h2>
+            <div class="editor-side-meta" data-bind="editor-meta">—</div>
+          </div>
+
+          <div class="editor-section">
+            <div class="editor-section-title">parâmetros</div>
+            <div class="editor-row">
+              <label>fps</label>
+              <input type="number" value="12" min="1" max="60" />
+            </div>
+            <div class="editor-row">
+              <label>scale</label>
+              <input type="number" value="1" step="0.1" min="0.1" max="4" />
+            </div>
+          </div>
+
+          <div class="editor-section">
+            <div class="editor-section-title">preset</div>
+            <div class="preset-grid">
+              <button class="preset-chip is-active">cga</button>
+              <button class="preset-chip">magenta</button>
+              <button class="preset-chip">amber</button>
+              <button class="preset-chip">scanlines</button>
+              <button class="preset-chip">glitch</button>
+            </div>
+          </div>
+
+          <div class="editor-publish">
+            <div class="editor-publish-state" data-bind="editor-publish-state">
+              <span class="dot dot-warn"></span>
+              ainda não publicado
+            </div>
+            <button class="btn btn-publish" data-action="open-publish">
+              <span class="btn-icon">◆</span>
+              publicar como asset
+            </button>
+            <p class="editor-publish-hint">
+              Publicar gera o <code>.aseprite</code> final e cria o asset no projeto que você escolher.
+            </p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ========================================================
+       MODAIS
+       ======================================================== -->
+
+  <!-- modal: novo projeto -->
+  <div class="modal" data-modal="new-project" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Galeria</div>
+        <h3>Novo projeto</h3>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>nome do projeto</span>
+          <input type="text" data-bind="new-project-name" placeholder="ex: Cavaleiros do Vale" />
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="confirm-new-project">criar projeto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: seletor de fluxo (criar vídeo) -->
+  <div class="modal modal-wide" data-modal="new-video" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Vídeos</div>
+        <h3>Como você quer começar esse vídeo?</h3>
+        <p class="modal-sub">Quatro caminhos, todos terminam num vídeo na sua workbench. A escolha aqui é só sobre <em>como conseguir o vídeo</em> — depois disso o editor é o mesmo.</p>
+      </div>
+      <div class="modal-body">
+        <div class="flow-grid">
+          <button class="flow-card" data-action="pick-flow" data-flow="A">
+            <div class="flow-card-letter">A</div>
+            <div class="flow-card-name">Upload de vídeo</div>
+            <p>Você já tem um <code>.mp4</code>. Sobe e abre no editor.</p>
+          </button>
+          <button class="flow-card is-soon" data-action="pick-flow" data-flow="B" disabled>
+            <div class="flow-card-letter">B</div>
+            <div class="flow-card-name">Vídeo de URL</div>
+            <p>Cola um link, baixa, edita. <span class="soon">em breve</span></p>
+          </button>
+          <button class="flow-card is-soon" data-action="pick-flow" data-flow="C" disabled>
+            <div class="flow-card-letter">C</div>
+            <div class="flow-card-name">Geração genérica</div>
+            <p>Prompt + modelo, vídeo direto. <span class="soon">em breve</span></p>
+          </button>
+          <button class="flow-card flow-card-D" data-action="pick-flow" data-flow="D">
+            <div class="flow-card-letter">D</div>
+            <div class="flow-card-name">Caminho personagem</div>
+            <p>Personagem → enquadramento → movimento. Caminho opinionado, otimizado pra animação 2D.</p>
+          </button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: publicar como asset -->
+  <div class="modal" data-modal="publish" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Editor → Galeria</div>
+        <h3>Publicar como asset</h3>
+        <p class="modal-sub">Esse ato cria (ou sobrescreve) o asset entregue no projeto que você escolher. Gera o <code>.aseprite</code> final e disponibiliza pro time.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>projeto-destino</span>
+          <div class="custom-select" data-bind="publish-project-select">
+            <button class="custom-select-btn" data-action="toggle-project-select">
+              <span data-bind="publish-project-label">— escolher —</span>
+              <span class="caret">▾</span>
+            </button>
+            <ul class="custom-select-menu" data-bind="publish-project-menu" hidden></ul>
+          </div>
+        </label>
+        <label class="field">
+          <span>nome do asset</span>
+          <input type="text" data-bind="publish-asset-name" placeholder="herda do nome do vídeo" />
+        </label>
+        <div class="field-row" data-bind="publish-overwrite-warn" hidden>
+          <span class="dot dot-warn"></span>
+          Esse vídeo já tem asset publicado. Confirmar vai <strong>sobrescrever</strong> o <code>.aseprite</code> existente (sem histórico).
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-publish" data-action="confirm-publish">
+          <span class="btn-icon">◆</span>
+          publicar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: criar personagem (mock) -->
+  <div class="modal" data-modal="new-personagem" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Personagens</div>
+        <h3>Novo personagem</h3>
+        <p class="modal-sub">No produto real, isso abre o fluxo de geração de aparência (etapa 1 do Fluxo D). Aqui só registra um personagem com nome.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>nome (pode renomear depois)</span>
+          <input type="text" data-bind="new-personagem-name" placeholder="ex: Cavaleiro Órfico" />
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="confirm-new-personagem">criar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div class="toast" data-bind="toast" hidden>
+    <span class="toast-mark">◆</span>
+    <span class="toast-msg" data-bind="toast-msg">—</span>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
