@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<title>roto-master · personagem · protótipo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body class="screen-home">
+
+<!-- ======================================================================
+     APP CHROME  (header always visible)
+     ====================================================================== -->
+<header class="chrome">
+  <div class="chrome-left">
+    <button class="back-btn" data-nav="home" aria-label="voltar para personagens">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 6l-6 6 6 6"/></svg>
+      <span>personagens</span>
+    </button>
+    <div class="brand">
+      <span class="brand-mark">◐</span>
+      <span class="brand-name">roto<span class="dim">/</span>master</span>
+      <span class="brand-mod">personagem</span>
+    </div>
+  </div>
+  <div class="chrome-center" id="breadcrumb"></div>
+  <div class="chrome-right">
+    <div class="user-pill">
+      <span class="user-dot"></span>
+      <span class="user-mail">manu@did.lu</span>
+    </div>
+  </div>
+</header>
+
+<!-- ======================================================================
+     SCREEN: HOME — character list
+     ====================================================================== -->
+<section class="screen" data-screen="home">
+  <div class="screen-inner">
+    <div class="page-head">
+      <div class="page-head-left">
+        <h1 class="page-title">
+          <span class="title-num">01</span>
+          <span class="title-word">Personagens</span>
+        </h1>
+        <p class="page-sub">
+          Cada personagem é um estúdio próprio<span class="dot">·</span>aparência, enquadramento, movimento
+        </p>
+      </div>
+      <div class="page-head-right">
+        <button class="btn btn-primary" id="btn-new-char">
+          <span class="btn-icon">+</span>
+          <span>novo personagem</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="char-grid" id="char-grid"></div>
+
+    <div class="section-rule">
+      <span class="rule-line"></span>
+      <span class="rule-label">arquivo</span>
+      <span class="rule-line"></span>
+    </div>
+    <div class="archive-note">
+      <span class="archive-key">vídeos soltos</span>
+      <span class="archive-val">rotoscopia genérica continua disponível separadamente · futuro</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================
+     SCREEN: CHARACTER WORKSPACE — tabs
+     ====================================================================== -->
+<section class="screen" data-screen="character">
+  <div class="char-header">
+    <div class="char-header-left">
+      <div class="char-meta">
+        <span class="meta-label">personagem</span>
+        <span class="meta-num" id="char-num">001</span>
+      </div>
+      <h2 class="char-name" id="char-name" contenteditable="false">—</h2>
+      <button class="rename-btn" id="rename-btn" title="renomear">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </button>
+    </div>
+    <div class="char-header-right">
+      <div class="char-stats" id="char-stats"></div>
+    </div>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="appearance">
+      <span class="tab-num">01</span>
+      <span class="tab-name">Aparência</span>
+      <span class="tab-count" id="tab-count-appearance">0</span>
+    </button>
+    <button class="tab" data-tab="framing">
+      <span class="tab-num">02</span>
+      <span class="tab-name">Enquadramento</span>
+      <span class="tab-count" id="tab-count-framing">0</span>
+    </button>
+    <button class="tab" data-tab="movement">
+      <span class="tab-num">03</span>
+      <span class="tab-name">Movimento</span>
+      <span class="tab-count" id="tab-count-movement">0</span>
+    </button>
+    <div class="tab-rail">
+      <span class="tab-rail-fill" id="tab-rail-fill"></span>
+    </div>
+  </nav>
+
+  <!-- Tab: APPEARANCE -->
+  <section class="tab-panel active" data-panel="appearance">
+    <div class="panel-toolbar">
+      <div class="toolbar-info">
+        <span class="info-label">Mostrando</span>
+        <span class="info-val">todas as aparências do personagem</span>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" data-toggle-discarded>
+          <span class="dot-icon"></span>
+          <span>mostrar descartadas</span>
+        </button>
+        <button class="btn btn-primary" data-gen="appearance">
+          <span class="btn-icon">+</span>
+          <span>gerar aparência</span>
+          <span class="btn-cost">$0.04</span>
+        </button>
+      </div>
+    </div>
+    <div class="node-grid" data-grid="appearance"></div>
+    <div class="empty-state" data-empty="appearance">
+      <div class="empty-mark">01</div>
+      <div class="empty-title">Quem é esse personagem?</div>
+      <div class="empty-sub">A primeira etapa define identidade, estilo e silhueta. Texto livre + estilo + modelo.</div>
+      <button class="btn btn-primary btn-lg" data-gen="appearance">
+        <span class="btn-icon">+</span>
+        <span>gerar primeira aparência</span>
+        <span class="btn-cost">$0.04</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Tab: FRAMING -->
+  <section class="tab-panel" data-panel="framing">
+    <div class="panel-toolbar">
+      <div class="toolbar-info">
+        <span class="info-label">Derivando de</span>
+        <button class="info-pill" id="framing-source-pill">
+          <span class="info-pill-thumb" id="framing-source-thumb"></span>
+          <span class="info-pill-name" id="framing-source-name">—</span>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" data-toggle-discarded>
+          <span class="dot-icon"></span>
+          <span>mostrar descartadas</span>
+        </button>
+        <button class="btn btn-primary" data-gen="framing">
+          <span class="btn-icon">+</span>
+          <span>gerar enquadramento</span>
+          <span class="btn-cost">$0.04</span>
+        </button>
+      </div>
+    </div>
+    <div class="node-grid" data-grid="framing"></div>
+    <div class="empty-state" data-empty="framing">
+      <div class="empty-mark">02</div>
+      <div class="empty-title">Como você olha pra ele?</div>
+      <div class="empty-sub">Posicione uma câmera 3D real sobre o humanoide neutro, escolha o ângulo, gere a pose 2D.</div>
+      <button class="btn btn-primary btn-lg" data-gen="framing">
+        <span class="btn-icon">+</span>
+        <span>gerar primeiro enquadramento</span>
+        <span class="btn-cost">$0.04</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Tab: MOVEMENT -->
+  <section class="tab-panel" data-panel="movement">
+    <div class="panel-toolbar">
+      <div class="toolbar-info">
+        <span class="info-label">Derivando de</span>
+        <button class="info-pill" id="movement-source-pill">
+          <span class="info-pill-thumb" id="movement-source-thumb"></span>
+          <span class="info-pill-name" id="movement-source-name">—</span>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" data-toggle-discarded>
+          <span class="dot-icon"></span>
+          <span>mostrar descartadas</span>
+        </button>
+        <button class="btn btn-primary" data-gen="movement">
+          <span class="btn-icon">+</span>
+          <span>gerar movimento</span>
+          <span class="btn-cost">$0.35</span>
+        </button>
+      </div>
+    </div>
+    <div class="node-grid" data-grid="movement"></div>
+    <div class="empty-state" data-empty="movement">
+      <div class="empty-mark">03</div>
+      <div class="empty-title">O que ele faz?</div>
+      <div class="empty-sub">Pose inicial + ação descrita + duração. Vídeo i2v sai pronto pra rotoscopar.</div>
+      <button class="btn btn-primary btn-lg" data-gen="movement">
+        <span class="btn-icon">+</span>
+        <span>gerar primeiro movimento</span>
+        <span class="btn-cost">$0.35</span>
+      </button>
+    </div>
+  </section>
+</section>
+
+<!-- ======================================================================
+     MODAL: GENERATE APPEARANCE
+     ====================================================================== -->
+<div class="modal-bg" data-modal="appearance">
+  <div class="modal modal-md">
+    <header class="modal-head">
+      <div class="modal-step">etapa 01 · aparência</div>
+      <h3 class="modal-title">Quem é esse personagem?</h3>
+      <button class="modal-close" data-modal-close>×</button>
+    </header>
+    <div class="modal-body">
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">modelo</span>
+          <div class="select" data-select="appearance-model">
+            <button class="select-btn" type="button">
+              <span class="select-val">nano-banana-pro</span>
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <ul class="select-menu">
+              <li data-val="nano-banana-pro" class="selected">
+                <span>nano-banana-pro</span>
+                <span class="select-meta">Google · $0.04</span>
+              </li>
+              <li data-val="seedream-4">
+                <span>seedream-4</span>
+                <span class="select-meta">ByteDance · $0.06</span>
+              </li>
+            </ul>
+          </div>
+        </label>
+        <label class="field field-narrow">
+          <span class="field-label">custo</span>
+          <div class="cost-display">$0.04</div>
+        </label>
+      </div>
+
+      <div class="field">
+        <span class="field-label">estilo</span>
+        <div class="seg" data-seg="style">
+          <button data-val="realismo">realismo</button>
+          <button data-val="semi-realista" class="active">semi-realista</button>
+          <button data-val="cartoon">cartoon</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">descrição do personagem</span>
+        <textarea class="textarea" id="appearance-prompt" rows="4" placeholder="cavaleiro órfico, armadura preta gasta, capa vermelha rasgada, cabelos brancos longos, olhar duro"></textarea>
+      </div>
+
+      <details class="prompt-disclosure">
+        <summary>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" class="chev"><path d="M9 6l6 6-6 6"/></svg>
+          <span>Ver prompt completo enviado ao modelo</span>
+        </summary>
+        <div class="prompt-stack">
+          <div class="prompt-block prompt-locked">
+            <span class="prompt-tag">constantes</span>
+            <code id="appearance-constants">full body, standing upright, neutral pose, arms relaxed, plain neutral background, soft even lighting, character centered, no props in hands</code>
+          </div>
+          <div class="prompt-block prompt-locked">
+            <span class="prompt-tag">estilo</span>
+            <code id="appearance-style-out">semi-realista, painterly, mid-detail textures</code>
+          </div>
+          <div class="prompt-block prompt-user">
+            <span class="prompt-tag">você</span>
+            <code id="appearance-user-out">—</code>
+          </div>
+        </div>
+      </details>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn btn-ghost" data-modal-close>cancelar</button>
+      <button class="btn btn-primary" data-gen-confirm="appearance">
+        <span>gerar</span>
+        <span class="btn-cost">$0.04</span>
+      </button>
+    </footer>
+  </div>
+</div>
+
+<!-- ======================================================================
+     MODAL: GENERATE FRAMING (3D viewport)
+     ====================================================================== -->
+<div class="modal-bg" data-modal="framing">
+  <div class="modal modal-xl">
+    <header class="modal-head">
+      <div class="modal-step">etapa 02 · enquadramento</div>
+      <h3 class="modal-title">Como você olha pra ele?</h3>
+      <div class="modal-context">
+        <span class="ctx-label">baseado em</span>
+        <span class="ctx-thumb" id="framing-modal-thumb"></span>
+        <span class="ctx-name" id="framing-modal-source">—</span>
+      </div>
+      <button class="modal-close" data-modal-close>×</button>
+    </header>
+    <div class="modal-body framing-body">
+      <aside class="framing-side">
+        <div class="side-section">
+          <div class="side-header">
+            <span class="side-label">presets de câmera</span>
+          </div>
+          <div class="preset-list" id="preset-list">
+            <button class="preset" data-preset="top-down"><span class="preset-glyph">▼</span><span>Top-down</span></button>
+            <button class="preset" data-preset="iso"><span class="preset-glyph">◆</span><span>Isométrico</span></button>
+            <button class="preset active" data-preset="side"><span class="preset-glyph">▶</span><span>Side-scroller</span></button>
+            <button class="preset" data-preset="third"><span class="preset-glyph">◐</span><span>3ª pessoa</span></button>
+            <button class="preset" data-preset="first"><span class="preset-glyph">●</span><span>1ª pessoa</span></button>
+            <button class="preset" data-preset="frontal"><span class="preset-glyph">▣</span><span>Frontal</span></button>
+            <button class="preset" data-preset="back"><span class="preset-glyph">▢</span><span>Costas</span></button>
+            <button class="preset" data-preset="hero"><span class="preset-glyph">▲</span><span>Low-angle herói</span></button>
+            <button class="preset" data-preset="plonge"><span class="preset-glyph">▽</span><span>Plongé dramático</span></button>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-header">
+            <span class="side-label">meus presets</span>
+          </div>
+          <div class="preset-list">
+            <button class="preset preset-saved"><span class="preset-glyph">★</span><span>Câmera inimigo</span></button>
+            <button class="preset preset-saved"><span class="preset-glyph">★</span><span>Boss view</span></button>
+            <button class="preset preset-add">
+              <span class="preset-glyph">+</span><span>salvar atual</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-header">
+            <span class="side-label">câmera atual</span>
+          </div>
+          <div class="cam-readout">
+            <div class="cam-row">
+              <span class="cam-key">FOV</span>
+              <input type="range" min="20" max="90" value="50" id="fov-slider" class="slider">
+              <span class="cam-val" id="fov-val">50°</span>
+            </div>
+            <div class="cam-row cam-row-info">
+              <span class="cam-key">posição</span>
+              <span class="cam-val cam-mono" id="cam-pos">— · — · —</span>
+            </div>
+            <div class="cam-row cam-row-info">
+              <span class="cam-key">alvo</span>
+              <span class="cam-val cam-mono" id="cam-target">— · — · —</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-header">
+            <span class="side-label">aparência de referência</span>
+          </div>
+          <div class="ref-card" id="framing-ref-card">
+            <div class="ref-thumb" id="framing-ref-thumb"></div>
+            <div class="ref-info">
+              <div class="ref-name" id="framing-ref-name">—</div>
+              <div class="ref-meta">identidade visual</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="framing-main">
+        <div class="viewport-wrap">
+          <canvas id="viewport-canvas"></canvas>
+          <div class="viewport-loading" id="viewport-loading">
+            <div class="loading-pulse"></div>
+            <div class="loading-text">carregando humanoide…</div>
+          </div>
+          <div class="viewport-hud">
+            <div class="hud-block">
+              <span class="hud-key">drag</span><span class="hud-val">orbitar</span>
+            </div>
+            <div class="hud-block">
+              <span class="hud-key">shift+drag</span><span class="hud-val">deslocar</span>
+            </div>
+            <div class="hud-block">
+              <span class="hud-key">scroll</span><span class="hud-val">zoom</span>
+            </div>
+          </div>
+          <div class="viewport-corner">
+            <div class="corner-tag" id="active-preset-tag">SIDE-SCROLLER</div>
+          </div>
+        </div>
+
+        <div class="framing-controls">
+          <div class="field">
+            <span class="field-label">ajustes adicionais (opcional)</span>
+            <textarea class="textarea textarea-sm" id="framing-prompt" rows="2" placeholder="inclinado pra frente, espada erguida"></textarea>
+          </div>
+          <div class="framing-bottom-row">
+            <label class="field field-inline">
+              <span class="field-label">modelo</span>
+              <div class="select" data-select="framing-model">
+                <button class="select-btn" type="button">
+                  <span class="select-val">nano-banana-pro</span>
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <ul class="select-menu">
+                  <li data-val="nano-banana-pro" class="selected"><span>nano-banana-pro</span><span class="select-meta">$0.04</span></li>
+                  <li data-val="seedream-4"><span>seedream-4</span><span class="select-meta">$0.06</span></li>
+                </ul>
+              </div>
+            </label>
+            <div class="cost-pill">$0.04</div>
+            <div class="spacer"></div>
+            <button class="btn btn-ghost" data-modal-close>cancelar</button>
+            <button class="btn btn-primary" data-gen-confirm="framing">
+              <span>gerar</span><span class="btn-cost">$0.04</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================================
+     MODAL: GENERATE MOVEMENT
+     ====================================================================== -->
+<div class="modal-bg" data-modal="movement">
+  <div class="modal modal-md">
+    <header class="modal-head">
+      <div class="modal-step">etapa 03 · movimento</div>
+      <h3 class="modal-title">O que ele faz?</h3>
+      <div class="modal-context">
+        <span class="ctx-label">baseado em</span>
+        <span class="ctx-thumb" id="movement-modal-thumb"></span>
+        <span class="ctx-name" id="movement-modal-source">—</span>
+      </div>
+      <button class="modal-close" data-modal-close>×</button>
+    </header>
+    <div class="modal-body">
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">modelo</span>
+          <div class="select" data-select="movement-model">
+            <button class="select-btn" type="button">
+              <span class="select-val">kling-i2v</span>
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <ul class="select-menu">
+              <li data-val="kling-i2v" data-cost-per-s="0.07" class="selected">
+                <span>kling-i2v</span>
+                <span class="select-meta">fal.ai · $0.07/s</span>
+              </li>
+              <li data-val="hailuo-i2v" data-cost-per-s="0.045">
+                <span>hailuo-i2v</span>
+                <span class="select-meta">MiniMax · $0.045/s</span>
+              </li>
+            </ul>
+          </div>
+        </label>
+        <label class="field">
+          <span class="field-label">duração</span>
+          <div class="select" data-select="movement-duration">
+            <button class="select-btn" type="button">
+              <span class="select-val">5s</span>
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <ul class="select-menu">
+              <li data-val="5" class="selected"><span>5 segundos</span></li>
+              <li data-val="6"><span>6 segundos</span></li>
+              <li data-val="8"><span>8 segundos</span></li>
+            </ul>
+          </div>
+        </label>
+        <label class="field field-narrow">
+          <span class="field-label">custo</span>
+          <div class="cost-display" id="movement-cost">$0.35</div>
+        </label>
+      </div>
+
+      <div class="field">
+        <span class="field-label">pose inicial (referência fixa)</span>
+        <div class="ref-card ref-card-locked">
+          <div class="ref-thumb" id="movement-ref-thumb"></div>
+          <div class="ref-info">
+            <div class="ref-name" id="movement-ref-name">—</div>
+            <div class="ref-meta">imutável · vem do enquadramento selecionado</div>
+          </div>
+          <div class="ref-lock">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">ação que o personagem performa</span>
+        <textarea class="textarea" id="movement-prompt" rows="3" placeholder="dá dois passos à frente, saca a espada da bainha, fica em postura de guarda"></textarea>
+      </div>
+
+      <details class="prompt-disclosure">
+        <summary>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" class="chev"><path d="M9 6l6 6-6 6"/></svg>
+          <span>Ver prompt completo</span>
+        </summary>
+        <div class="prompt-stack">
+          <div class="prompt-block prompt-locked">
+            <span class="prompt-tag">constantes</span>
+            <code>same character and camera angle as reference, locked-off camera, no camera movement, single continuous action</code>
+          </div>
+          <div class="prompt-block prompt-user">
+            <span class="prompt-tag">você</span>
+            <code id="movement-user-out">—</code>
+          </div>
+        </div>
+      </details>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn btn-ghost" data-modal-close>cancelar</button>
+      <button class="btn btn-primary" data-gen-confirm="movement">
+        <span>gerar</span>
+        <span class="btn-cost" id="movement-confirm-cost">$0.35</span>
+      </button>
+    </footer>
+  </div>
+</div>
+
+<!-- ======================================================================
+     MODAL: SOURCE PICKER (when changing parent in framing/movement tab)
+     ====================================================================== -->
+<div class="modal-bg" data-modal="source-picker">
+  <div class="modal modal-md">
+    <header class="modal-head">
+      <h3 class="modal-title" id="source-picker-title">Trocar referência</h3>
+      <button class="modal-close" data-modal-close>×</button>
+    </header>
+    <div class="modal-body">
+      <div class="picker-grid" id="source-picker-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================================
+     MODAL: GENERATING (image — fast)
+     ====================================================================== -->
+<div class="modal-bg" data-modal="generating-image">
+  <div class="modal modal-sm modal-passive">
+    <div class="generating">
+      <div class="gen-pulse">
+        <div class="gen-ring"></div>
+        <div class="gen-ring"></div>
+        <div class="gen-ring"></div>
+      </div>
+      <div class="gen-stage">gerando</div>
+      <div class="gen-detail" id="gen-image-detail">aparência · nano-banana-pro</div>
+      <div class="gen-progress">
+        <div class="gen-progress-fill" id="gen-image-fill"></div>
+      </div>
+      <div class="gen-meta">
+        <span>~5s</span>
+        <span>$0.04</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================================
+     MODAL: TOAST (movement queued)
+     ====================================================================== -->
+<div class="toast-stack" id="toast-stack"></div>
+
+<!-- ======================================================================
+     MODULES
+     ====================================================================== -->
+<script type="module" src="./app.js"></script>
+</body>
+</html>

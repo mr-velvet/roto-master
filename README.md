@@ -32,44 +32,18 @@ O arquivo exportado abre no Aseprite com:
 
 ## Estrutura
 
-```
-server.js              # Express + /api/health + rotas
-package.json           # express, pg
-Dockerfile             # node:20-alpine
-did.json               # manifest da plataforma did.lu (logto+db+domain customizado)
-migrations/
-  001_videos.sql       # tabela videos
-middleware/
-  auth.js              # requireUser (valida token Logto via /oidc/me)
-routes/
-  config.js            # GET /api/config — identidade do user logado
-  videos.js            # GET/POST/PATCH/DELETE /api/videos
-public/
-  index.html           # shell + CSS + login screen + lista + modais
-  logto-auth.js        # SDK wrapper Logto
-  js/
-    main.js            # bootstrap: auth → router → list/editor
-    auth.js            # initAuth, signIn, signOut, authedFetch
-    router.js          # hash routing #/list e #/v/:id
-    videos_api.js      # cliente da API /api/videos
-    video_list.js      # tela de lista + modal "novo vídeo"
-    file_loader.js     # file picker + drag-drop (no editor)
-    state.js           # PARAMS, PRESETS, SLIDERS, STATE
-    shaders.js         # VS_SRC, FS_SRC
-    gl.js              # WebGL boot + render + pixel IO
-    capture.js         # seek/await + resample + overlay + buildTimeline
-    aseprite.js        # ByteWriter + buildAseprite
-    playback.js        # source/rotoscope loops
-    ui.js              # DOM refs + handlers + export
-```
+Ver [PROGRESS.md](./PROGRESS.md) (seção "Estrutura do projeto") pra árvore comentada com responsabilidade de cada arquivo.
 
 ## Rodar local
 
-Precisa ter um Postgres acessível em `DATABASE_URL` e um Logto App ID válido em `public/js/auth.js` (constante `LOGTO_APP_ID`).
+Em desenvolvimento normal, o app roda só na VM `did.lu` — local não é o caminho usual. Se precisar:
+
+- `DATABASE_URL` apontando pra um Postgres acessível.
+- O Logto App ID `36iz4iomybe4r1n67a7jc` está hardcoded em `public/js/auth.js`. Funciona local desde que o callback `http://localhost:5031/callback` esteja registrado no Logto (não está por padrão).
 
 ```sh
 npm install
-DATABASE_URL=postgres://... LOGTO_APP_ID=... npm start
+DATABASE_URL=postgres://... npm start
 ```
 
 Abrir `http://localhost:5031/`.
@@ -87,4 +61,4 @@ Detalhes em [PROGRESS.md](./PROGRESS.md) e [`~/dev/claude-preferences/DEPLOY-GUI
 
 ## Status
 
-App em produção, com login Google e lista de vídeos. Próximas etapas: upload do vídeo pro GCS, auto-save de edição, share link público. Ver [PROGRESS.md](./PROGRESS.md) pra estado vivo.
+App em produção, com login Google e lista de vídeos. O vídeo carregado no editor ainda só vive no browser — não é salvo em storage. Próximas etapas: upload do vídeo pro GCS, auto-save de edição, share link público. Ver [PROGRESS.md](./PROGRESS.md) pra estado vivo.

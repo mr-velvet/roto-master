@@ -1,201 +1,162 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-04-30 (Fase 3 ✓ — file picker, embrulhamento e deploy `roto.did.lu` no ar).
+Última atualização: 2026-05-03
 
-## status atual
+## ⚠️ Leitura obrigatória antes de continuar
 
-PoC funcional, modular, em produção: **https://roto.did.lu** (HTTPS via Caddy, container `roto-master` na porta 5031, healthcheck OK). File picker drag-drop carrega qualquer vídeo via `URL.createObjectURL`. Express serve `public/` com `/api/health`. `did.json` declara `domain: "roto.did.lu", database: false, logto: false`. Local via `npm start` em `http://localhost:5031/`.
+A visão do produto foi reformulada profundamente em 2026-05-03. **Antes de qualquer trabalho técnico, ler:**
 
-## como chegamos aqui (timeline)
+1. **`docs/visao-da-ferramenta.md`** — referência mestra. Define o que a ferramenta é (esteira de produção de assets de rotoscopia), entidades (Projeto, Asset, Workbench, Personagem, Enquadramento), fluxos de produção (A–D), princípios duradouros, e decisões fechadas.
+2. **`docs/modulo-personagem.md`** — especialização: detalha o Fluxo D (caminho personagem) com viewport 3D, hierarquia de prompt e árvore de exploração. **Atenção:** este doc foi escrito antes da visão geral; alguns pontos (ex: UI de 3 colunas, acoplamento personagem↔enquadramento) foram superados pela visão mestra. Em conflito, vale a visão.
 
-### Fase 0 (no repo `random-experiments`) — exploração
-- `cga-video-fx/web/` — lab WebGL de efeitos em vídeo (legado).
-- `cga-video-fx/web-aseprite-poc/` — PoC focada em provar `.aseprite` válido.
+A implementação atual (descrita abaixo) ainda não reflete a nova visão. Próximo passo de produto: **refazer o protótipo navegável** em `prototype/` refletindo a visão mestra, validar, depois descer pra arquitetura técnica.
 
-### Fase 1 (random-experiments commit `64b1e8d`, 2026-04-30) — v1 funcional
-- Writer `.aseprite` em JS puro (~150 linhas) escrito do zero — não existe lib pública pra escrever, só ler. Header 128 bytes + Color Profile chunk + Layer chunks + Cel chunks com pixel RGBA via `pako` deflate.
-- Captura via `vid.currentTime = X` + `await seeked` + `requestVideoFrameCallback` (com timeout fallback).
-- **Bug "frames idênticos"** resolvido: `seeked` dispara antes da superfície de vídeo ter o frame novo. Fix: `Promise.race([rVFC, setTimeout(80ms)])`.
-- Caminho técnico validado.
+## Estado atual (em uma frase)
 
-### Fase 2 (random-experiments commit `1fded22`, 2026-04-30) — v2 quebrada
-Tentativa de empilhar 3 features ao mesmo tempo num monolito de 1463 linhas:
-- Princípio WYSIWYG (transport único frame-a-frame)
-- Dois modos: vídeo original / rotoscopia
-- Dual-thumb slider in/out
+App em produção em **https://roto.did.lu** com login Google (Logto), lista de vídeos como home, criação de novo vídeo via modal, abertura do editor por rota `#/v/:id`. Editor ainda não faz upload do vídeo pra storage — o arquivo só vive no browser via `URL.createObjectURL`. **Estrutura atual ainda não tem conceito de Projeto, Asset (no sentido novo) ou Workbench** — esses conceitos vêm da nova visão e ainda não existem em código.
 
-Ficou quebrada com 3 bugs e sensação de "gambiarra amarrada". Pausada com contexto degradado.
+## O que já funciona
 
-### Fase 2.5 (random-experiments commit `a2cd695`, 2026-04-30) — modularização + bug fixes
-**Modularização behavior-preserving** primeiro: monolito de 1463 linhas → 8 módulos ES sob `js/` (state, shaders, aseprite, gl, capture, playback, ui, main). Comportamento idêntico, só reorganizado. Plano em `~/.claude/plans/ent-o-a-gente-tem-tidy-sundae.md`.
+### Editor de rotoscopia (núcleo da PoC)
+- File picker / drag-drop carrega qualquer vídeo (`URL.createObjectURL`).
+- Dois modos: "vídeo original" (playback nativo) e "rotoscopia" (frames discretos com efeitos WebGL).
+- Dual-thumb in/out range pra delimitar trecho.
+- Transport único (princípio WYSIWYG): play, scrub e export consomem o mesmo `frames[]`.
+- Export `.aseprite` válido com layer `ref` (referência travada esmaecida) + layer `draw` (vazia em cima). Writer JS puro contra spec oficial.
+- Presets de efeito (CGA, magenta, amber, scanlines, glitch, etc.).
 
-**Os 3 bugs corrigidos**, na ordem:
+### Plataforma did.lu
+- Container `roto-master` em `:5031`, Caddy serve `roto.did.lu` com HTTPS automático.
+- `did.json` declara `port: 5031, domain: "roto.did.lu", database: true, logto: true, migrations: "migrations/"`.
+- Postgres compartilhado da plataforma (tabela `videos` no schema do app).
+- Logto App ID `36iz4iomybe4r1n67a7jc` (Google OAuth), hardcoded em `public/js/auth.js`.
 
-1. **Modo source não iniciava (canvas preto, vídeo não tocava).**
-   - Causa: `setMode('source')` chamado no boot disparava o early return `if (STATE.mode === mode) return` (default já era 'source'). Loop nunca arrancava.
-   - Fix: separei `applyMode(mode)` (idempotente, sempre executa branch) de `setMode(mode)` (público, no-op se igual). Boot chama `bootMode('source')` em `main.js`.
-   - Arquivos: `js/playback.js`, `js/main.js`.
+### Multi-user
+- `requireUser` middleware valida token Logto via `/oidc/me` (token opaco, não JWT).
+- Toda rota `/api/videos` é escopada por `owner_sub`.
+- Sem whitelist — qualquer Google login entra. Usuário só vê os próprios vídeos.
 
-2. **Y-flip em rotoscope (vídeo aparecia de cabeça pra baixo).**
-   - Diagnóstico: criei `test-orientation.html` (descartável, removido). Cantos coloridos + letra F + amostragem automática de pixels nos 4 cantos. Comparei A=referência canvas 2D, B=`UNPACK_FLIP_Y_WEBGL=false`, C=`UNPACK_FLIP_Y_WEBGL=true`, D=após `flipYRGBA`. Marcadores empíricos confirmaram: **`<video>` em `texImage2D` precisa de `UNPACK_FLIP_Y_WEBGL=true`** (canvas 2D não precisa — comportamento browser-specific).
-   - Fix: adicionado `gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)` antes do `texImage2D(... vid)` em `renderShaderFrame`, resetado pra false depois. Mesmo padrão que o source loop já fazia.
-   - Arquivos: `js/gl.js`.
-   - **Lição registrada (memory):** após 2 tentativas que falham num bug visual, construir teste mínimo isolado com evidência antes da 3ª. Aplicado.
+### Lista + criação + navegação
+- Home (`#/list`) renderiza grid de vídeos do user logado.
+- Botão "+ novo vídeo" abre modal custom (regra UI: nada de `prompt()` nativo) → POST cria registro com `name` (`gcs_path`/`gcs_url` vazios) → navega pra `#/v/:id`.
+- Editor (`#/v/:id`) carrega metadata, mostra nome no header, botão "‹ voltar" retorna pra lista.
+- Delete via modal de confirmação custom.
 
-3. **Dual-range trava em frequência alta.**
-   - Causas, três:
-     a. `max`/`step` setados em todo input event → forçava reflow do range.
-     b. `.value` reescrito no slider que disparou o evento → cancela drag em alguns browsers.
-     c. `clientWidth` lido em layout sync → thrash.
-   - Fix:
-     a. Movido pra `initRangeUI()` (chamado uma vez no boot).
-     b. `refreshRangeUI(originSlider)` — pula o write no slider de origem.
-     c. Substituído por `calc(6px + (100% - 12px) * frac)` em CSS (browser resolve, sem JS reading).
-   - Arquivos: `js/ui.js`, `js/main.js`.
+## O que NÃO funciona ainda
 
-**Bonus:** `<video loop>` nativo (vídeos curtos repetem sozinho enquanto user ajusta efeitos).
+- **Upload pro GCS:** o vídeo carregado no editor existe só no browser via `URL.createObjectURL`. Não é salvo em storage. Recarregou a página → perdeu o vídeo.
+- **Auto-save de edição:** PARAMS, in/out, fps, scale, preset não são persistidos. `edit_state` (JSONB) tá no schema mas vazio.
+- **Restaurar estado ao reabrir vídeo:** consequência do anterior — abre sempre vazio.
+- **Share link público via `share_id`:** schema tem o campo, rota não existe ainda.
 
-### Fase 3 (este repo, a partir de agora)
-Promovido pra repo dedicado `~/ved/roto-master/`. Em andamento.
+## Próximos passos (próxima sessão)
 
-**Feito (2026-04-30):**
-- File picker / drag-drop (`public/js/file_loader.js`): `URL.createObjectURL` + `revokeObjectURL` no swap. Body começa com classe `no-video` (esconde canvas/transport até user carregar). Drop overlay no `.canvas-wrap`. Botão "carregar vídeo" no header. `vid` sem `src` fixo.
-- Embrulhamento pra deploy did.lu: assets movidos pra `public/`, `server.js` (Express estático + `/api/health`), `package.json` (express only), `Dockerfile` (node:20-alpine, porta 5021), `.dockerignore`, `did.json` (port 5021, `database: false`, `logto: false`). `video.mp4` removido do repo.
+**Antes de qualquer código novo:** validar a visão da ferramenta com protótipo navegável atualizado.
 
-**Próximo:**
-- Deploy `roto.did.lu` via `gcloud compute ssh` na VM `adorable-claude` + `deploy.sh`.
+### Em ordem de prioridade
 
-**Tentativa 2 de deploy (2026-04-30) — sucesso:**
-- `did.json` ganhou campo `domain: "roto.did.lu"`. Tarball reenviado, `deploy.sh roto-master` rodou.
-- DNS, Caddy, compose, container — tudo limpo e correto.
-- `https://roto.did.lu/api/health` → 200 OK.
+0. **Refazer protótipo `prototype/`** refletindo `docs/visao-da-ferramenta.md`:
+   - Home global = lista de projetos do usuário.
+   - Dentro do projeto: Assets como entrada principal (com filtros por estágio: a fazer / em andamento / feito); Workbench acessada via menu.
+   - Workbench com subseções independentes (Vídeos, Personagens, Enquadramentos, Câmeras salvas) — sem acoplamento forçado.
+   - Ação destacada "+ Criar vídeo" com escolha de fluxo (A: upload, B: URL, C: genérico, D: caminho personagem).
+   - Fluxo D ainda detalhado conforme `modulo-personagem.md`, mas com personagens/enquadramentos sendo recursos independentes da workbench (não filhos do personagem).
+   - Banner "MODO PROTÓTIPO — sem chamadas reais à IA, dados em localStorage" no topo.
+1. **Upload do vídeo pro GCS.** `PATCH /api/videos/:id` multipart, valida ≤100MB, sobe pra `gs://didlu-imagestore/roto-master/videos/<uuid>.<ext>` (URL via `https://st.did.lu/...`). Atualiza `gcs_url`/`size_bytes`/`width`/`height`/`duration_s`. No editor, ao detectar `v.gcs_url` em `showEditor()`, atribui `vid.src = v.gcs_url` e dispara o fluxo de "vídeo carregado" sem precisar do file picker.
+2. **Auto-save de `edit_state`.** Debounce 1s + flush no `beforeunload`. Inclui PARAMS, in/out, fps, scale, preset selecionado.
+3. **Restaurar `edit_state` ao abrir vídeo.** Aplicar antes do primeiro render.
+4. **Share link público.** Rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do vídeo. Frontend tem rota `#/s/:share_id` que abre versão read-only.
 
-**Auth Logto (2026-04-30):**
-- `did.json` virou `logto: true, database: true, migrations: "migrations/"`. Migration `001_videos.sql` cria tabela `videos`.
-- `kill-app.sh roto-master --force` deixou Caddyfile + DNS órfãos (não suporta `domain` customizado — outro patch pendente nos scripts da plataforma). Limpado manualmente: `sed -i` no Caddyfile + `gcloud dns record-sets delete`.
-- `new-app.sh` criou tudo, mas a etapa de Logto INSERT não retornou erro visível e o app não foi registrado. Recuperado via script `insert-logto.sh` rodando o INSERT manualmente. Logto App ID: `36iz4iomybe4r1n67a7jc`. Hardcoded em `public/js/auth.js`.
-- App rodando em `https://roto.did.lu` com gating de login Google funcional.
+Os passos 1–4 acima vinham da sessão anterior e ainda fazem sentido tecnicamente, mas devem ser revisitados após a nova visão — provavelmente o schema vai precisar ganhar `projects`, `assets`, e o `videos` atual vira recurso da workbench.
 
-**Lista de vídeos + criar novo + navegação (2026-04-30):**
-- Schema `videos` (já criado): `id, owner_sub, owner_email, name, gcs_path, gcs_url, size_bytes, duration_s, width, height, edit_state, share_id, created_at, updated_at`.
-- `routes/videos.js`: GET (lista), POST (cria com nome — gcs_path/url vazios), GET /:id, PATCH /:id, DELETE /:id. Tudo sob `requireUser`, escopado por `owner_sub`.
-- Frontend modular: `videos_api.js` (cliente API), `video_list.js` (renderiza grid + modal "novo vídeo"), `router.js` (hash-based: `#/list` ou `#/v/:id`), `main.js` orquestra (auth → router → list/editor).
-- Modais custom (regra UI): `#name-modal` pra criar vídeo, `#confirm-modal` pra deletar. Sem `prompt()` ou `confirm()` nativos.
-- Editor abre em estado vazio quando user clica num vídeo (sem upload ainda — upload é a próxima sessão). Botão "‹ voltar" no header retorna pra lista.
-
-**Próximos passos (próxima sessão):**
-- Upload do vídeo pro GCS (`PATCH /api/videos/:id` com multipart, valida 100MB, sobe pro `gs://didlu-imagestore/roto-master/videos/<uuid>.<ext>`, atualiza `gcs_url`/`size_bytes`/dimensões).
-- Auto-save de `edit_state` (PARAMS, in/out, fps, scale, preset) com debounce 1s + flush no `beforeunload`.
-- Restaurar estado ao abrir vídeo já editado.
-- Share link público via `share_id`.
-
-**Patches pendentes nos scripts da plataforma** (em `/home/manu/platform/scripts/` — pasta NÃO é git repo, sincronizar com `mr-velvet/adorable-devops` está em débito):
-- `kill-app.sh` não suporta `domain` customizado (deixa Caddyfile/DNS órfãos).
-- `new-app.sh` etapa Logto: INSERT às vezes falha silencioso (recuperação manual via `/tmp/insert-logto.sh`).
-- `new-app.sh`, `deploy.sh`, `compose-update.py` — patches já aplicados na VM mas não sincronizados.
-
-**Tentativa 1 de deploy (2026-04-30) — abortada e revertida:**
-- Tarball SCP'ado pra `/home/manu/platform/roto-master/`, `deploy.sh roto-master` rodou.
-- Container subiu saudável na porta 5031, mas:
-  - DNS ficou em `roto-master.did.lu` (não `roto.did.lu`) — `new-app.sh` hardcoda `DOMAIN="${APP_NAME}.did.lu"` sem suporte a override.
-  - `compose-update.py` duplicou chave `PORT` no compose (regex não tolera linha em branco no bloco `environment:` que `new-app.sh` emite quando `--no-db`).
-- Estado revertido com `kill-app.sh roto-master --force`. Compose, Caddyfile, DNS, container e dir todos limpos.
-- Bugs delegados pro Claude da VM corrigir nos scripts (`new-app.sh`, `deploy.sh`, `compose-update.py`):
-  1. `did.json` ganha campo opcional `domain` que `deploy.sh` propaga via `--domain` pra `new-app.sh` (fallback `${APP_NAME}.did.lu`).
-  2. `new-app.sh` não emite linha vazia quando `DB_ENV` vazio.
-  3. `compose-update.py` regex tolerante a linhas em branco (defesa em profundidade).
-
-**Porta escolhida pra `roto-master`:** 5031 (5021 já é `proposta-api`, 5022–5030 ocupadas).
-
-## arquitetura (estado atual)
-
-### Estrutura de módulos
+## Estrutura do projeto
 
 ```
-state.js   shaders.js   aseprite.js (leaf, só pako global)
-   |          |              |
-   +----+-----+              |
-        v                    |
-      gl.js                  |
-        |                    |
-        +────► capture.js    |
-        |          |         |
-        +─────► playback.js  |
-                   |         |
-                   +───► ui.js
-                          |
-                          +───► main.js
+server.js                  Express + /api/health + monta /api/config e /api/videos
+package.json               express, pg
+Dockerfile                 node:20-alpine, EXPOSE 5031
+did.json                   manifest da plataforma (logto+db+domain)
+migrations/
+  001_videos.sql           tabela videos (id, owner_sub, name, gcs_*, edit_state, share_id, ...)
+middleware/
+  auth.js                  requireUser — valida token Logto via /oidc/me, popula req.user
+routes/
+  config.js                GET /api/config — devolve identidade do user logado
+  videos.js                GET/POST/PATCH/DELETE /api/videos[/:id], escopado por owner_sub
+public/
+  index.html               shell + CSS + login screen + lista + modais + editor
+  logto-auth.js            wrapper do SDK Logto
+  js/
+    main.js                bootstrap: auth → router → list/editor (bootEditorOnce guarda)
+    auth.js                initAuth, signIn, signOut, getUser, authedFetch
+    router.js              hash routing #/list e #/v/:id
+    videos_api.js          listVideos, createVideo, getVideo, patchVideo, deleteVideo
+    video_list.js          renderiza grid + modal "novo vídeo" + modal confirm delete
+    file_loader.js         file picker + drag-drop no editor
+    state.js               PARAMS, PRESETS, SLIDERS, STATE
+    shaders.js             VS_SRC, FS_SRC
+    gl.js                  WebGL boot + render + pixel IO
+    capture.js             seek/await + resample + overlay + buildTimeline
+    aseprite.js            ByteWriter + buildAseprite
+    playback.js            source/rotoscope loops + setMode
+    ui.js                  DOM refs + setProgress + handlers + export
 ```
 
-| Arquivo | Responsabilidade | LOC aprox |
-|---|---|---|
-| `state.js` | `PARAMS`, `PRESETS`, `SLIDERS`, `STATE` | ~57 |
-| `shaders.js` | `VS_SRC`, `FS_SRC` como template literals | ~87 |
-| `gl.js` | Bootstrap WebGL + render path + plain shader + pixel IO | ~185 |
-| `capture.js` | seek/await + resample + overlay + `buildTimeline` + `paintFrameToCanvas` | ~196 |
-| `aseprite.js` | `ByteWriter` + `buildAseprite` (auto-contido, depende só de `pako`) | ~122 |
-| `playback.js` | source/rotoscope loops + `setMode`. UI deps via `bindUI()` | ~155 |
-| `ui.js` | DOM refs + setProgress + `init/refreshRangeUI` + `updateInfo` + `markDirty` + `buildUI`/`applyPreset` + `wireHandlers` + export | ~218 |
-| `main.js` | entry: buildUI → bindPlaybackUI → wireHandlers → onMetadataReady | ~46 |
-| `index.html` | shell HTML/CSS + `<script type="module" src="./js/main.js">` | ~462 |
+## Decisões arquiteturais já estabelecidas (não revisitar sem motivo)
 
-### Princípios arquiteturais já estabelecidos (não revisitar sem motivo)
+- **Sem build step.** Vanilla ES modules + CDN. Frontend serve direto via `express.static('public')`.
+- **Modais custom** pra criar/confirmar (regra UI global: nunca `prompt()`/`confirm()`/`alert()` do browser).
+- **Hash routing** em vez de history API — simples, não exige fallback no servidor.
+- **Multi-user via `owner_sub`** do Logto, não via `ADMIN_TOKEN`. Whitelist removida deliberadamente.
+- **Live bindings** preservados nos módulos WebGL (`prevTex`/`fbTex`/`plainProg` como `let` exportados, consumers via `import * as glmod`).
+- **DI no playback** (não circular): `playback.js` recebe deps de UI via `bindUI()`.
+- **Captura determinística** com `Promise.race([rVFC, setTimeout(80ms)])` — bug "frames idênticos" resolvido em 2026-04-30.
+- **Y-flip:** `<video>` em `texImage2D` precisa de `UNPACK_FLIP_Y_WEBGL=true`. Buffer rotoscope chega bottom-up; export aplica `flipYRGBA` pra Aseprite (top-down).
 
-- **Sem build step.** Vanilla ES modules + CDN.
-- **Live bindings preservados:** `prevTex`/`fbTex`/`plainProg`/`plainTex` são `let` exportados; consumers que precisam do valor corrente (após swap de feedback) acessam via `import * as glmod`.
-- **Dependency injection no playback** (não circular): `playback.js` recebe `setProgress`/`updateInfo`/refs DOM via `bindUI()`. Evita import circular com `ui.js`.
-- **Writer `.aseprite` em JS puro**, validado. Não tentar usar lib (não existem libs de write).
-- **Captura determinística** com `Promise.race([rVFC, setTimeout(80ms)])`. Não voltar a `await seeked` direto.
+## Histórico
 
-### Y-flip — onde estão os flips e por quê
+### Fase 0–2.5 (no repo `random-experiments`, até 2026-04-30)
+- PoC inicial → modularização (1463 linhas de monolito → 8 módulos ES) → 3 bugs fixed (modo source não iniciava, Y-flip rotoscope, dual-range trava).
+- Detalhe completo no commit `a2cd695` do `random-experiments`.
 
-| Lugar | Flip | Razão |
-|---|---|---|
-| `gl.js` `renderShaderFrame` antes de `texImage2D(... vid)` | `UNPACK_FLIP_Y_WEBGL=true` | `<video>` em `texImage2D` entra invertido vs canvas 2D. Bug fixed em 2026-04-30. |
-| `shaders.js` VS_SRC | `v_uv.y = 1.0 - v_uv.y` | Mantém o resto do pipeline em `<video>` correto (junto com o flip acima). |
-| `gl.js` `uploadAndDrawTexture` | sem flip | Buffer chega bottom-up (linha 0 = base visual); plain shader sample correto sem flip. |
-| `playback.js` `startSourceLoop` antes de `texImage2D(... vid)` | `UNPACK_FLIP_Y_WEBGL=true` | Mesmo motivo do `renderShaderFrame`. |
-| `ui.js` export antes de `buildAseprite` | `flipYRGBA` | Aseprite quer top-down; buffer está bottom-up. |
+### Fase 3 (este repo, 2026-04-30)
+- File picker / drag-drop substituindo `<video src="video.mp4">` fixo.
+- Embrulhamento Express + Docker + did.json.
+- Deploy em `roto.did.lu` (com bug de domain customizado nos scripts da plataforma — corrigido na VM).
+- Auth Logto Google + tabela `videos` + multi-user.
+- Lista de vídeos como home + criação via modal + roteamento hash.
 
-## próximos passos (Fase 3)
+### Fase 4 — discussão de visão (2026-05-02 a 2026-05-03)
 
-### 🔴 prioritário
+Sem código. Discussão profunda de produto que produziu dois documentos centrais:
 
-1. **Deploy em `roto.did.lu`** (plataforma `did.lu` GCP + Docker + Caddy). Ler `~/dev/claude-preferences/DEPLOY-GUIDE.md` antes. Estático servido via Express/static dentro do container do app.
-2. **File picker / drag-drop** de qualquer vídeo. Substituir `<video src="video.mp4">` fixo por `URL.createObjectURL(file)`. Limpar URL ao trocar arquivo.
-3. **UI dedicada** — atualmente herda layout do "lab de efeitos" (CGA-vibe pink/green/orange). Repensar pra produto rotoscopia (timeline com scrub, área pra arrasto de arquivo, presets nomeáveis).
+- `docs/modulo-personagem.md` — primeira proposta: pipeline opinionada de 4 etapas (aparência → enquadramento → movimento → rotoscopia), com viewport 3D para enquadramento e árvore de exploração.
+- Protótipo navegável v1 em `prototype/` (frontend-design skill + Three.js + Mixamo FBX). Validou visualmente o módulo personagem mas **revelou problema conceitual:** acoplamento forçado personagem ↔ enquadramento ↔ movimento, e foco excessivo no módulo personagem como se fosse o produto inteiro.
+- `docs/visao-da-ferramenta.md` — síntese final que recoloca o módulo personagem como **um caminho dentro da ferramenta maior** (esteira de produção de assets de rotoscopia). Define entidades (Projeto, Asset, Workbench), separação clara entre asset (entregável) e recurso da workbench (matéria-prima), princípio de baixo acoplamento (personagens/enquadramentos/câmeras como recursos independentes reusáveis), e ato deliberado de "publicar como asset".
 
-### 🟡 evolução
+**Próximo passo é refazer o protótipo** refletindo a visão mestra antes de qualquer código de produção.
 
-4. **Color mode Indexed** no `.aseprite`:
-   - Header `color depth = 8`
-   - Palette chunk (`0x2019`) — entries RGBA, índice 0 = transparente
-   - Cel data: array de índices em vez de RGBA
-   - Quantização: o efeito do shader já gera paleta limitada (presets CGA, magenta, amber); coletar cores únicas após shader e mapear pra índices.
-   - Como definir paleta: fixa pelo preset / extraída do vídeo após shader / customizável.
+## Patches pendentes nos scripts da plataforma
 
-5. **Persistência de presets** via `localStorage`. Salvar PARAMS atual + nome do preset.
+Aplicados na VM (`/home/manu/platform/scripts/`) mas **não sincronizados** com o repo `mr-velvet/adorable-devops`:
 
-6. **Onion skin pré-configurado** no `.aseprite` exportado (atributo do arquivo).
+- `new-app.sh`: aceita flag `--domain` que sobrescreve `${APP_NAME}.did.lu`.
+- `deploy.sh`: lê `domain` do `did.json` e propaga via `--domain`.
+- `compose-update.py`: regex tolerante a linhas em branco no bloco `environment:`.
 
-7. **Tags de animação** no Aseprite (marcar trechos do vídeo).
+Bugs ainda **não corrigidos** nos scripts da VM:
 
-### 🟢 nice-to-have
+- `kill-app.sh` não suporta `domain` customizado (deixa Caddyfile/DNS órfãos no teardown).
+- `new-app.sh` etapa Logto: `INSERT` com `2>/dev/null` engole erro silencioso. Recuperação manual via `/tmp/insert-logto.sh`.
 
-8. Streaming do `.aseprite` writer (escrever frame a frame em chunks) pra vídeos longos. Atualmente acumula tudo em RAM — 30s @ 12fps em 640×360 = ~330MB.
-9. Warning explícito de limite de memória/resolução acima de N MB.
-10. Substituir dual-range caseiro por lib pronta (ex: `noUiSlider`) se UX continuar desconfortável.
+## Referências
 
-## decisões em aberto
-
-- **Indexed mode**: quem define a paleta? Fixa pelo preset, extraída do vídeo, ou customizável pelo usuário?
-- **Subdomínio do deploy**: `roto.did.lu` (escolhido) ou outro nome?
-- **Evolução do video.mp4 demo**: manter ou tirar do repo (~3.3MB)? Recomendação: tirar e adicionar instrução no README pra usar arquivo próprio.
-
-## referências
-
+- **Visão da ferramenta (referência mestra):** `docs/visao-da-ferramenta.md`
+- **Módulo personagem (especialização):** `docs/modulo-personagem.md`
+- **Protótipo navegável v1** (não bate com a visão final, foi feito antes da consolidação): `prototype/`
+- Projeto irmão (CLI de geração de vídeo, será absorvido como Fluxo D na workbench): `~/ved/motion-ref-gen/`
+- Asset humanoide Mixamo + experimento Three.js base do viewport 3D: `~/ved/random-experiments/skeleton-animation/`
 - Spec do `.aseprite`: https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md
-- Docs Aseprite: https://www.aseprite.org/docs/files/
-- Plano de modularização (histórico): `~/.claude/plans/ent-o-a-gente-tem-tidy-sundae.md`
+- Deploy guide: `~/dev/claude-preferences/DEPLOY-GUIDE.md`
 - Origem da PoC: `~/ved/random-experiments/cga-video-fx/web-aseprite-poc/` (commit `a2cd695`)
-- Proposta original (histórico): `~/ved/random-experiments/cga-video-fx/ROTOSCOPE-TOOL-PROPOSAL.md`
+- Plano de modularização (histórico): `~/.claude/plans/ent-o-a-gente-tem-tidy-sundae.md`
