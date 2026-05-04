@@ -1,8 +1,8 @@
 // Ateliê → Vídeos. Lista vídeos do user, ação criar vídeo, abre editor.
 
-import { listVideos, createVideo, deleteVideo } from './videos_api.js';
+import { listVideos, createVideo, deleteVideo, duplicateVideo } from './videos_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
-import { navigateEditor } from './router.js';
+import { navigateEditor, navigateProject } from './router.js';
 
 const $grid = document.querySelector('[data-bind="video-grid"]');
 const $empty = document.querySelector('[data-bind="videos-empty"]');
@@ -39,7 +39,8 @@ function render() {
     const card = document.createElement('div');
     card.className = 'video-card';
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.video-card-delete')) return;
+      if (e.target.closest('.video-card-hover-actions')) return;
+      if (e.target.closest('[data-action="goto-published-project"]')) return;
       navigateEditor(v.id);
     });
 
@@ -53,6 +54,12 @@ function render() {
     const o = originMap[origin] || { label: origin, cls: '', icon: '·' };
     const isPublished = !!v.published_asset_id;
     const dur = v.duration_s ? `${v.duration_s.toFixed(1)}s` : '';
+    const projName = v.published_project_name || '';
+    const publishedTag = isPublished
+      ? (projName
+          ? `<button class="tag tag-published video-card-published-link" data-action="goto-published-project" data-project-id="${v.published_project_id}" type="button" title="abrir projeto na Galeria">◆ publicado em <em>${escapeHtml(projName)}</em></button>`
+          : `<span class="tag tag-published">◆ publicado</span>`)
+      : `<span class="tag tag-draft">◇ rascunho</span>`;
 
     card.innerHTML = `
       <div class="video-card-thumb">
@@ -63,14 +70,33 @@ function render() {
         <div class="video-card-name">${escapeHtml(v.name)}</div>
         <div class="video-card-tags">
           <span class="tag ${o.cls}"><span class="tag-icon">${o.icon}</span>${o.label}</span>
-          <span class="tag ${isPublished ? 'tag-published' : 'tag-draft'}">
-            ${isPublished ? '◆ publicado' : '◇ rascunho'}
-          </span>
+          ${publishedTag}
         </div>
       </div>
-      <button class="video-card-delete" title="apagar" style="position:absolute; top:8px; right:8px; width:24px; height:24px; background:rgba(5,5,6,0.7); color:var(--paper-3); border:0; opacity:0; transition:opacity 160ms;">×</button>
+      <div class="video-card-hover-actions">
+        <button class="video-card-hover-btn" data-action="duplicate-video" title="duplicar (cria cópia independente, sem vínculo a projeto)" type="button">⎘</button>
+        <button class="video-card-hover-btn video-card-hover-btn-danger" data-action="delete-video" title="apagar" type="button">×</button>
+      </div>
     `;
-    card.querySelector('.video-card-delete').addEventListener('click', async (e) => {
+    const $publishedLink = card.querySelector('[data-action="goto-published-project"]');
+    if ($publishedLink) {
+      $publishedLink.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigateProject($publishedLink.getAttribute('data-project-id'));
+      });
+    }
+    card.querySelector('[data-action="duplicate-video"]').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const dup = await duplicateVideo(v.id);
+        showToast('vídeo duplicado');
+        await refresh();
+        navigateEditor(dup.id);
+      } catch (err) {
+        showToast('falha ao duplicar: ' + err.message);
+      }
+    });
+    card.querySelector('[data-action="delete-video"]').addEventListener('click', async (e) => {
       e.stopPropagation();
       const ok = await confirmModal({
         title: 'apagar vídeo',

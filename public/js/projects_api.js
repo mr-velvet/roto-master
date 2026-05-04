@@ -49,3 +49,26 @@ export async function deleteProject(id) {
     throw new Error(err.error || 'delete project: ' + r.status);
   }
 }
+
+export async function addMember(projectId, email) {
+  const r = await authedFetch(`/api/projects/${projectId}/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'add member: ' + r.status);
+  }
+  return r.json();
+}
+
+export async function removeMember(projectId, sub) {
+  const r = await authedFetch(`/api/projects/${projectId}/members/${encodeURIComponent(sub)}`, {
+    method: 'DELETE',
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'remove member: ' + r.status);
+  }
+}

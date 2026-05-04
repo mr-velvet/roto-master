@@ -140,4 +140,89 @@ router.delete('/:id', requireUser, async (req, res) => {
   }
 });
 
+// Adiciona membro por email. Só owner pode.
+// v1: insere "pending:<email>" se o sub real não estiver no banco;
+// auth.js resolve pro sub real no primeiro login.
+router.post('/:id/members', requireUser, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const email = (req.body && typeof req.body.email === 'string' ? req.body.email : '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'email inválido' });
+  if (email.length > 200) return res.status(400).json({ error: 'email muito longo' });
+
+  try {
+    if (!(await isOwner(pool, req.params.id, req.user.sub))) {
+      return res.status(403).json({ error: 'só owner pode adicionar membros' });
+    }
+
+    // já existe linha com esse email (sub real ou pending)?
+    const { rows: existing } = await pool.query(
+      `SELECT member_sub, member_email, role FROM project_members
+        WHERE project_id = $1 AND lower(member_email) = $2`,
+      [req.params.id, email]
+    );
+    if (existing.length) {
+      return res.status(409).json({ error: 'usuário já é membro', member: existing[0] });
+    }
+
+    // tenta resolver pelo banco: alguém com esse email já logou em outro projeto?
+    const { rows: known } = await pool.query(
+      `SELECT DISTINCT member_sub FROM project_members
+        WHERE lower(member_email) = $1 AND member_sub NOT LIKE 'pending:%'
+        LIMIT 1`,
+      [email]
+    );
+    const memberSub = known.length ? known[0].member_sub : `pending:${email}`;
+
+    const { rows: ins } = await pool.query(
+      `INSERT INTO project_members (project_id, member_sub, member_email, role, added_by)
+       VALUES ($1, $2, $3, 'member', $4)
+       RETURNING member_sub, member_email, role, added_by, added_at`,
+      [req.params.id, memberSub, email, req.user.sub]
+    );
+    res.status(201).json({ member: ins[0], pending: memberSub.startsWith('pending:') });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    if (e.code === '23505') return res.status(409).json({ error: 'já é membro' });
+    console.error('add member:', e);
+    res.status(500).json({ error: 'add member failed' });
+  }
+});
+
+// Remove membro. Só owner. Bloqueia remoção do último owner.
+router.delete('/:id/members/:sub', requireUser, async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    if (!(await isOwner(pool, req.params.id, req.user.sub))) {
+      return res.status(403).json({ error: 'só owner pode remover membros' });
+    }
+    const { rows: target } = await pool.query(
+      `SELECT role FROM project_members WHERE project_id = $1 AND member_sub = $2`,
+      [req.params.id, req.params.sub]
+    );
+    if (!target.length) return res.status(404).json({ error: 'membro não encontrado' });
+
+    if (target[0].role === 'owner') {
+      const { rows: counted } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM project_members
+          WHERE project_id = $1 AND role = 'owner'`,
+        [req.params.id]
+      );
+      if (counted[0].n <= 1) {
+        return res.status(409).json({ error: 'não pode remover o último owner' });
+      }
+    }
+
+    const { rowCount } = await pool.query(
+      `DELETE FROM project_members WHERE project_id = $1 AND member_sub = $2`,
+      [req.params.id, req.params.sub]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'membro não encontrado' });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('remove member:', e);
+    res.status(500).json({ error: 'remove member failed' });
+  }
+});
+
 module.exports = router;

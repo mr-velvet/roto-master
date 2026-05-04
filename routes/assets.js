@@ -31,7 +31,11 @@ router.get('/', requireUser, async (req, res) => {
       where += ` AND a.status = $${params.length}`;
     }
     const { rows } = await req.app.locals.pool.query(
-      `SELECT a.${ASSET_COLS.split(', ').join(', a.')}, v.name AS video_name, v.origin AS video_origin
+      `SELECT a.${ASSET_COLS.split(', ').join(', a.')},
+              v.name AS video_name, v.origin AS video_origin,
+              (SELECT member_email FROM project_members
+                WHERE project_id = a.project_id AND member_sub = a.owner_sub
+                LIMIT 1) AS owner_email
          FROM assets a
          JOIN videos v ON v.id = a.video_id
         WHERE ${where}
@@ -141,6 +145,25 @@ router.post('/:id/publish', requireUser, upload.single('file'), async (req, res)
     res.status(500).json({ error: 'publish failed' });
   } finally {
     client.release();
+  }
+});
+
+// Despublicar: apaga o asset, vídeo-fonte volta a ser rascunho na workbench
+// (videos.published_asset_id zera via ON DELETE SET NULL na FK).
+router.delete('/:id', requireUser, async (req, res) => {
+  try {
+    const { rowCount } = await req.app.locals.pool.query(
+      `DELETE FROM assets
+        WHERE id = $1
+          AND project_id IN (SELECT project_id FROM project_members WHERE member_sub = $2)`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'não encontrado' });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('delete asset:', e);
+    res.status(500).json({ error: 'delete failed' });
   }
 });
 

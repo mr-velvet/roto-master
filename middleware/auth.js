@@ -19,6 +19,27 @@ async function requireUser(req, res, next) {
       name: profile.name || null,
       picture: profile.picture || null,
     };
+    // resolve convites "pending:<email>" pro sub real do usuário logado
+    if (req.user.email) {
+      const pool = req.app.locals.pool;
+      if (pool) {
+        try {
+          await pool.query(
+            `UPDATE project_members
+                SET member_sub = $1
+              WHERE member_sub = $2
+                AND NOT EXISTS (
+                  SELECT 1 FROM project_members pm2
+                   WHERE pm2.project_id = project_members.project_id
+                     AND pm2.member_sub = $1
+                )`,
+            [req.user.sub, `pending:${req.user.email.toLowerCase()}`]
+          );
+        } catch (err) {
+          console.warn('resolve pending invites failed:', err.message);
+        }
+      }
+    }
     next();
   } catch (err) {
     console.error('Token validation failed:', err.message);

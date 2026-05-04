@@ -137,6 +137,22 @@
             ✦ ir pro Ateliê → Vídeos
           </button>
         </div>
+
+        <section class="members-section" data-bind="members-section">
+          <div class="members-head">
+            <h2 class="members-title"><em>Membros</em> do projeto</h2>
+            <p class="members-sub">Quem é membro vê e edita os assets deste projeto.</p>
+          </div>
+          <ul class="members-list" data-bind="members-list"></ul>
+          <div class="members-add" data-bind="members-add" hidden>
+            <input type="email" class="members-add-input" data-bind="members-add-input" placeholder="adicionar por email" maxlength="200" />
+            <button class="btn btn-ghost members-add-btn" data-action="add-member" type="button">
+              <span class="btn-icon">+</span>
+              adicionar
+            </button>
+            <div class="members-err" data-bind="members-err"></div>
+          </div>
+        </section>
       </div>
     </section>
 
@@ -419,6 +435,55 @@
           <span class="btn-icon">◆</span>
           publicar
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: detalhe do asset (seção 6.7 da visão) -->
+  <div class="modal" data-modal="asset-detail" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card asset-detail-card">
+      <div class="asset-detail-head">
+        <div class="asset-detail-eyebrow">
+          <span data-bind="asset-detail-eyebrow">Galeria · —</span>
+        </div>
+        <div class="asset-detail-name-wrap">
+          <h3 class="asset-detail-name" data-bind="asset-detail-name" tabindex="0" title="clique pra renomear">—</h3>
+          <input class="asset-detail-name-input" type="text" data-bind="asset-detail-name-input" maxlength="200" hidden />
+        </div>
+      </div>
+
+      <div class="asset-detail-preview">
+        <div class="asset-detail-preview-mark" data-bind="asset-detail-preview">A</div>
+        <button class="asset-detail-status-chip" data-bind="asset-detail-status-chip" type="button" title="clique pra alternar status">pendente</button>
+      </div>
+
+      <div class="asset-detail-source" data-bind="asset-detail-source-wrap">
+        <span class="asset-detail-source-label">fonte</span>
+        <button class="asset-detail-source-link" data-action="asset-detail-goto-source" type="button">
+          <span data-bind="asset-detail-source-name">—</span>
+          <span class="asset-detail-source-arrow">↗</span>
+        </button>
+      </div>
+
+      <div class="asset-detail-actions">
+        <button class="btn btn-publish" data-action="asset-detail-download" type="button">
+          <span class="btn-icon">↓</span>
+          baixar <code>.aseprite</code>
+        </button>
+        <button class="btn btn-ghost" data-action="asset-detail-reedit" type="button">
+          <span class="btn-icon">✎</span>
+          re-editar
+        </button>
+        <button class="btn btn-ghost" data-action="asset-detail-duplicate" type="button" title="duplica o vídeo-fonte; cópia sai sem vínculo, pronta pra publicar em outro projeto">
+          <span class="btn-icon">⎘</span>
+          duplicar vídeo
+        </button>
+      </div>
+
+      <div class="asset-detail-foot">
+        <div class="asset-detail-meta" data-bind="asset-detail-meta">v1 · — · publicado por —</div>
+        <button class="asset-detail-unpublish" data-action="asset-detail-unpublish" type="button" title="apaga o asset; vídeo volta a ser rascunho">despublicar</button>
       </div>
     </div>
   </div>

@@ -50,6 +50,16 @@ export async function deleteVideo(id) {
   if (!r.ok) throw new Error('delete video: ' + r.status);
 }
 
+export async function duplicateVideo(id) {
+  const r = await authedFetch(`/api/videos/${id}/duplicate`, { method: 'POST' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'duplicate video: ' + r.status);
+  }
+  const { video } = await r.json();
+  return video;
+}
+
 export async function uploadVideoFile(id, file, metadata = {}) {
   const fd = new FormData();
   fd.append('file', file);

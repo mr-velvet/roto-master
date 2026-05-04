@@ -618,17 +618,8 @@ body[data-space="atelie"] .screen-gal-project { display: none; }
   margin-bottom: 40px;
 }
 
-.asset-card {
-  background: var(--ink-1);
-  border: 1px solid var(--line);
-  cursor: pointer;
-  transition: all 200ms var(--ease);
-  position: relative;
-}
-.asset-card:hover {
-  border-color: var(--paper-5);
-  transform: translateY(-2px);
-}
+/* asset-card: ver bloco "asset card · atalhos no hover" no fim do arquivo
+   (vira <button>; estilo consolidado lá pra evitar overrides). */
 
 .asset-card-preview {
   height: 180px;
@@ -834,8 +825,40 @@ body[data-space="atelie"] .screen-gal-project { display: none; }
   transition: all 200ms var(--ease);
   position: relative;
 }
-.video-card:hover .video-card-delete { opacity: 1 !important; }
-.video-card-delete:hover { color: var(--rust) !important; }
+.video-card-hover-actions {
+  position: absolute;
+  top: 8px; right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+}
+.video-card:hover .video-card-hover-actions,
+.video-card:focus-within .video-card-hover-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+.video-card-hover-btn {
+  width: 24px; height: 24px;
+  background: rgba(5, 5, 6, 0.85);
+  border: 1px solid var(--line-2);
+  color: var(--paper-3);
+  font-size: 13px;
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: all 140ms var(--ease);
+}
+.video-card-hover-btn:hover {
+  color: var(--copper);
+  border-color: var(--copper);
+  background: rgba(217, 122, 58, 0.08);
+}
+.video-card-hover-btn-danger:hover {
+  color: var(--rust);
+  border-color: var(--rust);
+  background: rgba(181, 72, 72, 0.08);
+}
 .video-card:hover {
   border-color: var(--paper-5);
   transform: translateY(-2px);
@@ -905,6 +928,24 @@ body[data-space="atelie"] .screen-gal-project { display: none; }
   background: var(--copper-soft);
   border-color: var(--copper-soft);
   color: var(--copper);
+}
+.tag-published em {
+  font-style: italic;
+  font-family: var(--font-display);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  color: var(--paper);
+  margin-left: 4px;
+}
+button.tag {
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.video-card-published-link:hover {
+  background: rgba(217, 122, 58, 0.18);
+  border-color: var(--copper);
 }
 .tag-draft {
   color: var(--paper-4);
@@ -1890,6 +1931,373 @@ body:not(.app-loading) #login-loading { display: none; }
   cursor: pointer;
 }
 .user-pill .btn-logout:hover { color: var(--copper) !important; }
+
+/* ----------------------------------------------------------------------------
+   asset card · atalhos no hover (visão 6.7)
+   ---------------------------------------------------------------------------- */
+
+.asset-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--ink-1);
+  border: 1px solid var(--line);
+  padding: 0;
+  cursor: pointer;
+  transition: all 200ms var(--ease);
+  position: relative;
+}
+.asset-card:hover {
+  border-color: var(--paper-5);
+  transform: translateY(-2px);
+}
+.asset-card:focus-visible {
+  outline: 1px solid var(--copper);
+  outline-offset: 2px;
+}
+
+.preview-mark-letter {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 96px;
+  line-height: 1;
+  color: var(--paper-5);
+  letter-spacing: -0.02em;
+}
+
+.asset-card-hover-actions {
+  position: absolute;
+  bottom: 10px; right: 10px;
+  display: flex; gap: 6px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  pointer-events: none;
+}
+.asset-card:hover .asset-card-hover-actions,
+.asset-card:focus-within .asset-card-hover-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.asset-card-hover-btn {
+  width: 28px; height: 28px;
+  background: rgba(5, 5, 6, 0.85);
+  border: 1px solid var(--line-2);
+  color: var(--paper-2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.asset-card-hover-btn:hover {
+  color: var(--copper);
+  border-color: var(--copper);
+  background: rgba(217, 122, 58, 0.08);
+}
+
+.asset-card-meta { align-items: center; }
+.asset-card-origin {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-3);
+}
+.asset-card-origin-icon { color: var(--copper); font-size: 10px; }
+
+/* ----------------------------------------------------------------------------
+   asset · modal de detalhe (visão seção 6.7)
+   ---------------------------------------------------------------------------- */
+
+.asset-detail-card {
+  width: 540px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+}
+.asset-detail-head {
+  padding: 24px 28px 14px;
+}
+.asset-detail-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--copper);
+  margin-bottom: 12px;
+}
+.asset-detail-name-wrap {
+  position: relative;
+}
+.asset-detail-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--paper);
+  cursor: text;
+  outline: none;
+  letter-spacing: -0.01em;
+}
+.asset-detail-name:hover {
+  color: var(--copper);
+}
+.asset-detail-name-input {
+  width: 100%;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--paper);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--copper);
+  outline: none;
+  padding: 0 0 4px;
+}
+
+.asset-detail-preview {
+  position: relative;
+  margin: 4px 28px 16px;
+  height: 220px;
+  background:
+    radial-gradient(420px 220px at 50% 50%, rgba(217, 122, 58, 0.06), transparent 60%),
+    var(--ink-0);
+  border: 1px solid var(--line);
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.asset-detail-preview-mark {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 144px;
+  line-height: 1;
+  color: var(--paper-5);
+  letter-spacing: -0.04em;
+  user-select: none;
+}
+.asset-detail-status-chip {
+  position: absolute;
+  top: 14px; right: 14px;
+  background: var(--ink-1);
+  border: 1px solid var(--line-2);
+  color: var(--paper-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 160ms var(--ease);
+}
+.asset-detail-status-chip:hover {
+  border-color: var(--paper-3);
+}
+.asset-detail-status-chip.is-feito {
+  color: var(--moss);
+  border-color: rgba(107, 142, 90, 0.4);
+  background: rgba(107, 142, 90, 0.08);
+}
+.asset-detail-status-chip.is-pendente {
+  color: var(--amber);
+  border-color: rgba(233, 194, 92, 0.35);
+  background: rgba(233, 194, 92, 0.06);
+}
+
+.asset-detail-source {
+  margin: 0 28px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--paper-3);
+}
+.asset-detail-source[hidden] { display: none; }
+.asset-detail-source-label {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--paper-4);
+}
+.asset-detail-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--paper-2);
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  transition: color 140ms var(--ease), border-color 140ms var(--ease);
+}
+.asset-detail-source-link:hover {
+  color: var(--copper);
+  border-bottom-color: var(--copper);
+}
+.asset-detail-source-arrow { font-size: 11px; }
+
+.asset-detail-actions {
+  margin: 0 28px 18px;
+  display: flex;
+  gap: 10px;
+}
+.asset-detail-actions .btn-publish { flex: 1; justify-content: center; }
+.asset-detail-actions .btn-ghost { flex: 0 0 auto; padding: 10px 16px; }
+
+.asset-detail-foot {
+  border-top: 1px solid var(--line);
+  padding: 14px 28px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.asset-detail-meta {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--paper-4);
+}
+.asset-detail-unpublish {
+  background: transparent;
+  border: 0;
+  color: var(--paper-4);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 140ms var(--ease);
+}
+.asset-detail-unpublish:hover { color: var(--rust); }
+
+/* ----------------------------------------------------------------------------
+   membros do projeto
+   ---------------------------------------------------------------------------- */
+
+.members-section {
+  margin: 56px 0 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+  max-width: 720px;
+}
+.members-head { margin-bottom: 18px; }
+.members-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+.members-title em { color: var(--copper); font-style: italic; }
+.members-sub {
+  font-size: 11px;
+  color: var(--paper-3);
+  letter-spacing: 0.04em;
+}
+
+.members-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+}
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--paper-2);
+}
+.member-row:last-child { border-bottom: 0; }
+.member-avatar {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  border: 1px solid var(--line-2);
+  display: grid; place-items: center;
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--paper-3);
+  flex-shrink: 0;
+}
+.member-email { flex: 1; }
+.member-role {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  color: var(--paper-3);
+}
+.member-role-owner {
+  color: var(--copper);
+  border-color: var(--copper-soft);
+  background: var(--copper-soft);
+}
+.member-pending {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: rgba(233, 194, 92, 0.06);
+  border: 1px solid rgba(233, 194, 92, 0.25);
+  padding: 2px 7px;
+}
+.member-me {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-4);
+}
+.member-remove {
+  background: transparent;
+  border: 0;
+  color: var(--paper-4);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  transition: color 140ms var(--ease);
+}
+.member-remove:hover { color: var(--rust); }
+
+.members-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.members-add[hidden] { display: none; }
+.members-add-input {
+  flex: 1;
+  min-width: 240px;
+  padding: 10px 12px;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 140ms var(--ease);
+}
+.members-add-input:focus { border-color: var(--copper); }
+.members-add-btn { white-space: nowrap; }
+.members-err {
+  flex-basis: 100%;
+  color: var(--rust);
+  font-size: 11px;
+  min-height: 14px;
+}
 
 /* mostra apenas a screen ativa */
 .screen { display: none; }

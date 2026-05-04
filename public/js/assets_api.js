@@ -32,3 +32,11 @@ export async function patchAsset(id, patch) {
   const { asset } = await r.json();
   return asset;
 }
+
+export async function deleteAsset(id) {
+  const r = await authedFetch(`/api/assets/${id}`, { method: 'DELETE' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'delete asset: ' + r.status);
+  }
+}

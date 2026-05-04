@@ -2,7 +2,7 @@ const { Router } = require('express');
 const multer = require('multer');
 const { requireUser } = require('../middleware/auth');
 const { isMember } = require('../middleware/membership');
-const { uploadBuffer } = require('../lib/gcs');
+const { uploadBuffer, copyObject } = require('../lib/gcs');
 const { asepritePath } = require('./assets');
 
 const router = Router();
@@ -18,10 +18,14 @@ const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, size_bytes, duration_s,
 router.get('/', requireUser, async (req, res) => {
   try {
     const { rows } = await req.app.locals.pool.query(
-      `SELECT ${VIDEO_COLS}
-         FROM videos
-        WHERE owner_sub = $1
-        ORDER BY updated_at DESC`,
+      `SELECT ${VIDEO_COLS.split(', ').map((c) => `v.${c.trim()}`).join(', ')},
+              a.project_id AS published_project_id,
+              p.name AS published_project_name
+         FROM videos v
+         LEFT JOIN assets a   ON a.id = v.published_asset_id
+         LEFT JOIN projects p ON p.id = a.project_id
+        WHERE v.owner_sub = $1
+        ORDER BY v.updated_at DESC`,
       [req.user.sub]
     );
     res.json({ videos: rows });
@@ -198,6 +202,69 @@ router.post('/:id/publish', requireUser, upload.single('file'), async (req, res)
     if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
     console.error('publish video:', e);
     res.status(500).json({ error: 'publish failed' });
+  } finally {
+    client.release();
+  }
+});
+
+// Duplicar vídeo (decisão 5 da visão: única forma de reusar trabalho em outro projeto).
+// Cria nova row independente; copia o arquivo no GCS se existir.
+// Sai sem published_asset_id e sem source_*.
+router.post('/:id/duplicate', requireUser, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT id, name, origin, gcs_path, size_bytes, duration_s, width, height, edit_state
+         FROM videos WHERE id = $1 AND owner_sub = $2 FOR SHARE`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'não encontrado' });
+    }
+    const src = rows[0];
+    const newName = `${src.name} (cópia)`;
+
+    // Insere row vazia primeiro pra obter o id novo (que é usado no path do GCS).
+    const { rows: ins } = await client.query(
+      `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url,
+                           size_bytes, duration_s, width, height, edit_state)
+       VALUES ($1, $2, $3, $4, '', '', $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [
+        req.user.sub, req.user.email || '', newName, src.origin || 'uploaded',
+        src.size_bytes || 0, src.duration_s, src.width, src.height, src.edit_state || {},
+      ]
+    );
+    const newId = ins[0].id;
+
+    let gcs_path = '';
+    let gcs_url = '';
+    if (src.gcs_path) {
+      const ext = (src.gcs_path.split('.').pop() || 'mp4').toLowerCase();
+      const dst = `roto-master/videos/${newId}/source.${ext}`;
+      const copied = await copyObject(src.gcs_path, dst);
+      gcs_path = copied.gcs_path;
+      gcs_url = copied.gcs_url;
+      await client.query(
+        `UPDATE videos SET gcs_path = $1, gcs_url = $2, updated_at = NOW() WHERE id = $3`,
+        [gcs_path, gcs_url, newId]
+      );
+    }
+
+    const { rows: finalRows } = await client.query(
+      `SELECT ${VIDEO_COLS} FROM videos WHERE id = $1`,
+      [newId]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({ video: finalRows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('duplicate video:', e);
+    res.status(500).json({ error: 'duplicate failed' });
   } finally {
     client.release();
   }
