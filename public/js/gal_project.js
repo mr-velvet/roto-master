@@ -1,11 +1,12 @@
 // Galeria · Detalhe do projeto — lista de assets do projeto.
 
 import { getProject, addMember, removeMember } from './projects_api.js';
-import { listAssets } from './assets_api.js';
+import { listAssets, deleteAsset } from './assets_api.js';
 import { showToast, confirmModal } from './modals.js';
 import { openAssetDetail } from './asset_modal.js';
 import { navigateAtelie, navigateHome, navigateEditor } from './router.js';
 import { getUser } from './auth.js';
+import { showContextMenu } from './context_menu.js';
 
 const $title = document.querySelector('[data-bind="project-name"]');
 const $sub = document.querySelector('[data-bind="project-sub"]');
@@ -139,9 +140,10 @@ function renderAssets() {
     const downloadable = !!a.gcs_url;
     const editable = !!a.video_id;
 
+    const thumbUrl = a.video_thumb_url;
     card.innerHTML = `
-      <div class="asset-card-preview">
-        <div class="preview-mark preview-mark-letter">${escapeHtml(previewChar)}</div>
+      <div class="asset-card-preview${thumbUrl ? ' has-thumb' : ''}"${thumbUrl ? ` style="background-image:url('${thumbUrl}')"` : ''}>
+        ${thumbUrl ? '' : `<div class="preview-mark preview-mark-letter">${escapeHtml(previewChar)}</div>`}
         <div class="asset-card-status ${statusClass}">${statusLabel}</div>
         <div class="asset-card-hover-actions">
           ${downloadable ? `<button class="asset-card-hover-btn" data-action="card-download" title="baixar .aseprite" type="button">↓</button>` : ''}
@@ -160,12 +162,7 @@ function renderAssets() {
     card.addEventListener('click', (e) => {
       if (e.target.closest('[data-action="card-download"]')) {
         e.stopPropagation();
-        const link = document.createElement('a');
-        link.href = a.gcs_url;
-        link.download = `${a.name}.aseprite`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        downloadFile(a.gcs_url, `${a.name}.aseprite`);
         return;
       }
       if (e.target.closest('[data-action="card-edit"]')) {
@@ -176,8 +173,72 @@ function renderAssets() {
       openAssetDetail(a, currentProjectName, { onClose: refreshAssets });
     });
 
+    card.addEventListener('contextmenu', (e) => buildAssetCtxMenu(e, a));
+
     $grid.appendChild(card);
   }
+}
+
+function downloadFile(url, filename) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function buildAssetCtxMenu(event, a) {
+  const items = [];
+  if (a.gcs_url) {
+    items.push({
+      label: 'baixar .aseprite',
+      icon: '↓',
+      onClick: () => downloadFile(a.gcs_url, `${a.name}.aseprite`),
+    });
+  }
+  if (a.video_gcs_url) {
+    items.push({
+      label: 'baixar vídeo-fonte',
+      icon: '⇩',
+      hint: '.mp4',
+      onClick: () => downloadFile(a.video_gcs_url, `${a.video_name || a.name}.mp4`),
+    });
+  }
+  if (a.video_id) {
+    items.push({
+      label: 'abrir no editor',
+      icon: '✎',
+      onClick: () => navigateEditor(a.video_id),
+    });
+  }
+  items.push({
+    label: 'ver detalhes',
+    icon: '◇',
+    onClick: () => openAssetDetail(a, currentProjectName, { onClose: refreshAssets }),
+  });
+  items.push({ divider: true });
+  items.push({
+    label: 'despublicar',
+    icon: '×',
+    danger: true,
+    onClick: async () => {
+      const ok = await confirmModal({
+        title: 'despublicar asset',
+        message: `Apaga o asset "${a.name}". O vídeo-fonte volta a ser rascunho no Ateliê (não é apagado).`,
+        confirmLabel: 'despublicar',
+      });
+      if (!ok) return;
+      try {
+        await deleteAsset(a.id);
+        showToast('asset despublicado');
+        await refreshAssets();
+      } catch (err) {
+        showToast('falha: ' + err.message);
+      }
+    },
+  });
+  showContextMenu(event, items);
 }
 
 // filtros

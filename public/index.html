@@ -211,15 +211,154 @@
       </div>
     </section>
 
+    <!-- ATELIÊ → GERAR (Fluxo C: prompt → imagem → vídeo) -->
+    <section class="screen screen-atelie-generate">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">
+              <button class="link-back" data-action="goto-atelie-videos">‹ Ateliê / Vídeos</button>
+              <span class="sep">/</span>
+              Gerar
+            </div>
+            <h2 class="page-head-title">Gerar <em>vídeo</em> a partir de prompt</h2>
+            <p class="page-head-sub">Primeira imagem (com ou sem refs) e depois o movimento.</p>
+          </div>
+        </div>
+
+        <div class="generate-grid">
+
+          <!-- ETAPA 1: imagem inicial -->
+          <section class="generate-pane" data-bind="gen-pane-image">
+            <header class="generate-pane-head">
+              <span class="generate-step-num">1</span>
+              <h3>Imagem inicial</h3>
+              <span class="generate-pane-cost" data-bind="gen-image-cost">—</span>
+            </header>
+
+            <label class="field">
+              <span class="field-label-row">
+                prompt
+                <button class="enhance-btn" data-action="enhance-prompt" data-target="image" type="button" title="melhorar prompt com IA">
+                  <span class="enhance-icon">✦</span>
+                  <span class="enhance-label">melhorar</span>
+                </button>
+              </span>
+              <textarea data-bind="gen-image-prompt" placeholder="ex: garoto de capacete andando de skate numa praça vazia, fim de tarde, luz quente" rows="4"></textarea>
+              <button class="enhance-undo" data-bind="gen-image-undo" type="button" hidden>↶ desfazer melhoria</button>
+            </label>
+
+            <div class="field">
+              <span class="field-label-row">imagens de referência <em>opcionais</em></span>
+              <div class="generate-refs" data-bind="gen-refs"></div>
+              <label class="generate-refs-add">
+                <input type="file" accept="image/*" multiple data-bind="gen-refs-input" hidden />
+                <span>+ adicionar imagem</span>
+              </label>
+            </div>
+
+            <div class="generate-pane-actions">
+              <button class="btn btn-primary" data-action="gen-image" data-bind="gen-image-btn">
+                <span class="btn-icon">✦</span>
+                <span data-bind="gen-image-btn-label">gerar imagem</span>
+              </button>
+              <button class="btn btn-ghost" data-action="gen-image-retry" data-bind="gen-image-retry" hidden>tentar de novo</button>
+            </div>
+
+            <div class="generate-status" data-bind="gen-image-status" hidden></div>
+            <div class="generate-err" data-bind="gen-image-err"></div>
+
+            <div class="generate-preview" data-bind="gen-image-preview" hidden>
+              <div class="generate-preview-label">imagem gerada</div>
+              <img class="generate-preview-img" data-bind="gen-image-img" alt="imagem gerada" />
+            </div>
+          </section>
+
+          <!-- ETAPA 2: movimento -->
+          <section class="generate-pane is-locked" data-bind="gen-pane-video">
+            <header class="generate-pane-head">
+              <span class="generate-step-num">2</span>
+              <h3>Movimento</h3>
+              <span class="generate-pane-cost" data-bind="gen-video-cost">—</span>
+            </header>
+
+            <div class="generate-locked-msg" data-bind="gen-video-locked-msg">
+              gere a imagem inicial primeiro
+            </div>
+
+            <div class="generate-pane-body" data-bind="gen-video-body" hidden>
+              <div class="generate-base-image">
+                <img data-bind="gen-base-img" alt="imagem-base" />
+                <div class="generate-base-image-meta">imagem-base usada na geração</div>
+              </div>
+
+              <label class="field">
+                <span class="field-label-row">
+                  prompt de movimento
+                  <button class="enhance-btn" data-action="enhance-prompt" data-target="motion" type="button" title="melhorar prompt com IA">
+                    <span class="enhance-icon">✦</span>
+                    <span class="enhance-label">melhorar</span>
+                  </button>
+                </span>
+                <textarea data-bind="gen-motion-prompt" placeholder="ex: o skate desliza pra frente em câmera lenta enquanto a câmera pano à direita" rows="3"></textarea>
+                <button class="enhance-undo" data-bind="gen-motion-undo" type="button" hidden>↶ desfazer melhoria</button>
+              </label>
+
+              <label class="field">
+                <span>duração</span>
+                <div class="generate-duration">
+                  <button class="chip is-active" data-action="gen-set-duration" data-duration="5" type="button">5s</button>
+                  <button class="chip" data-action="gen-set-duration" data-duration="10" type="button">10s</button>
+                </div>
+              </label>
+
+              <div class="generate-pane-actions">
+                <button class="btn btn-primary" data-action="gen-video" data-bind="gen-video-btn">
+                  <span class="btn-icon">▶</span>
+                  <span data-bind="gen-video-btn-label">gerar vídeo</span>
+                </button>
+                <button class="btn btn-ghost" data-action="gen-video-retry" data-bind="gen-video-retry" hidden>tentar de novo</button>
+              </div>
+
+              <div class="generate-status" data-bind="gen-video-status" hidden></div>
+              <div class="generate-err" data-bind="gen-video-err"></div>
+
+              <!-- histórico de tentativas -->
+              <div class="generate-attempts" data-bind="gen-attempts" hidden>
+                <div class="generate-attempts-label">tentativas <span data-bind="gen-attempts-count">0</span></div>
+                <div class="generate-attempts-list" data-bind="gen-attempts-list"></div>
+              </div>
+
+              <div class="generate-finalize" data-bind="gen-finalize" hidden>
+                <button class="btn btn-publish" data-action="gen-open-editor">
+                  <span class="btn-icon">✎</span>
+                  abrir no editor
+                </button>
+                <p class="generate-finalize-hint">Você ainda pode gerar mais tentativas depois — o vídeo na workbench guarda o histórico.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
     <!-- EDITOR (real, não mock) -->
     <section class="screen screen-editor editor-real">
       <div class="editor-real-shell">
         <div class="editor-canvas-wrap" id="canvas-wrap">
+          <button class="editor-back-btn" data-action="editor-back" type="button" title="voltar pro Ateliê → Vídeos">
+            <span class="editor-back-icon">‹</span>
+            <span class="editor-back-label">vídeos</span>
+          </button>
           <div class="editor-canvas-stage">
             <canvas id="gl"></canvas>
             <div class="empty-hint" id="empty-hint">
               <strong>arraste um vídeo aqui</strong><br>
               ou clique em <em>carregar vídeo</em>
+            </div>
+            <div class="video-loading" id="video-loading" hidden>
+              <div class="video-loading-spinner"></div>
+              <div class="video-loading-msg">carregando vídeo do storage…</div>
             </div>
           </div>
           <div class="drop-overlay" id="drop-overlay"><span>solte o vídeo</span></div>
@@ -356,10 +495,10 @@
             <div class="flow-card-name">Vídeo de URL</div>
             <p>Cola um link, baixa, edita. <span class="soon">em breve</span></p>
           </button>
-          <button class="flow-card is-soon" data-flow="C" disabled>
+          <button class="flow-card" data-action="pick-flow" data-flow="C">
             <div class="flow-card-letter">C</div>
             <div class="flow-card-name">Geração genérica</div>
-            <p>Prompt + modelo, vídeo direto. <span class="soon">em breve</span></p>
+            <p>Prompt → imagem → vídeo, em duas etapas.</p>
           </button>
           <button class="flow-card flow-card-D is-soon" data-flow="D" disabled>
             <div class="flow-card-letter">D</div>

@@ -6,6 +6,7 @@ import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
 import { showHome } from './gal_home.js';
 import { showProject } from './gal_project.js';
 import { showAtelieVideos } from './atelie_videos.js';
+import { showAtelieGenerate } from './atelie_generate.js';
 import { initEditor, openEditor } from './editor.js';
 
 const $loginErr = document.getElementById('login-err');
@@ -47,6 +48,16 @@ function showAtelieScreen() {
     { label: 'Vídeos' },
   ]);
   showAtelieVideos();
+}
+
+function showGenerateScreen() {
+  setSpace('atelie', 'atelie-generate');
+  setBreadcrumb([
+    { label: 'Ateliê', action: () => navigateAtelie() },
+    { label: 'Vídeos', action: () => navigateAtelie('videos') },
+    { label: 'Gerar' },
+  ]);
+  showAtelieGenerate();
 }
 
 function showEditorScreen(id) {
@@ -104,6 +115,7 @@ function showEditorScreen(id) {
     onHome: showHomeScreen,
     onProject: showProjectScreen,
     onAtelie: showAtelieScreen,
+    onGenerate: showGenerateScreen,
     onEditor: showEditorScreen,
   });
   startRouter();

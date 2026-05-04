@@ -65,8 +65,14 @@ export function loadFromUrl(url) {
   STATE.dirty = true;
   STATE.playIdx = 0;
 
+  // mostra loading: empty-hint vai sumir (no-video continua, mas video-loading sobrepõe)
+  const $loading = document.getElementById('video-loading');
+  if ($loading) $loading.removeAttribute('hidden');
+
   const onMeta = () => {
     vid.removeEventListener('loadedmetadata', onMeta);
+    if (onErr) vid.removeEventListener('error', onErr);
+    if ($loading) $loading.setAttribute('hidden', '');
     STATE.videoDurS = vid.duration;
     STATE.inS = 0;
     STATE.outS = Math.min(3, vid.duration);
@@ -74,7 +80,16 @@ export function loadFromUrl(url) {
     setLoaded();
     if (onLoadedCb) onLoadedCb();
   };
+  const onErr = () => {
+    vid.removeEventListener('loadedmetadata', onMeta);
+    vid.removeEventListener('error', onErr);
+    if ($loading) {
+      $loading.querySelector('.video-loading-msg').textContent = 'falha ao carregar vídeo do storage';
+      $loading.classList.add('is-error');
+    }
+  };
   vid.addEventListener('loadedmetadata', onMeta);
+  vid.addEventListener('error', onErr);
   vid.src = url;
   vid.load();
 }

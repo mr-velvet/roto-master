@@ -32,7 +32,7 @@ router.get('/', requireUser, async (req, res) => {
     }
     const { rows } = await req.app.locals.pool.query(
       `SELECT a.${ASSET_COLS.split(', ').join(', a.')},
-              v.name AS video_name, v.origin AS video_origin,
+              v.name AS video_name, v.origin AS video_origin, v.thumb_url AS video_thumb_url, v.gcs_url AS video_gcs_url,
               (SELECT member_email FROM project_members
                 WHERE project_id = a.project_id AND member_sub = a.owner_sub
                 LIMIT 1) AS owner_email
@@ -54,7 +54,7 @@ router.get('/:id', requireUser, async (req, res) => {
   try {
     const pool = req.app.locals.pool;
     const { rows } = await pool.query(
-      `SELECT a.${ASSET_COLS.split(', ').join(', a.')}, v.name AS video_name, v.origin AS video_origin
+      `SELECT a.${ASSET_COLS.split(', ').join(', a.')}, v.name AS video_name, v.origin AS video_origin, v.thumb_url AS video_thumb_url, v.gcs_url AS video_gcs_url
          FROM assets a
          JOIN videos v ON v.id = a.video_id
         WHERE a.id = $1

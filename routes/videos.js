@@ -9,16 +9,19 @@ const router = Router();
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, size_bytes, duration_s, width, height,
+const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, thumb_url, size_bytes, duration_s, width, height,
                     edit_state, share_id, published_asset_id,
                     source_aparencia_id, source_enquadramento_id, source_enquadramento_kind,
                     source_motion_prompt, source_model_key,
+                    generation_meta,
                     created_at, updated_at`;
 
 router.get('/', requireUser, async (req, res) => {
+  // normaliza VIDEO_COLS pra lista de nomes limpos, prefixa com v.
+  const cols = VIDEO_COLS.replace(/\s+/g, ' ').split(',').map((c) => `v.${c.trim()}`).join(', ');
   try {
     const { rows } = await req.app.locals.pool.query(
-      `SELECT ${VIDEO_COLS.split(', ').map((c) => `v.${c.trim()}`).join(', ')},
+      `SELECT ${cols},
               a.project_id AS published_project_id,
               p.name AS published_project_name
          FROM videos v
@@ -204,6 +207,72 @@ router.post('/:id/publish', requireUser, upload.single('file'), async (req, res)
     res.status(500).json({ error: 'publish failed' });
   } finally {
     client.release();
+  }
+});
+
+// Upload de thumbnail (primeiro frame, capturado pelo cliente no editor).
+// Idempotente: se já tem thumb_url, retorna a existente sem regravar.
+router.post('/:id/thumb', requireUser, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file obrigatório' });
+  const pool = req.app.locals.pool;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, thumb_url FROM videos WHERE id = $1 AND owner_sub = $2`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'não encontrado' });
+    if (rows[0].thumb_url) return res.json({ video: { id: rows[0].id, thumb_url: rows[0].thumb_url }, skipped: true });
+
+    const path = `roto-master/videos/${req.params.id}/thumb.jpg`;
+    const stored = await uploadBuffer(path, req.file.buffer, 'image/jpeg');
+
+    const { rows: upd } = await pool.query(
+      `UPDATE videos SET thumb_url = $1, updated_at = NOW() WHERE id = $2 RETURNING ${VIDEO_COLS}`,
+      [stored.gcs_url, req.params.id]
+    );
+    res.json({ video: upd[0] });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('thumb upload:', e);
+    res.status(500).json({ error: 'thumb failed' });
+  }
+});
+
+// Troca a tentativa ativa de geração (fluxo C). Atualiza gcs_url pra apontar
+// pra attempts[idx].url. Não regenera nada.
+router.patch('/:id/active-attempt', requireUser, async (req, res) => {
+  const idx = Number.isInteger(req.body?.idx) ? req.body.idx : -1;
+  if (idx < 0) return res.status(400).json({ error: 'idx inválido' });
+  const pool = req.app.locals.pool;
+  try {
+    const { rows } = await pool.query(
+      `SELECT generation_meta FROM videos WHERE id = $1 AND owner_sub = $2`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'não encontrado' });
+    const meta = rows[0].generation_meta || {};
+    const attempts = Array.isArray(meta.attempts) ? meta.attempts : [];
+    if (idx >= attempts.length) return res.status(400).json({ error: 'idx fora do range' });
+
+    const target = attempts[idx];
+    const url = target.url;
+    // gcs_path do url público:
+    const path = url.startsWith('https://st.did.lu/')
+      ? url.slice('https://st.did.lu/'.length)
+      : '';
+
+    const newMeta = { ...meta, active_attempt_idx: idx };
+    const { rows: upd } = await pool.query(
+      `UPDATE videos SET generation_meta = $1, gcs_path = $2, gcs_url = $3, duration_s = $4, updated_at = NOW()
+        WHERE id = $5 AND owner_sub = $6
+        RETURNING ${VIDEO_COLS}`,
+      [newMeta, path, url, target.duration_s || null, req.params.id, req.user.sub]
+    );
+    res.json({ video: upd[0] });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('active-attempt:', e);
+    res.status(500).json({ error: 'failed' });
   }
 });
 

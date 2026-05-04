@@ -4,7 +4,7 @@
 import { bindUI as bindPlaybackUI, bootMode, stopPlay } from './playback.js';
 import { buildUI, wireHandlers, setProgress, initRangeUI, refreshRangeUI, updateInfo, dom } from './ui.js';
 import { initFileLoader, bindFileLoader, loadFromUrl } from './file_loader.js';
-import { getVideo, uploadVideoFile, publishVideo, publishAsset } from './videos_api.js';
+import { getVideo, uploadVideoFile, publishVideo, publishAsset, patchVideo, uploadThumb } from './videos_api.js';
 import { listProjects } from './projects_api.js';
 import { STATE } from './state.js';
 import { vid, flipYRGBA } from './gl.js';
@@ -42,6 +42,7 @@ export function initEditor() {
       setProgress('<span class="stage">Vídeo carregado.</span> Use os marcadores pra delimitar trecho, depois mude pra "rotoscopia" e exporte.', 0);
       updateInfo();
       bootMode('source');
+      maybeCaptureThumb();
     },
     onFileSelected: (file) => {
       // se temos vídeo aberto sem gcs_url, este file vai pro upload em background
@@ -55,6 +56,73 @@ export function initEditor() {
   $btnPublish.addEventListener('click', () => openPublishModal());
   wirePublishModal();
   wireAutosaveListeners();
+  wireBackButton();
+  wireInlineRename();
+}
+
+// Botão voltar no canto superior esquerdo do canvas.
+function wireBackButton() {
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-action="editor-back"]')) return;
+    navigateAtelie('videos');
+  });
+}
+
+// Nome do vídeo: clicar transforma o display em input. Enter/blur salva.
+function wireInlineRename() {
+  $videoNameDisplay.addEventListener('click', () => {
+    if (!currentVideo) return;
+    if ($videoNameDisplay.classList.contains('is-editing')) return;
+    enterRenameMode();
+  });
+}
+
+function enterRenameMode() {
+  const orig = currentVideo.name;
+  $videoNameDisplay.classList.add('is-editing');
+  $videoNameDisplay.contentEditable = 'true';
+  $videoNameDisplay.spellcheck = false;
+  $videoNameDisplay.focus();
+  // seleciona tudo
+  const range = document.createRange();
+  range.selectNodeContents($videoNameDisplay);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  const finish = async (commit) => {
+    $videoNameDisplay.removeEventListener('keydown', onKey);
+    $videoNameDisplay.removeEventListener('blur', onBlur);
+    $videoNameDisplay.classList.remove('is-editing');
+    $videoNameDisplay.contentEditable = 'false';
+
+    const next = $videoNameDisplay.textContent.trim();
+    if (!commit || !next || next === orig) {
+      $videoNameDisplay.textContent = orig;
+      return;
+    }
+    if (next.length > 200) {
+      $videoNameDisplay.textContent = orig;
+      showToast('nome muito longo (máx 200)');
+      return;
+    }
+    try {
+      const updated = await patchVideo(currentVideo.id, { name: next });
+      currentVideo.name = updated.name;
+      $videoNameDisplay.textContent = updated.name;
+      showToast('renomeado');
+    } catch (e) {
+      $videoNameDisplay.textContent = orig;
+      showToast('falha ao renomear: ' + e.message);
+    }
+  };
+  const onKey = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  const onBlur = () => finish(true);
+  $videoNameDisplay.addEventListener('keydown', onKey);
+  $videoNameDisplay.addEventListener('blur', onBlur);
 }
 
 // Hooka autosave em todos inputs do editor que afetam estado.
@@ -121,6 +189,41 @@ function setPublishState(isPublished) {
     $videoPublishState.innerHTML = '<span class="dot-ok"></span>publicado';
   } else {
     $videoPublishState.innerHTML = '<span class="dot-warn"></span>ainda não publicado';
+  }
+}
+
+// Captura primeiro frame e sobe pro GCS, se ainda não houver thumb.
+// Idempotente do lado do servidor; chamada barata.
+async function maybeCaptureThumb() {
+  if (!currentVideo || currentVideo.thumb_url) return;
+  // garante que o vídeo tem dimensão conhecida e foi seekable
+  if (!vid.videoWidth || !vid.videoHeight) return;
+  try {
+    // seek pro primeiro frame não-preto. Vou pra 0.1s pra evitar frame preto inicial.
+    await new Promise((resolve) => {
+      const onSeek = () => { vid.removeEventListener('seeked', onSeek); resolve(); };
+      vid.addEventListener('seeked', onSeek);
+      vid.currentTime = Math.min(0.1, (vid.duration || 1) * 0.05);
+    });
+
+    // canvas off-screen redimensionado pra max 480px de largura
+    const maxW = 480;
+    const ratio = vid.videoWidth / vid.videoHeight;
+    const w = Math.min(vid.videoWidth, maxW);
+    const h = Math.round(w / ratio);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(vid, 0, 0, w, h);
+    const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+    if (!blob) return;
+
+    const result = await uploadThumb(currentVideo.id, blob);
+    if (result.video?.thumb_url) {
+      currentVideo.thumb_url = result.video.thumb_url;
+    }
+  } catch (e) {
+    // não-fatal: thumb é otimização, não bloqueia o editor
+    console.warn('thumb capture falhou:', e.message);
   }
 }
 

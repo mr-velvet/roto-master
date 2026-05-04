@@ -50,6 +50,17 @@ export async function deleteVideo(id) {
   if (!r.ok) throw new Error('delete video: ' + r.status);
 }
 
+export async function uploadThumb(id, blob) {
+  const fd = new FormData();
+  fd.append('file', blob, 'thumb.jpg');
+  const r = await authedFetch(`/api/videos/${id}/thumb`, { method: 'POST', body: fd });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'thumb: ' + r.status);
+  }
+  return r.json();
+}
+
 export async function duplicateVideo(id) {
   const r = await authedFetch(`/api/videos/${id}/duplicate`, { method: 'POST' });
   if (!r.ok) {

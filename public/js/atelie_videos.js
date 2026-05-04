@@ -2,7 +2,7 @@
 
 import { listVideos, createVideo, deleteVideo, duplicateVideo } from './videos_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
-import { navigateEditor, navigateProject } from './router.js';
+import { navigateEditor, navigateProject, navigateGenerate } from './router.js';
 
 const $grid = document.querySelector('[data-bind="video-grid"]');
 const $empty = document.querySelector('[data-bind="videos-empty"]');
@@ -61,8 +61,9 @@ function render() {
           : `<span class="tag tag-published">◆ publicado</span>`)
       : `<span class="tag tag-draft">◇ rascunho</span>`;
 
+    const thumbUrl = v.thumb_url;
     card.innerHTML = `
-      <div class="video-card-thumb">
+      <div class="video-card-thumb${thumbUrl ? ' has-thumb' : ''}"${thumbUrl ? ` style="background-image:url('${thumbUrl}')"` : ''}>
         <span class="play-mark">▶</span>
         ${dur ? `<span class="video-card-duration">${dur}</span>` : ''}
       </div>
@@ -121,20 +122,25 @@ document.addEventListener('click', (e) => {
   openModal('new-video');
 });
 
-// fluxo A escolhido → modal de nome
+// fluxo escolhido
 document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-action="pick-flow"]');
   if (!card) return;
   const flow = card.getAttribute('data-flow');
-  if (flow !== 'A') return; // outros fluxos: em breve
-  pendingFlow = flow;
-  closeModal();
-  setTimeout(() => {
-    const m = document.querySelector('[data-modal="name-video"]');
-    m.querySelector('[data-bind="name-video-input"]').value = '';
-    m.querySelector('[data-bind="name-video-err"]').textContent = '';
-    openModal('name-video');
-  }, 50);
+  if (flow === 'A') {
+    pendingFlow = flow;
+    closeModal();
+    setTimeout(() => {
+      const m = document.querySelector('[data-modal="name-video"]');
+      m.querySelector('[data-bind="name-video-input"]').value = '';
+      m.querySelector('[data-bind="name-video-err"]').textContent = '';
+      openModal('name-video');
+    }, 50);
+  } else if (flow === 'C') {
+    closeModal();
+    navigateGenerate();
+  }
+  // B e D continuam "em breve"
 });
 
 document.addEventListener('click', async (e) => {
