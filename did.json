@@ -4,5 +4,8 @@
   "domain": "roto.did.lu",
   "database": true,
   "logto": true,
-  "migrations": "migrations/"
+  "migrations": "migrations/",
+  "env": {
+    "GCS_SERVICE_ACCOUNT": { "source": "platform", "required": true }
+  }
 }
