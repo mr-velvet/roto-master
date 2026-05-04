@@ -6,3 +6,8 @@ node_modules/
 package-lock.json
 backup*/
 temp-*/
+
+# dev local
+.env
+.env.local
+scripts/dev.local.*

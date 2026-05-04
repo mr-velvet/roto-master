@@ -1,15 +1,26 @@
 // Fluxo de auth via Logto. Espera SDK carregar, processa callback,
 // expõe usuário e helper de fetch autenticado.
+// Em dev (host = localhost), o backend está em modo bypass: pega /api/config
+// sem token e segue. signIn/signOut viram no-op.
 
 const LOGTO_ENDPOINT = 'https://auth.did.lu';
 // Substituído após primeiro deploy (new-app.sh imprime o ID criado).
 const LOGTO_APP_ID = '36iz4iomybe4r1n67a7jc';
+
+const DEV_BYPASS = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 let logtoClient = null;
 let currentUser = null;
 let accessToken = null;
 
 export async function initAuth() {
+  if (DEV_BYPASS) {
+    const me = await fetch('/api/config');
+    if (!me.ok) return { authenticated: false, error: `dev bypass: /api/config retornou ${me.status}` };
+    currentUser = await me.json();
+    return { authenticated: true, user: currentUser };
+  }
+
   await new Promise((resolve) => {
     if (window.LogtoAuthClient) return resolve();
     const check = setInterval(() => {
@@ -43,11 +54,18 @@ export async function initAuth() {
   return { authenticated: true, user: currentUser };
 }
 
-export async function signIn() { return logtoClient.signIn(); }
-export async function signOut() { return logtoClient.signOut(); }
+export async function signIn() {
+  if (DEV_BYPASS) return;
+  return logtoClient.signIn();
+}
+export async function signOut() {
+  if (DEV_BYPASS) return;
+  return logtoClient.signOut();
+}
 export function getUser() { return currentUser; }
 
 export async function authedFetch(url, opts = {}) {
+  if (DEV_BYPASS) return fetch(url, opts);
   if (!accessToken) throw new Error('not authenticated');
   const headers = { ...(opts.headers || {}), Authorization: `Bearer ${accessToken}` };
   return fetch(url, { ...opts, headers });

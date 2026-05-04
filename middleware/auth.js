@@ -1,6 +1,19 @@
 const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'https://auth.did.lu';
 
+// Bypass de dev: se DEV_USER_SUB e DEV_USER_EMAIL estão no env,
+// pula validação Logto e injeta esse user. Só pra dev local.
+const DEV_SUB = process.env.DEV_USER_SUB;
+const DEV_EMAIL = process.env.DEV_USER_EMAIL;
+const DEV_BYPASS = !!(DEV_SUB && DEV_EMAIL);
+if (DEV_BYPASS) {
+  console.log(`[auth] DEV BYPASS ATIVO — user: ${DEV_EMAIL} (${DEV_SUB})`);
+}
+
 async function requireUser(req, res, next) {
+  if (DEV_BYPASS) {
+    req.user = { sub: DEV_SUB, email: DEV_EMAIL, name: DEV_EMAIL, picture: null };
+    return next();
+  }
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No token provided' });

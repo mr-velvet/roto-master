@@ -5,10 +5,12 @@
   "description": "Ferramenta web de rotoscopia: vídeo → .aseprite",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.7.0",
+    "dotenv": "^16.6.1",
     "express": "^4.19.2",
     "multer": "^2.0.0",
     "pg": "^8.11.5"

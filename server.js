@@ -1,3 +1,4 @@
+try { require('dotenv').config(); } catch (_) { /* prod sem .env, ok */ }
 const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
