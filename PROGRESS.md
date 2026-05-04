@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 (fatia mínima da v1 em produção; **falta detalhe do asset 6.7 pra fechar a v1 — esse é o próximo passo**)
+Última atualização: 2026-05-04 (v1 substancialmente fechada em produção — itens 1–4 do plano implementados e deployados; **só falta o smoke test pra declarar v1 entregue**)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -19,9 +19,9 @@
 
 ## Estado atual
 
-App em produção em **https://roto.did.lu** rodando a **fatia mínima da v1** (commits até `ee8f30a`). Login Google + multi-user via Logto + criar projeto + criar vídeo no Ateliê + upload pro GCS + editor + publicar como asset + autosave de edit_state. Migrations 002–009 aplicadas no Postgres da plataforma (tabelas de v2 já criadas mas vazias — Fluxo D, jobs, models não consumidas ainda).
+App em produção em **https://roto.did.lu** com a **v1 substancialmente fechada** (commit `10d59fc`). Login Google + multi-user via Logto + criar projeto + criar vídeo no Ateliê + upload pro GCS + editor + publicar como asset + autosave de edit_state + **detalhe do asset (modal 6.7) + vínculo asset↔vídeo dos dois lados + duplicar vídeo + convite de membros pelo UI**. Migrations 002–009 aplicadas no Postgres da plataforma (tabelas de v2 já criadas mas vazias — Fluxo D, jobs, models não consumidas ainda).
 
-**A v1 não está completa.** Ver "O que falta pra fechar a v1" abaixo. O bloqueador principal é o **detalhe do asset (seção 6.7 da visão)** — sem ele, o asset publicado vira card sem ação e o princípio central "asset é cidadão" fica quebrado.
+**A v1 está pendente de smoke test.** Não há mais código bloqueador conhecido. Próximo passo: você navegar no app e listar o que parecer estranho pra eu corrigir em batch.
 
 ## O que está em produção e funcionando
 
@@ -54,13 +54,16 @@ App em produção em **https://roto.did.lu** rodando a **fatia mínima da v1** (
 
 ## O que falta pra fechar a v1
 
-Lista ordenada por bloqueio. Item 1 é o bloqueador principal — sem ele a v1 não está formalmente entregue.
+Apenas o item 5. Itens 1–4 implementados no commit `10d59fc` e em produção em `https://roto.did.lu`.
 
-1. **Detalhe do asset (modal, conforme 6.7 da visão).** Sem isso o asset publicado vira card sem ação. Inclui: preview (no v1 pode ser tipográfico, não thumbnail real), chip de status pendente↔feito clicável, vínculo com vídeo-fonte (linha "fonte: nome do vídeo" com seta que leva pro editor), botão "baixar `.aseprite`", botão "re-editar" (vai pro editor; republicar sobrescreve), metadata discreta no rodapé, ação destrutiva escondida "despublicar". Card na grid mostra preview + nome + status + selo de origem do vídeo, com atalhos no hover (`↓` baixar direto, `↗` editor direto).
-2. **Vínculo asset↔vídeo visível dos dois lados.** Hoje o card de vídeo no Ateliê só mostra "publicado / rascunho" sem dizer onde. A regra 4 da seção 6.6 pede que diga: "publicado em [Projeto X]" — clicável, leva pro detalhe do projeto. Quebra simétrica do que falta no item 1.
-3. **Duplicar vídeo na workbench.** A visão (decisão 5) define duplicação como operação de primeira classe — única forma de reusar trabalho em outro projeto. Hoje não tem nem endpoint nem UI. Endpoint: `POST /api/videos/:id/duplicate` (cria nova row `videos`, copia o arquivo no GCS, sai sem `published_asset_id`). UI: ação no card do vídeo no Ateliê e/ou dentro do detalhe do asset.
-4. **Convite de membros pelo UI.** Hoje só dá pra adicionar pessoas via INSERT manual no banco. Endpoint `POST /api/projects/:id/members` (lookup por email no Logto), listagem de membros no detalhe do projeto, ação "remover" pra owner.
-5. **Smoke test sistemático com você usando.** Após 1–4, fazer um pente-fino seu, listar tudo que parecer estranho, corrigir em batch.
+5. **Smoke test sistemático com você usando.** Você navega no app, lista tudo que parecer estranho (visual, fluxo confuso, console error), eu corrijo em batch. Aí marca v1 fechada formalmente.
+
+### Resumo do que foi entregue nos itens 1–4
+
+- **Item 1 — Detalhe do asset (modal 6.7).** `DELETE /api/assets/:id` (despublicar via `ON DELETE SET NULL`). Listagem de assets retorna `owner_email` via subquery em `project_members`. Modal `asset-detail` em `index.html`; lógica em `public/js/asset_modal.js`. Card no `gal_project.js` virou `<button>` com preview tipográfico (primeira letra do nome) e atalhos `↓ ↗` no hover. Inline-edit do nome no modal (Enter confirma, Esc descarta). Chip de status alterna pendente↔feito direto.
+- **Item 2 — Vínculo asset→vídeo do lado do vídeo.** `GET /api/videos` com `LEFT JOIN` em `assets`+`projects` retornando `published_project_id` e `published_project_name`. Card de vídeo no Ateliê mostra "publicado em [Projeto]" como botão clicável que leva pro detalhe do projeto.
+- **Item 3 — Duplicar vídeo.** `POST /api/videos/:id/duplicate` em transação: copia row sem `published_asset_id`, copia arquivo no GCS server-side via `lib/gcs.copyObject` (não baixa o blob). UI: botão `⎘` no hover do card de vídeo no Ateliê + botão "duplicar vídeo" no modal de detalhe do asset (caminho "publicar em outro projeto").
+- **Item 4 — Convite de membros pelo UI.** `POST /api/projects/:id/members` (só owner; resolve sub via lookup em `project_members` ou cai em `pending:<email>` quando desconhecido). `DELETE /api/projects/:id/members/:sub` (só owner; bloqueia remover último owner). `middleware/auth.js` resolve linhas `pending:<email>` pro sub real automaticamente no primeiro login do convidado, com guarda contra duplicata. Seção "Membros" no detalhe do projeto com avatar+email+role+selo "aguarda 1º login" pros pending; input "adicionar por email" só visível pra owner.
 
 ## O que NÃO está na v1 (fica pra v2)
 
