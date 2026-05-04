@@ -1,15 +1,24 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-03 (sessão da tarde — patch v2 da visão)
+Última atualização: 2026-05-04 (patch v3 antidelírio, protótipo v2 descartado)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
-A visão do produto foi reformulada profundamente em 2026-05-03 e recebeu **patch v2** na mesma data (workbench do usuário, asset 1:1 com vídeo, vinculação a projeto só na publicação, fluxos B/C adiados). **Antes de qualquer trabalho técnico, ler:**
+A visão do produto foi reformulada em 2026-05-03 (patch v2: workbench do usuário, asset 1:1 com vídeo, vinculação só na publicação, fluxos B/C adiados) e **endurecida em 2026-05-04 (patch v3 antidelírio)** após uma tentativa de protótipo v2 ter falhado por violar princípios de UI básicos.
 
-1. **`docs/visao-da-ferramenta.md`** — referência mestra (com patch v2 no topo). Define o que a ferramenta é, entidades, fluxos A–D, princípios e decisões fechadas.
-2. **`docs/modulo-personagem.md`** — especialização: detalha o Fluxo D. **Atenção:** este doc foi escrito antes da visão geral; em conflito vale a visão.
+### Ordem de leitura obrigatória — não inverter
 
-A implementação atual (descrita abaixo) ainda não reflete a nova visão. Próximo passo de produto: **produzir protótipo navegável v2** em `prototype/` refletindo a visão mestra. O protótipo v1 (módulo personagem isolado) foi **preservado** em `prototype-v1-personagem/` como referência histórica e fonte de reaproveitamento (estética Atelier 2087, viewport 3D, presets de câmera).
+1. **`docs/visao-da-ferramenta.md`** — referência mestra. **Ler INTEIRO**, com atenção redobrada à **seção 6** (UI). Subseções críticas: 6.1 (metáfora Ateliê/Galeria), 6.5 (anti-padrões — lista do que NÃO pode aparecer, com exemplos do delírio real), 6.6 (regra de validação).
+2. **`docs/modulo-personagem.md`** — especialização do Fluxo D. Anterior à visão mestra; em conflito **vale a visão**.
+
+### Pontos de atenção (cicatrizes de erros reais)
+
+- **2026-05-04:** ao construir o primeiro protótipo v2 (descartado), ignorei a seção de UI e produzi delírio: botão "workbench" repetido no header, dropdown que misturava workbench com suas próprias subseções, "+ novo asset" no projeto (asset não nasce ali), home global sem identidade do conceito. Sintoma de produzir muito de uma vez sem releitura intermediária. Patch v3 da visão nasceu desse erro — seção 6 inteira foi reescrita.
+- **Antes de produzir QUALQUER UI** (HTML, mockup, wireframe), passar pelo checklist no fim de `docs/visao-da-ferramenta.md` (seção 12). Se não passar, parar.
+- **Não confundir "menu global pra alternar Galeria/Ateliê" com "atalhos contextuais em todo header"**. O menu já é a forma. Repetir é ruído.
+- **Asset é cidadão central**, não label técnico. Se entrar na ferramenta e não ver "isto é um asset" como objeto tangível na tela, a UI errou.
+
+A implementação atual (descrita abaixo) ainda não reflete a visão. Próximo passo: **refazer protótipo navegável v2 em contexto limpo**, lendo seção 6 antes de escrever qualquer linha. O protótipo v1 (módulo personagem isolado) foi **preservado** em `prototype-v1-personagem/` como referência histórica e fonte de reaproveitamento (estética Atelier 2087, viewport 3D, presets de câmera).
 
 ## Estado atual (em uma frase)
 
@@ -151,10 +160,10 @@ Bugs ainda **não corrigidos** nos scripts da VM:
 
 ## Referências
 
-- **Visão da ferramenta (referência mestra, com patch v2):** `docs/visao-da-ferramenta.md`
+- **Visão da ferramenta (referência mestra, com patch v3 antidelírio):** `docs/visao-da-ferramenta.md` — ler **inteiro**, especialmente seção 6.
 - **Módulo personagem (especialização):** `docs/modulo-personagem.md`
 - **Protótipo navegável v1** (módulo personagem isolado — preservado como referência histórica): `prototype-v1-personagem/`
-- **Protótipo navegável v2** (a ser produzido refletindo a visão mestra): `prototype/`
+- ~~**Protótipo navegável v2**~~ — tentativa em 2026-05-04 descartada (violou anti-padrões da seção 6.5). A refazer em contexto limpo após releitura completa da visão.
 - Projeto irmão (CLI de geração de vídeo, será absorvido como Fluxo D na workbench): `~/ved/motion-ref-gen/`
 - Asset humanoide Mixamo + experimento Three.js base do viewport 3D: `~/ved/random-experiments/skeleton-animation/`
 - Spec do `.aseprite`: https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md

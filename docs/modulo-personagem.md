@@ -2,7 +2,15 @@
 
 Última atualização: 2026-05-02. **Status: produto fechado, técnica ainda não definida.**
 
-Este documento descreve o fluxo, telas e decisões de produto do módulo de **rotoscopia para personagem** do roto-master. É a referência de produto pra implementação. Não contém arquitetura técnica, schema, ou escolhas de stack — isso será documentado separadamente depois que este documento for aprovado.
+> ⚠️ **Pré-requisito de leitura.** Este documento é **especialização** do Fluxo D dentro da visão mestra. Foi escrito **antes** da consolidação da visão geral e trata o módulo personagem como se fosse o produto inteiro (linguagem do tipo "roto-master deixa de ser um editor e passa a ser um estúdio de personagem"). Isso **não é mais verdade**.
+>
+> A visão atual reposiciona personagem como **um caminho entre quatro** (Fluxos A, B, C, D). Antes de tomar este doc como guia de implementação ou UI:
+>
+> 1. Ler `docs/visao-da-ferramenta.md` **inteiro** — especialmente a seção 6 (UI), que estabelece a metáfora Ateliê/Galeria e proíbe explicitamente os anti-padrões em que esse doc poderia te induzir.
+> 2. Em qualquer conflito entre este doc e a visão mestra, **vale a visão mestra**.
+> 3. Os elementos visuais e de fluxo deste doc (3 etapas com viewport 3D, árvore de exploração, hierarquia de prompt, custo previsto) **continuam válidos** dentro do recorte do Fluxo D — ou seja, são o que acontece dentro de uma ação específica do Ateliê → Vídeos ("+ criar vídeo" → fluxo D), não a estrutura do app inteiro.
+
+Este documento descreve o fluxo, telas e decisões de produto do módulo de **rotoscopia para personagem** do roto-master. É a referência de produto pra implementação **do Fluxo D**. Não contém arquitetura técnica, schema, ou escolhas de stack.
 
 ---
 

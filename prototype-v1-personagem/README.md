@@ -9,6 +9,8 @@
 > - **Asset humanoide** (`assets/character.fbx`) — cópia local do Mixamo neutro.
 >
 > O protótipo v2 (em `prototype/`, quando existir) substitui este como referência de fluxo geral. Este aqui continua sendo a referência específica do Fluxo D.
+>
+> ⚠️ **NÃO copiar a arquitetura de UI deste protótipo para o v2.** A "home = lista de personagens" e "tela do personagem com 3 tabs" são adequadas pra um produto cujo escopo é só o módulo personagem — o produto real tem escopo maior (Galeria de projetos + Ateliê do usuário). Reaproveite **estética**, **componentes visuais**, **viewport 3D** e **fluxo das 3 etapas**. Não reaproveite a estrutura de navegação.
 
 ---
 
