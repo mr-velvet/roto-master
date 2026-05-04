@@ -117,6 +117,20 @@
             </div>
             <h1 class="page-head-title" data-bind="project-name">—</h1>
             <p class="page-head-sub" data-bind="project-sub">—</p>
+            <div class="members-bar" data-bind="members-bar">
+              <span class="members-bar-label">Membros</span>
+              <span class="members-bar-list" data-bind="members-list"></span>
+              <button class="members-bar-add" data-action="open-members-add" type="button" hidden data-bind="members-bar-add-trigger">+ adicionar</button>
+            </div>
+            <div class="members-add" data-bind="members-add" hidden>
+              <input type="email" class="members-add-input" data-bind="members-add-input" placeholder="email do convidado" maxlength="200" />
+              <button class="btn btn-ghost members-add-btn" data-action="add-member" type="button">
+                <span class="btn-icon">+</span>
+                adicionar
+              </button>
+              <button class="btn btn-ghost members-add-cancel" data-action="cancel-members-add" type="button">cancelar</button>
+              <div class="members-err" data-bind="members-err"></div>
+            </div>
           </div>
           <div class="page-head-actions">
             <div class="filter-chips" role="tablist" data-bind="asset-filter">
@@ -137,22 +151,6 @@
             ✦ ir pro Ateliê → Vídeos
           </button>
         </div>
-
-        <section class="members-section" data-bind="members-section">
-          <div class="members-head">
-            <h2 class="members-title"><em>Membros</em> do projeto</h2>
-            <p class="members-sub">Quem é membro vê e edita os assets deste projeto.</p>
-          </div>
-          <ul class="members-list" data-bind="members-list"></ul>
-          <div class="members-add" data-bind="members-add" hidden>
-            <input type="email" class="members-add-input" data-bind="members-add-input" placeholder="adicionar por email" maxlength="200" />
-            <button class="btn btn-ghost members-add-btn" data-action="add-member" type="button">
-              <span class="btn-icon">+</span>
-              adicionar
-            </button>
-            <div class="members-err" data-bind="members-err"></div>
-          </div>
-        </section>
       </div>
     </section>
 

@@ -69,43 +69,36 @@ export async function showProject(projectId) {
 
 function renderMembers() {
   const me = getUser();
-  const myEmail = (me.userEmail || '').toLowerCase();
+  const $addTrigger = document.querySelector('[data-bind="members-bar-add-trigger"]');
 
   $membersList.innerHTML = '';
   for (const m of currentMembers) {
-    const li = document.createElement('li');
-    li.className = 'member-row';
     const isPending = String(m.member_sub).startsWith('pending:');
     const isMe = !isPending && me.userId && m.member_sub === me.userId;
     const labelEmail = m.member_email || (isPending ? String(m.member_sub).slice('pending:'.length) : '—');
-
-    const roleTag = m.role === 'owner'
-      ? '<span class="member-role member-role-owner">owner</span>'
-      : '<span class="member-role">member</span>';
-    const stateTag = isPending ? '<span class="member-pending">aguarda 1º login</span>' : '';
-    const meTag = isMe ? '<span class="member-me">você</span>' : '';
-
     const canRemove = currentMyRole === 'owner' && !(isMe && m.role === 'owner');
-    const removeBtn = canRemove
-      ? `<button class="member-remove" data-action="remove-member" data-sub="${escapeHtml(m.member_sub)}" data-email="${escapeHtml(labelEmail)}" title="remover" type="button">×</button>`
-      : '';
 
-    li.innerHTML = `
-      <span class="member-avatar">${escapeHtml((labelEmail[0] || '?').toUpperCase())}</span>
-      <span class="member-email">${escapeHtml(labelEmail)}</span>
-      ${meTag}
-      ${roleTag}
-      ${stateTag}
-      ${removeBtn}
+    const chip = document.createElement('span');
+    chip.className = 'member-chip';
+    if (m.role === 'owner') chip.classList.add('is-owner');
+    if (isPending) chip.classList.add('is-pending');
+    if (isMe) chip.classList.add('is-me');
+    chip.innerHTML = `
+      <span class="member-chip-avatar">${escapeHtml((labelEmail[0] || '?').toUpperCase())}</span>
+      <span class="member-chip-email">${escapeHtml(labelEmail)}</span>
+      ${m.role === 'owner' ? '<span class="member-chip-tag">owner</span>' : ''}
+      ${isPending ? '<span class="member-chip-tag is-pending-tag">pending</span>' : ''}
+      ${canRemove ? `<button class="member-chip-remove" data-action="remove-member" data-sub="${escapeHtml(m.member_sub)}" data-email="${escapeHtml(labelEmail)}" title="remover" type="button">×</button>` : ''}
     `;
-    $membersList.appendChild(li);
+    $membersList.appendChild(chip);
   }
 
   if (currentMyRole === 'owner') {
-    $membersAdd.removeAttribute('hidden');
+    $addTrigger.removeAttribute('hidden');
   } else {
-    $membersAdd.setAttribute('hidden', '');
+    $addTrigger.setAttribute('hidden', '');
   }
+  $membersAdd.setAttribute('hidden', '');
   $membersErr.textContent = '';
   $membersAddInput.value = '';
 }
@@ -203,6 +196,20 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('[data-action="goto-atelie-videos"]')) navigateAtelie('videos');
 });
 
+// abrir/cancelar input de adicionar membro
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-action="open-members-add"]')) {
+    $membersAdd.removeAttribute('hidden');
+    $membersErr.textContent = '';
+    $membersAddInput.value = '';
+    setTimeout(() => $membersAddInput.focus(), 50);
+  }
+  if (e.target.closest('[data-action="cancel-members-add"]')) {
+    $membersAdd.setAttribute('hidden', '');
+    $membersErr.textContent = '';
+  }
+});
+
 // adicionar membro
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-action="add-member"]')) return;
@@ -217,7 +224,8 @@ document.addEventListener('click', async (e) => {
     const { member, pending } = await addMember(currentProjectId, email);
     currentMembers = [...currentMembers, member];
     renderMembers();
-    showToast(pending ? 'convite enviado — vai virar membro no 1º login' : 'membro adicionado');
+    $membersAdd.setAttribute('hidden', '');
+    showToast(pending ? 'convite enviado — vira membro no 1º login' : 'membro adicionado');
   } catch (err) {
     $membersErr.textContent = err.message;
   }

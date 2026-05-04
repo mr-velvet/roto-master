@@ -16,6 +16,13 @@ const $sourceWrap = document.querySelector('[data-bind="asset-detail-source-wrap
 const $sourceName = document.querySelector('[data-bind="asset-detail-source-name"]');
 const $meta = document.querySelector('[data-bind="asset-detail-meta"]');
 
+// botões do modal — bind direto, evita problema de ordem de listeners globais
+const $btnDownload = document.querySelector('[data-action="asset-detail-download"]');
+const $btnReedit = document.querySelector('[data-action="asset-detail-reedit"]');
+const $btnDuplicate = document.querySelector('[data-action="asset-detail-duplicate"]');
+const $btnUnpublish = document.querySelector('[data-action="asset-detail-unpublish"]');
+const $btnGotoSource = document.querySelector('[data-action="asset-detail-goto-source"]');
+
 let currentAsset = null;
 let onCloseDirty = null; // callback pra avisar gal_project que precisa refresh
 let dirty = false;
@@ -147,29 +154,28 @@ $nameInput.addEventListener('keydown', (e) => {
 });
 
 // fonte: leva pro editor do vídeo associado
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('[data-action="asset-detail-goto-source"]')) return;
+$btnGotoSource?.addEventListener('click', () => {
   if (!currentAsset || !currentAsset.video_id) return;
   closeModal();
   navigateEditor(currentAsset.video_id);
 });
 
-// re-editar: mesma coisa
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('[data-action="asset-detail-reedit"]')) return;
-  if (!currentAsset || !currentAsset.video_id) return;
+// re-editar
+$btnReedit?.addEventListener('click', () => {
+  if (!currentAsset || !currentAsset.video_id) {
+    showToast('vídeo-fonte indisponível');
+    return;
+  }
   closeModal();
   navigateEditor(currentAsset.video_id);
 });
 
 // baixar .aseprite
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('[data-action="asset-detail-download"]')) return;
+$btnDownload?.addEventListener('click', () => {
   if (!currentAsset || !currentAsset.gcs_url) {
     showToast('arquivo indisponível');
     return;
   }
-  // anchor download forçado
   const a = document.createElement('a');
   a.href = currentAsset.gcs_url;
   a.download = `${currentAsset.name}.aseprite`;
@@ -179,9 +185,11 @@ document.addEventListener('click', (e) => {
 });
 
 // duplicar vídeo: cria cópia independente do vídeo-fonte; leva pro editor da cópia
-document.addEventListener('click', async (e) => {
-  if (!e.target.closest('[data-action="asset-detail-duplicate"]')) return;
-  if (!currentAsset || !currentAsset.video_id) return;
+$btnDuplicate?.addEventListener('click', async () => {
+  if (!currentAsset || !currentAsset.video_id) {
+    showToast('vídeo-fonte indisponível');
+    return;
+  }
   try {
     const dup = await duplicateVideo(currentAsset.video_id);
     showToast('vídeo duplicado — agora é independente');
@@ -193,8 +201,7 @@ document.addEventListener('click', async (e) => {
 });
 
 // despublicar
-document.addEventListener('click', async (e) => {
-  if (!e.target.closest('[data-action="asset-detail-unpublish"]')) return;
+$btnUnpublish?.addEventListener('click', async () => {
   if (!currentAsset) return;
   const ok = await confirmModal({
     title: 'despublicar asset',
