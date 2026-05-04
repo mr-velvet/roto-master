@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 (protótipo v2 aprovado como **modelo de referência** para a implementação)
+Última atualização: 2026-05-04 (arquitetura técnica fechada e migrations 002–009 escritas; pronto pra começar implementação)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -9,7 +9,8 @@ A visão do produto foi reformulada em 2026-05-03 (patch v2: workbench do usuár
 ### Ordem de leitura obrigatória — não inverter
 
 1. **`docs/visao-da-ferramenta.md`** — referência mestra. **Ler INTEIRO**, com atenção redobrada à **seção 6** (UI). Subseções críticas: 6.1 (metáfora Ateliê/Galeria), 6.5 (anti-padrões — lista do que NÃO pode aparecer, com exemplos do delírio real), 6.6 (regra de validação).
-2. **`docs/modulo-personagem.md`** — especialização do Fluxo D. Anterior à visão mestra; em conflito **vale a visão**.
+2. **`docs/arquitetura-tecnica.md`** — espelho técnico da visão. Tabelas, endpoints, storage, jobs assíncronos, fluxo de publicação como transação. Régua: **time interno pequeno** — não inventar cerimônia de produto público.
+3. **`docs/modulo-personagem.md`** — especialização do Fluxo D. Anterior à visão mestra; em conflito **vale a visão**.
 
 ### Pontos de atenção (cicatrizes de erros reais)
 
@@ -74,17 +75,20 @@ App em produção em **https://roto.did.lu** com login Google (Logto), lista de 
 
 ## Próximos passos (próxima sessão)
 
-**Protótipo v2 aprovado em 2026-05-04 como modelo de referência da UI.** Próxima etapa é descer pra arquitetura técnica e começar a implementação real espelhando as decisões do protótipo.
+**Visão fechada + protótipo v2 aprovado + arquitetura técnica escrita + migrations 002–009 prontas.** Próxima etapa é descer pra implementação real, começando pelo backend (rodar migrations + endpoints) e UI espelhando o protótipo.
 
 ### Em ordem de prioridade
 
-0. **Definir schema de dados** refletindo as entidades da visão: `projects`, `assets`, expandir `videos` (origem tipada, `published_asset_id`), adicionar `personagens`, `enquadramentos`, `cameras_salvas`. Tudo escopado por `owner_sub` (workbench é do usuário; projeto v1 também é monoacessante).
-1. **Implementar a UI espelhando `prototype/`** — chrome global com alternador Galeria/Ateliê, transição animada entre espaços, sidebar do Ateliê com 4 subseções diretas, telas Home/Projeto/Editor com a estética Atelier 2087.
-2. **Upload do vídeo pro GCS.** `PATCH /api/videos/:id` multipart, valida ≤100MB, sobe pra `gs://didlu-imagestore/roto-master/videos/<uuid>.<ext>` (URL via `https://st.did.lu/...`). Atualiza `gcs_url`/`size_bytes`/`width`/`height`/`duration_s`. No editor, ao detectar `v.gcs_url`, atribui `vid.src = v.gcs_url` e dispara o fluxo de "vídeo carregado" sem precisar do file picker.
-3. **Ato de publicar** — modal de publicação (escolha de projeto-destino, aviso de sobrescrita ao republicar), gera `.aseprite`, sobe pro GCS, cria `asset` no projeto, vincula `video.published_asset_id`. Após confirmar, transiciona pra Galeria → Detalhe do projeto.
-4. **Auto-save de `edit_state`.** Debounce 1s + flush no `beforeunload`. Inclui PARAMS, in/out, fps, scale, preset selecionado. Restaurar ao reabrir vídeo.
-5. **Fluxo D (módulo personagem)** — implementar conforme `docs/modulo-personagem.md`, reaproveitando viewport 3D + presets de câmera de `prototype-v1-personagem/`. Vídeos gerados aparecem em Ateliê → Vídeos com selo de origem "personagem".
-6. **Share link público.** Rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do `.aseprite` do asset publicado.
+1. **Rodar migrations 002–009 no Postgres da plataforma.** Ordem alfabética automática no deploy. Confirmar que os ALTER TABLE em `videos` rodam limpos sobre dados existentes.
+2. **Implementar endpoints da workbench e galeria** conforme `docs/arquitetura-tecnica.md` seção 4. Ordem: `projects` + `project_members` (visão central), `assets` (com fluxo de publicação como transação atômica), depois `personagens` + variações + `cameras_salvas`, depois `jobs` + worker + `models`.
+3. **Upload do vídeo pro GCS.** `POST /api/videos/:id/upload` multipart, valida ≤100MB, sobe pra `roto-master/videos/<video_id>/source.<ext>` (URL via `https://st.did.lu/...`). Atualiza `gcs_url`/`size_bytes`/`width`/`height`/`duration_s`. No editor, ao detectar `v.gcs_url`, atribui `vid.src = v.gcs_url` e dispara o fluxo de "vídeo carregado" sem precisar do file picker.
+4. **Implementar a UI espelhando `prototype/`** — chrome global com alternador Galeria/Ateliê, transição animada entre espaços, sidebar do Ateliê com 5 subseções (Vídeos, Personagens, Enquadramentos, Câmeras, Gerações), telas Home/Projeto/Editor com a estética Atelier 2087.
+5. **Ato de publicar** — modal de publicação (escolha de projeto-destino, aviso de sobrescrita ao republicar), gera `.aseprite`, sobe pro GCS, cria `asset` no projeto, vincula `video.published_asset_id`. Após confirmar, transiciona pra Galeria → Detalhe do projeto.
+6. **Auto-save de `edit_state`.** Debounce 1s + flush no `beforeunload`. Inclui PARAMS, in/out, fps, scale, preset selecionado. Restaurar ao reabrir vídeo.
+7. **Worker + tela de Gerações** — `worker.js` no mesmo container consome `jobs WHERE status='queued'` com `FOR UPDATE SKIP LOCKED`. Tela "Ateliê → Gerações" lista jobs do usuário com retry pra falhas. Indicador de jobs ativos no header global.
+8. **Fluxo D (módulo personagem)** — implementar conforme `docs/modulo-personagem.md`, reaproveitando viewport 3D + presets de câmera de `prototype-v1-personagem/`. Vídeos gerados aparecem em Ateliê → Vídeos com selo de origem "personagem".
+9. **Convite de membros** — `POST /api/projects/:id/members` por email, lookup no Logto, listagem na tela de detalhe do projeto.
+10. **Share link público.** Rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do `.aseprite` do asset publicado.
 
 ## Estrutura do projeto
 
@@ -94,7 +98,15 @@ package.json               express, pg
 Dockerfile                 node:20-alpine, EXPOSE 5031
 did.json                   manifest da plataforma (logto+db+domain)
 migrations/
-  001_videos.sql           tabela videos (id, owner_sub, name, gcs_*, edit_state, share_id, ...)
+  001_videos.sql                       tabela videos (id, owner_sub, name, gcs_*, edit_state, share_id, ...)
+  002_videos_workbench_columns.sql     ALTER videos: origin, published_asset_id, source_*
+  003_projects.sql                     projects + project_members (compartilhados)
+  004_assets.sql                       assets + UNIQUE(video_id) + FK videos.published_asset_id
+  005_personagens.sql                  personagens + aparencias + enquadramentos + movimentos
+  006_enquadramentos_avulsos.sql       enquadramentos reusáveis sem personagem
+  007_cameras_salvas.sql               presets de câmera do usuário
+  008_jobs.sql                         jobs assíncronos + índice pro worker (FOR UPDATE SKIP LOCKED)
+  009_models.sql                       catálogo de modelos + seed (nano-banana-pro, kling, hailuo)
 middleware/
   auth.js                  requireUser — valida token Logto via /oidc/me, popula req.user
 routes/
@@ -169,6 +181,7 @@ Bugs ainda **não corrigidos** nos scripts da VM:
 ## Referências
 
 - **Visão da ferramenta (referência mestra, com patch v3 antidelírio):** `docs/visao-da-ferramenta.md` — ler **inteiro**, especialmente seção 6.
+- **Arquitetura técnica:** `docs/arquitetura-tecnica.md` — espelho técnico da visão. Régua: time interno pequeno, sem cerimônia desnecessária.
 - **Módulo personagem (especialização):** `docs/modulo-personagem.md`
 - **Protótipo navegável v1** (módulo personagem isolado — preservado como referência histórica): `prototype-v1-personagem/`
 - **Protótipo navegável v2** (refeito em 2026-05-04, contexto limpo): `prototype/` — foco na metáfora Galeria/Ateliê, com diferenciação visual deliberada entre os dois espaços (paleta, densidade, header) e transição animada (~500ms) que anuncia o destino. Tudo em vanilla JS + localStorage, sem build.
