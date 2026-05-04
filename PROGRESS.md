@@ -1,15 +1,15 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-03
+Última atualização: 2026-05-03 (sessão da tarde — patch v2 da visão)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
-A visão do produto foi reformulada profundamente em 2026-05-03. **Antes de qualquer trabalho técnico, ler:**
+A visão do produto foi reformulada profundamente em 2026-05-03 e recebeu **patch v2** na mesma data (workbench do usuário, asset 1:1 com vídeo, vinculação a projeto só na publicação, fluxos B/C adiados). **Antes de qualquer trabalho técnico, ler:**
 
-1. **`docs/visao-da-ferramenta.md`** — referência mestra. Define o que a ferramenta é (esteira de produção de assets de rotoscopia), entidades (Projeto, Asset, Workbench, Personagem, Enquadramento), fluxos de produção (A–D), princípios duradouros, e decisões fechadas.
-2. **`docs/modulo-personagem.md`** — especialização: detalha o Fluxo D (caminho personagem) com viewport 3D, hierarquia de prompt e árvore de exploração. **Atenção:** este doc foi escrito antes da visão geral; alguns pontos (ex: UI de 3 colunas, acoplamento personagem↔enquadramento) foram superados pela visão mestra. Em conflito, vale a visão.
+1. **`docs/visao-da-ferramenta.md`** — referência mestra (com patch v2 no topo). Define o que a ferramenta é, entidades, fluxos A–D, princípios e decisões fechadas.
+2. **`docs/modulo-personagem.md`** — especialização: detalha o Fluxo D. **Atenção:** este doc foi escrito antes da visão geral; em conflito vale a visão.
 
-A implementação atual (descrita abaixo) ainda não reflete a nova visão. Próximo passo de produto: **refazer o protótipo navegável** em `prototype/` refletindo a visão mestra, validar, depois descer pra arquitetura técnica.
+A implementação atual (descrita abaixo) ainda não reflete a nova visão. Próximo passo de produto: **produzir protótipo navegável v2** em `prototype/` refletindo a visão mestra. O protótipo v1 (módulo personagem isolado) foi **preservado** em `prototype-v1-personagem/` como referência histórica e fonte de reaproveitamento (estética Atelier 2087, viewport 3D, presets de câmera).
 
 ## Estado atual (em uma frase)
 
@@ -151,9 +151,10 @@ Bugs ainda **não corrigidos** nos scripts da VM:
 
 ## Referências
 
-- **Visão da ferramenta (referência mestra):** `docs/visao-da-ferramenta.md`
+- **Visão da ferramenta (referência mestra, com patch v2):** `docs/visao-da-ferramenta.md`
 - **Módulo personagem (especialização):** `docs/modulo-personagem.md`
-- **Protótipo navegável v1** (não bate com a visão final, foi feito antes da consolidação): `prototype/`
+- **Protótipo navegável v1** (módulo personagem isolado — preservado como referência histórica): `prototype-v1-personagem/`
+- **Protótipo navegável v2** (a ser produzido refletindo a visão mestra): `prototype/`
 - Projeto irmão (CLI de geração de vídeo, será absorvido como Fluxo D na workbench): `~/ved/motion-ref-gen/`
 - Asset humanoide Mixamo + experimento Three.js base do viewport 3D: `~/ved/random-experiments/skeleton-animation/`
 - Spec do `.aseprite`: https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md

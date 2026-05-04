@@ -1,4 +1,16 @@
-# Personagem · Protótipo Navegável
+# Personagem · Protótipo Navegável (v1 — preservado como referência)
+
+> ⚠️ **Status: histórico, não atual.** Este protótipo foi feito antes da consolidação da visão mestra (`docs/visao-da-ferramenta.md`). Trata o módulo personagem como se fosse o produto inteiro — a visão atual o reposiciona como **um caminho (Fluxo D) dentro da ferramenta maior**.
+>
+> **Não apagar.** Aqui mora trabalho validado que será reaproveitado quando implementarmos o Fluxo D no produto real:
+> - **Estética Atelier 2087** (`styles.css`) — sistema visual completo (dark, cobre, serif itálica). Reaproveitar.
+> - **Viewport 3D** (`app.js`, seção Three.js) — carregamento FBX Mixamo, OrbitControls, 9 presets de câmera com animação ease-out, slider de FOV, readout em tempo real. Tudo funciona.
+> - **Fluxo de geração em 3 etapas** (aparência → enquadramento → movimento) com hierarquia de prompt, custo previsto, modelo trocável — produto fechado, pronto pra implementar.
+> - **Asset humanoide** (`assets/character.fbx`) — cópia local do Mixamo neutro.
+>
+> O protótipo v2 (em `prototype/`, quando existir) substitui este como referência de fluxo geral. Este aqui continua sendo a referência específica do Fluxo D.
+
+---
 
 Protótipo de validação de produto do módulo **Personagem** do roto-master.
 Não é implementação de produção — é um clickthrough de alta-fidelidade pra discutir o fluxo com o time.

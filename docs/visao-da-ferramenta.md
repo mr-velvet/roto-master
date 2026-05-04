@@ -1,6 +1,8 @@
 # Visão da Ferramenta — roto-master
 
-Última atualização: 2026-05-03. **Status: visão de produto fechada. Arquitetura técnica e schema ainda não definidos.**
+Última atualização: 2026-05-03 (patch v2). **Status: visão de produto fechada. Arquitetura técnica e schema ainda não definidos.**
+
+> **Patch 2026-05-03 (v2):** decisões consolidadas em conversa de produto. Mudanças principais: workbench passa a ser do **usuário**, não do projeto; asset vinculado a projeto **só no momento da publicação**; relação **1:1** entre vídeo e asset (reuso = duplicar vídeo); republicação **sobrescreve** sem histórico; vídeos do Fluxo D são **snapshots imutáveis**; Fluxos B (URL) e C (genérico) ficam com **espaço reservado na UI** mas implementação adiada. Detalhes nas seções 4, 6, 7 e 9.
 
 Este documento descreve **a visão completa** da ferramenta roto-master: o que ela é, quem usa, como está estruturada conceitualmente, e como cada parte se conecta. É a referência mestra de produto. Documentos específicos de cada módulo (ex: `modulo-personagem.md`) devem ser lidos no contexto desta visão.
 
@@ -42,37 +44,39 @@ Acesso via Google login (Logto, já implementado). Permissão é por projeto.
 ```
 USUÁRIO (Google login via Logto)
    │
+   ├─ WORKBENCH (espaço de fabricação — pertence ao usuário, não ao projeto)
+   │   │
+   │   ├─ Vídeos (uploaded, URL, gerado-genérico, gerado-de-personagem)
+   │   ├─ Personagens (reusáveis entre vídeos)
+   │   ├─ Enquadramentos (reusáveis entre personagens)
+   │   └─ Câmeras salvas (presets do usuário)
+   │
    └─ tem acesso a → PROJETOS
                        │
-                       ├─ ASSETS (entregáveis em produção)
-                       │   │   estágios: a fazer / em andamento / feito
-                       │   │   cada asset = 1 produção de rotoscopia
-                       │   │   referencia 1 vídeo (do qual será gerado)
-                       │   │   ao publicar: gera arquivo final (.aseprite hoje)
-                       │   │
-                       │   └─ republicar sobrescreve o mesmo asset
-                       │
-                       └─ WORKBENCH (espaço de fabricação)
-                           │
-                           ├─ Vídeos (uploaded, URL, gerado-genérico, gerado-de-personagem)
-                           ├─ Personagens (independentes — reusáveis entre vídeos)
-                           ├─ Enquadramentos (independentes — reusáveis entre personagens)
-                           └─ Câmeras salvas (presets do projeto)
+                       └─ ASSETS (entregáveis publicados)
+                           cada asset = 1 vídeo publicado
+                           relação 1:1 entre vídeo e asset
+                           ao publicar: gera arquivo final (.aseprite hoje)
+                           republicar sobrescreve o mesmo asset
+                           reuso = duplicar o vídeo na workbench
+                                   (duplicata sai sem vínculo a projeto)
 ```
+
+**Mudança importante (patch v2):** workbench é do **usuário**. Tudo que se fabrica é pessoal até o ato de publicar — a primeira publicação de um vídeo escolhe o projeto-destino e cria o asset. A partir daí o vínculo é estável (republicar sobrescreve). Pra publicar o "mesmo trabalho" em outro projeto, duplica o vídeo na workbench e publica a duplicata.
 
 ### Notas importantes sobre cada entidade
 
-**Projeto** — entidade obrigatória. Todo asset, todo recurso, vive dentro de um projeto. Permissão é deste nível.
+**Projeto** — agrupa assets entregues. Um projeto só recebe vídeos via publicação (não tem workbench própria). Permissão de acesso é deste nível (v1: o dono é o único acessante; multi-usuário por projeto fica adiado).
 
-**Asset** — o entregável. Tem estágios (a fazer / em andamento / feito). Aponta pra **um vídeo** que é a fonte. Quando publicado, gera o arquivo final (`.aseprite`) e o disponibiliza pra download (provavelmente via GCS). Republicar o mesmo asset sobrescreve o arquivo. Asset é a interface principal pro artista que vai rotoscopar.
+**Asset** — o entregável. Vive dentro de um projeto. Aponta pra **um vídeo** (1:1 — não há reuso de vídeo entre assets; reuso = duplicar). Tem status renomeáveis (v1 inicial: "pendente / feito" — nomes podem mudar conforme o time descobrir). Quando publicado, gera o arquivo final (`.aseprite`) e o disponibiliza pra download via GCS. Republicar sobrescreve o arquivo (sem histórico de versões).
 
-**Vídeo** — recurso da workbench. Tem origem tipada (`uploaded` | `url` | `generated-generic` | `generated-from-character`). Quando origem é `generated-from-character`, referencia o personagem e o enquadramento que o originaram. Outras origens não têm essas referências. Um vídeo pode existir sem virar asset (rascunho, exploração).
+**Vídeo** — recurso da workbench (do usuário). Tem origem tipada (`uploaded` | `url` | `generated-generic` | `generated-from-character`). Quando origem é `generated-from-character`, é **snapshot imutável**: guarda referência ao personagem/enquadramento/movimento que o originaram, mas continua válido mesmo se esses recursos forem descartados depois. Um vídeo pode existir indefinidamente sem virar asset (rascunho, exploração). **Duplicar vídeo** é operação de primeira classe — produz um novo vídeo independente (sem vínculo a projeto, mesmo que o original já tenha sido publicado).
 
-**Personagem** — recurso da workbench. Existe independente de vídeos. Tem múltiplas variações de aparência (filosofia exploratória). Reusável: o mesmo personagem alimenta vários vídeos.
+**Personagem** — recurso da workbench (do usuário). Existe independente de vídeos. Tem múltiplas variações de aparência (filosofia exploratória). Reusável: o mesmo personagem alimenta vários vídeos.
 
-**Enquadramento** — recurso da workbench. Existe independente de personagens. Especifica **câmera + composição** (posição, rotação, FOV, framing). É produzido no viewport 3D (humanoide neutro Mixamo + manipulação de câmera). Pode ser usado com qualquer personagem. **Não é uma foto** — é uma especificação de câmera. A imagem gerada que combina personagem + enquadramento é um produto derivado, não o enquadramento em si.
+**Enquadramento** — recurso da workbench (do usuário). Existe independente de personagens. Especifica **câmera + composição** (posição, rotação, FOV, framing). É produzido no viewport 3D (humanoide neutro Mixamo + manipulação de câmera). Pode ser usado com qualquer personagem. **Não é uma foto** — é uma especificação de câmera. A imagem gerada que combina personagem + enquadramento é um produto derivado, não o enquadramento em si.
 
-**Câmera salva** — preset reutilizável de posição/rotação/FOV. Salvas no nível do projeto. Aparecem na lista de presets ao trabalhar em qualquer enquadramento daquele projeto.
+**Câmera salva** — preset reutilizável de posição/rotação/FOV. Salvas no nível do **usuário**. Aparecem na lista de presets em qualquer enquadramento que o usuário esteja produzindo.
 
 ### Sobre nomenclatura: "shot" foi descartado
 
@@ -112,31 +116,38 @@ O Fluxo D é detalhado no doc `modulo-personagem.md`. **Os passos 1, 2 e 3 produ
 
 ## 6. Os dois "lugares" da ferramenta
 
-### Assets (entrada principal)
-A primeira tela que se vê ao entrar num projeto. Lista de assets do projeto, com filtros por estágio. Atende:
-- Artista que vem rotoscopar — filtra "a fazer", clica, edita, marca feito.
-- Quem prepara — vê o estado geral da entrega do projeto.
+A home global do app é a **lista de projetos do usuário**. A partir dela:
 
-### Workbench (espaço de fabricação)
-Acessada via menu/botão. Onde se produz tudo. Subseções:
+### Assets (entrada principal de um projeto)
+Tela que se vê ao entrar num projeto. Lista de assets do projeto. Sem filtro padrão — mostra todos. Filtros rápidos disponíveis acima da lista (ex: "pendentes", "feitos") + ordenação padrão "mais recentes". Os nomes dos status são renomeáveis pelo time conforme descobrirem o que serve melhor.
+
+### Workbench (espaço de fabricação — do usuário, atravessa projetos)
+Acessada via menu global (não fica dentro de projeto). Onde se produz tudo. Subseções:
 - Vídeos
 - Personagens
 - Enquadramentos
 - Câmeras salvas
-- Ação destacada: **+ Criar vídeo** (escolha de fluxo: upload, URL, genérico via IA, ou caminho personagem)
+- Ação destacada: **+ Criar vídeo** com escolha de fluxo:
+  - **A: Upload** (já implementado parcialmente)
+  - **B: URL** (espaço reservado na UI, implementação adiada)
+  - **C: Genérico via IA** (espaço reservado na UI, implementação adiada)
+  - **D: Caminho personagem** (detalhado em `modulo-personagem.md`)
 
-Recursos da workbench podem ser baixados/exportados individualmente (não são prisioneiros do fluxo) — mas o foco é que eles alimentem assets.
+Recursos da workbench podem ser baixados/exportados individualmente. Mas o destino primário é alimentar assets via **publicação**.
 
 ## 7. O ato de publicar (asset ↔ vídeo)
 
-Vídeo na workbench é exploração livre. Não obriga a virar nada.
+Vídeo na workbench é exploração livre, do usuário. Não pertence a projeto nenhum até ser publicado.
 
-**Publicar** é o ato que promove um vídeo editado a asset:
+**Publicar** é o ato que promove um vídeo a asset:
 1. Workbench → vídeo → editor → "publicar como asset"
-2. Sistema gera o `.aseprite` final, sobe pro storage (GCS), cria/atualiza um asset entregável.
-3. Asset aparece na lista de Assets, disponível pro artista.
+2. Na primeira publicação: usuário escolhe o **projeto-destino** (ou cria um novo).
+3. Sistema gera o `.aseprite`, sobe pro GCS, cria o asset no projeto.
+4. Asset aparece na lista do projeto.
 
-**Republicar:** editar o mesmo vídeo e publicar de novo **sobrescreve** o mesmo asset (não cria novo). A relação asset ↔ vídeo é estável; o que muda é a versão do `.aseprite` exportado.
+A partir da primeira publicação, o vídeo fica vinculado ao projeto/asset. **Republicar sobrescreve** o `.aseprite` no GCS (sem histórico de versões — primeira versão simples).
+
+**Reuso em outro projeto:** duplicar o vídeo na workbench. A duplicata sai sem vínculo a projeto e pode ser publicada em qualquer outro. O vídeo original e a duplicata são independentes a partir da duplicação — editar um não afeta o outro.
 
 ## 8. O que dura nessa visão
 
@@ -156,16 +167,21 @@ Nenhuma dessas evoluções pede repensar Assets vs Workbench. Esse é o teste de
 
 1. Roto-master é esteira completa de produção de assets de rotoscopia, não só editor.
 2. Asset é cidadão central; tarefa é estado, não entidade separada.
-3. Workbench é espaço de fabricação; assets é vitrine de entrega.
-4. Publicar é ato deliberado; nem todo vídeo precisa virar asset.
-5. Republicar sobrescreve o mesmo asset.
-6. Personagens, enquadramentos e câmeras são recursos independentes e reutilizáveis.
-7. UI é assimétrica: Assets é entrada principal; Workbench é acessada via menu.
-8. Permissão é por projeto, sem granularidade interna. Quem entra, faz tudo.
-9. Nomenclatura: "Workbench" (não "Material", "Resources"). "Enquadramento" (não "shot").
-10. Custo previsto antes de cada geração; modelos trocáveis por etapa.
-11. Filosofia exploratória: variações se acumulam, não se apagam (descarte é estado implícito).
-12. Hierarquia de prompt embutida — usuário só fornece intenção criativa.
+3. Workbench é espaço de fabricação **do usuário** (atravessa projetos); assets vivem dentro de projetos.
+4. Publicar é ato deliberado; nem todo vídeo precisa virar asset. Na primeira publicação se escolhe o projeto-destino.
+5. Relação **1:1** entre vídeo e asset. Reuso = duplicar vídeo na workbench (duplicata sai sem vínculo).
+6. Republicar sobrescreve o `.aseprite` (primeira versão sem histórico).
+7. Personagens, enquadramentos e câmeras são recursos independentes e reutilizáveis.
+8. Vídeos do Fluxo D são snapshots imutáveis — guardam referência a personagem/enquadramento mas sobrevivem ao descarte deles.
+9. UI: home = lista de projetos. Dentro do projeto: Assets é entrada principal. Workbench acessada via menu global (não fica dentro de projeto).
+10. Lista de assets sem filtro padrão; filtros rápidos ("pendentes", "feitos") + ordenação "mais recentes". Status renomeáveis.
+11. Editor de vídeo abre em tela cheia, com header global (breadcrumbs + menu) pra voltar.
+12. Fluxos B (URL) e C (genérico) têm espaço reservado na UI mas implementação adiada.
+13. v1: usuário só vê os próprios projetos/recursos. Multi-usuário por projeto fica adiado.
+14. Nomenclatura: "Workbench" (não "Material", "Resources"). "Enquadramento" (não "shot").
+15. Custo previsto antes de cada geração; modelos trocáveis por etapa.
+16. Filosofia exploratória: variações se acumulam, não se apagam (descarte é estado implícito).
+17. Hierarquia de prompt embutida — usuário só fornece intenção criativa.
 
 ## 10. Decisões adiadas (não nesta versão)
 
@@ -182,7 +198,8 @@ Nenhuma dessas evoluções pede repensar Assets vs Workbench. Esse é o teste de
 
 - `modulo-personagem.md` — detalha o Fluxo D (caminho personagem). Esta visão é a referência mestra; aquele doc é especialização.
 - `PROGRESS.md` — estado atual de implementação da ferramenta.
-- Protótipo navegável da v1 (não bate com esta visão final, foi feito antes desta consolidação): `prototype/`
+- `prototype-v1-personagem/` — protótipo navegável v1, preservado como referência histórica do Fluxo D (estética Atelier 2087 + viewport 3D + presets de câmera reaproveitáveis).
+- `prototype/` — protótipo navegável v2 refletindo esta visão (a ser produzido).
 - App em produção: https://roto.did.lu
 
 ## 12. Próximos passos do produto
