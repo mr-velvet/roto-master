@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 (arquitetura técnica fechada e migrations 002–009 escritas; pronto pra começar implementação)
+Última atualização: 2026-05-04 (fatia mínima da v1 implementada localmente; pendente de deploy + smoke test em produção)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -37,9 +37,9 @@ Decisões da UI a preservar quando implementar de verdade:
 
 ## Estado atual (em uma frase)
 
-App em produção em **https://roto.did.lu** com login Google (Logto), lista de vídeos como home, criação de novo vídeo via modal, abertura do editor por rota `#/v/:id`. Editor ainda não faz upload do vídeo pra storage — o arquivo só vive no browser via `URL.createObjectURL`. **Estrutura atual ainda não tem conceito de Projeto, Asset (no sentido novo) ou Workbench** — esses conceitos vêm da nova visão e ainda não existem em código.
+App em produção em **https://roto.did.lu** com login Google. **A v1 da nova visão (galeria + ateliê + ato de publicar + upload pro GCS) está implementada no código (commits `5daffb4`, `431837c`, `e031e17`) mas ainda não foi deployada** — falta rodar `bash /home/manu/platform/scripts/deploy.sh roto-master` na VM pra aplicar as migrations 002–004 e atualizar o container.
 
-## O que já funciona
+## O que já está em produção (antes da fatia v1)
 
 ### Editor de rotoscopia (núcleo da PoC)
 - File picker / drag-drop carrega qualquer vídeo (`URL.createObjectURL`).
@@ -52,76 +52,114 @@ App em produção em **https://roto.did.lu** com login Google (Logto), lista de 
 ### Plataforma did.lu
 - Container `roto-master` em `:5031`, Caddy serve `roto.did.lu` com HTTPS automático.
 - `did.json` declara `port: 5031, domain: "roto.did.lu", database: true, logto: true, migrations: "migrations/"`.
-- Postgres compartilhado da plataforma (tabela `videos` no schema do app).
+- Postgres compartilhado da plataforma.
 - Logto App ID `36iz4iomybe4r1n67a7jc` (Google OAuth), hardcoded em `public/js/auth.js`.
+- Multi-user via `req.user.sub` do Logto, tudo escopado.
 
-### Multi-user
-- `requireUser` middleware valida token Logto via `/oidc/me` (token opaco, não JWT).
-- Toda rota `/api/videos` é escopada por `owner_sub`.
-- Sem whitelist — qualquer Google login entra. Usuário só vê os próprios vídeos.
+## O que está implementado no código (fatia v1) — pendente de deploy
 
-### Lista + criação + navegação
-- Home (`#/list`) renderiza grid de vídeos do user logado.
-- Botão "+ novo vídeo" abre modal custom (regra UI: nada de `prompt()` nativo) → POST cria registro com `name` (`gcs_path`/`gcs_url` vazios) → navega pra `#/v/:id`.
-- Editor (`#/v/:id`) carrega metadata, mostra nome no header, botão "‹ voltar" retorna pra lista.
-- Delete via modal de confirmação custom.
+### Backend
+- Migrations 002–004 escritas (videos com origin/published_asset_id/source_*; projects + project_members; assets 1:1 com videos via UNIQUE).
+- `routes/projects.js`: CRUD com membership; criação insere creator como owner em transação.
+- `routes/assets.js`: lista escopada por membership, PATCH (rename, status), republicação incrementa version.
+- `POST /api/videos/:id/upload`: multipart, sobe pro GCS em `roto-master/videos/<id>/source.<ext>`.
+- `POST /api/videos/:id/publish`: primeira publicação como transação atômica (cria asset + atualiza video.published_asset_id).
+- `lib/gcs.js`: helper de upload (`@google-cloud/storage`, bucket `didlu-imagestore`, URL via `https://st.did.lu`).
+- `middleware/membership.js`: `isMember` / `isOwner`.
 
-## O que NÃO funciona ainda
+### Frontend
+- `public/styles.css`: sistema visual do protótipo v2 (Atelier 2087: paleta cobre/ink, Fraunces serif itálica, JetBrains Mono) + estilos do editor reestilizados.
+- `public/index.html`: chrome global com alternador Galeria/Ateliê, breadcrumb, transição animada (~500ms) ao trocar de espaço, screens (home / projeto / ateliê / editor) + modais (novo projeto, novo vídeo, publicar, confirmar).
+- `chrome.js`: `setSpace` + `setBreadcrumb` + transição animada.
+- `modals.js`: sistema centralizado, sem `prompt()`/`confirm()` nativo, ESC fecha, Enter confirma; helpers `confirmModal` e `showToast`.
+- `gal_home.js`: lista projetos + criar projeto (modal).
+- `gal_project.js`: detalhe do projeto + lista de assets + filtro (todos/pendentes/feitos). Sem botão "+ novo asset" (regra anti-padrão 6.5) — chamada redigida quando vazio.
+- `atelie_videos.js`: lista vídeos + criar vídeo (fluxo A; B/C/D com selo "em breve").
+- `editor.js`: wrapper do editor. Carrega `gcs_url` se já upado; senão espera file picker e sobe pro storage em background. Modal de publicação com escolha de projeto-destino e aviso de sobrescrita.
+- `autosave.js`: debounce 1s + flush no beforeunload, restaura `edit_state` ao reabrir vídeo.
+- `router.js`: hash routing (`#/`, `#/p/:id`, `#/atelie`, `#/v/:id`).
 
-- **Upload pro GCS:** o vídeo carregado no editor existe só no browser via `URL.createObjectURL`. Não é salvo em storage. Recarregou a página → perdeu o vídeo.
-- **Auto-save de edição:** PARAMS, in/out, fps, scale, preset não são persistidos. `edit_state` (JSONB) tá no schema mas vazio.
-- **Restaurar estado ao reabrir vídeo:** consequência do anterior — abre sempre vazio.
-- **Share link público via `share_id`:** schema tem o campo, rota não existe ainda.
+## O que NÃO está nesta v1 (fica pra v2)
 
-## Próximos passos (próxima sessão)
+- Fluxo D inteiro (módulo personagem, viewport 3D, jobs assíncronos, área de Gerações).
+- Convite de membros pelo UI (no v1 precisa INSERT manual no DB pra adicionar membros num projeto).
+- Fluxos B (URL) e C (geração genérica).
+- Share link público via `share_id`.
+- Migrations 005–009 (personagens, enquadramentos, câmeras, jobs, models) escritas mas não aplicadas no deploy ainda.
 
-**Visão fechada + protótipo v2 aprovado + arquitetura técnica escrita + migrations 002–009 prontas.** Próxima etapa é descer pra implementação real, começando pelo backend (rodar migrations + endpoints) e UI espelhando o protótipo.
+## Próximos passos
 
-### Em ordem de prioridade
+### Imediato — deployar e testar a v1
 
-1. **Rodar migrations 002–009 no Postgres da plataforma.** Ordem alfabética automática no deploy. Confirmar que os ALTER TABLE em `videos` rodam limpos sobre dados existentes.
-2. **Implementar endpoints da workbench e galeria** conforme `docs/arquitetura-tecnica.md` seção 4. Ordem: `projects` + `project_members` (visão central), `assets` (com fluxo de publicação como transação atômica), depois `personagens` + variações + `cameras_salvas`, depois `jobs` + worker + `models`.
-3. **Upload do vídeo pro GCS.** `POST /api/videos/:id/upload` multipart, valida ≤100MB, sobe pra `roto-master/videos/<video_id>/source.<ext>` (URL via `https://st.did.lu/...`). Atualiza `gcs_url`/`size_bytes`/`width`/`height`/`duration_s`. No editor, ao detectar `v.gcs_url`, atribui `vid.src = v.gcs_url` e dispara o fluxo de "vídeo carregado" sem precisar do file picker.
-4. **Implementar a UI espelhando `prototype/`** — chrome global com alternador Galeria/Ateliê, transição animada entre espaços, sidebar do Ateliê com 5 subseções (Vídeos, Personagens, Enquadramentos, Câmeras, Gerações), telas Home/Projeto/Editor com a estética Atelier 2087.
-5. **Ato de publicar** — modal de publicação (escolha de projeto-destino, aviso de sobrescrita ao republicar), gera `.aseprite`, sobe pro GCS, cria `asset` no projeto, vincula `video.published_asset_id`. Após confirmar, transiciona pra Galeria → Detalhe do projeto.
-6. **Auto-save de `edit_state`.** Debounce 1s + flush no `beforeunload`. Inclui PARAMS, in/out, fps, scale, preset selecionado. Restaurar ao reabrir vídeo.
-7. **Worker + tela de Gerações** — `worker.js` no mesmo container consome `jobs WHERE status='queued'` com `FOR UPDATE SKIP LOCKED`. Tela "Ateliê → Gerações" lista jobs do usuário com retry pra falhas. Indicador de jobs ativos no header global.
-8. **Fluxo D (módulo personagem)** — implementar conforme `docs/modulo-personagem.md`, reaproveitando viewport 3D + presets de câmera de `prototype-v1-personagem/`. Vídeos gerados aparecem em Ateliê → Vídeos com selo de origem "personagem".
-9. **Convite de membros** — `POST /api/projects/:id/members` por email, lookup no Logto, listagem na tela de detalhe do projeto.
-10. **Share link público.** Rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do `.aseprite` do asset publicado.
+1. **Deploy na VM:** `bash /home/manu/platform/scripts/deploy.sh roto-master`. Aplica migrations 002–004 automaticamente. Smoke test no `https://roto.did.lu`:
+   - Login Google
+   - Criar projeto na Galeria
+   - Trocar pra Ateliê → Vídeos, criar vídeo, abrir editor
+   - Carregar arquivo de vídeo (deve subir pro GCS em background)
+   - Editar trecho, mudar pra rotoscopia, dar play (constrói frames)
+   - Publicar como asset → escolher projeto → confirmar → ver transição pra Galeria → asset aparece no projeto
+   - Recarregar a página → asset persiste, vídeo carrega do GCS, edit_state restaurado
+2. Se algum bug aparecer, corrigir antes de v2.
+
+### v2 — depois da v1 estar de pé
+
+1. **Convite de membros pelo UI** — `POST /api/projects/:id/members` por email, listagem na tela de detalhe do projeto.
+2. **Worker + tela de Gerações** — `worker.js` consome `jobs WHERE status='queued'` com `FOR UPDATE SKIP LOCKED`. Subseção "Gerações" no Ateliê com lista cronológica + retry. Indicador no header global. Aplicar migrations 008 + 009.
+3. **Fluxo D (módulo personagem)** — viewport 3D reaproveitando `prototype-v1-personagem/`, etapas aparência → enquadramento → movimento. Aplicar migrations 005 + 006 + 007.
+4. **Fluxos B/C** — vídeo de URL e geração genérica.
+5. **Share link público.** Rota `GET /api/share/:share_id` retorna metadata + URL do `.aseprite`.
 
 ## Estrutura do projeto
 
 ```
-server.js                  Express + /api/health + monta /api/config e /api/videos
-package.json               express, pg
+server.js                  Express + /api/health + monta /api/{config,videos,projects,assets}
+package.json               express, pg, @google-cloud/storage, multer
 Dockerfile                 node:20-alpine, EXPOSE 5031
 did.json                   manifest da plataforma (logto+db+domain)
+
 migrations/
-  001_videos.sql                       tabela videos (id, owner_sub, name, gcs_*, edit_state, share_id, ...)
-  002_videos_workbench_columns.sql     ALTER videos: origin, published_asset_id, source_*
+  001_videos.sql                       videos (id, owner_sub, name, gcs_*, edit_state, share_id)
+  002_videos_workbench_columns.sql     ALTER videos: origin + published_asset_id + source_*
   003_projects.sql                     projects + project_members (compartilhados)
   004_assets.sql                       assets + UNIQUE(video_id) + FK videos.published_asset_id
-  005_personagens.sql                  personagens + aparencias + enquadramentos + movimentos
-  006_enquadramentos_avulsos.sql       enquadramentos reusáveis sem personagem
-  007_cameras_salvas.sql               presets de câmera do usuário
-  008_jobs.sql                         jobs assíncronos + índice pro worker (FOR UPDATE SKIP LOCKED)
-  009_models.sql                       catálogo de modelos + seed (nano-banana-pro, kling, hailuo)
+  005_personagens.sql                  personagens + aparencias + enquadramentos + movimentos (v2)
+  006_enquadramentos_avulsos.sql       enquadramentos reusáveis sem personagem (v2)
+  007_cameras_salvas.sql               presets de câmera do usuário (v2)
+  008_jobs.sql                         jobs assíncronos + índice pro worker (v2)
+  009_models.sql                       catálogo de modelos + seed (v2)
+
+lib/
+  gcs.js                   helper de upload pro GCS (bucket didlu-imagestore)
+
 middleware/
-  auth.js                  requireUser — valida token Logto via /oidc/me, popula req.user
+  auth.js                  requireUser — valida token Logto via /oidc/me
+  membership.js            isMember, isOwner — projetos compartilhados
+
 routes/
-  config.js                GET /api/config — devolve identidade do user logado
-  videos.js                GET/POST/PATCH/DELETE /api/videos[/:id], escopado por owner_sub
+  config.js                GET /api/config — identidade do user
+  videos.js                CRUD + POST :id/upload + POST :id/publish (transação)
+  projects.js              CRUD com membership; criação insere creator como owner
+  assets.js                lista escopada, PATCH (rename/status), POST :id/publish (republish)
+
 public/
-  index.html               shell + CSS + login screen + lista + modais + editor
+  index.html               chrome global + screens + modais + canvas editor
+  styles.css               sistema visual Atelier 2087 (paleta cobre/ink + Fraunces)
   logto-auth.js            wrapper do SDK Logto
   js/
-    main.js                bootstrap: auth → router → list/editor (bootEditorOnce guarda)
-    auth.js                initAuth, signIn, signOut, getUser, authedFetch
-    router.js              hash routing #/list e #/v/:id
-    videos_api.js          listVideos, createVideo, getVideo, patchVideo, deleteVideo
-    video_list.js          renderiza grid + modal "novo vídeo" + modal confirm delete
-    file_loader.js         file picker + drag-drop no editor
+    main.js                bootstrap: auth → router → screens
+    auth.js                initAuth, signIn, signOut, authedFetch
+    router.js              hash routing (#/, #/p/:id, #/atelie, #/v/:id)
+    chrome.js              setSpace, setBreadcrumb, transição animada
+    modals.js              sistema de modais + confirmModal + showToast
+    gal_home.js            lista projetos + criar projeto
+    gal_project.js         detalhe do projeto + lista de assets + filtros
+    atelie_videos.js       lista vídeos + criar vídeo (fluxo A; B/C/D em breve)
+    editor.js              wrapper editor: carrega gcs_url, upload em background, publicar
+    autosave.js            debounce 1s + restore de edit_state
+    file_loader.js         file picker + drag-drop + loadFromUrl (carrega do GCS)
+    projects_api.js        cliente da API /api/projects
+    assets_api.js          cliente da API /api/assets
+    videos_api.js          cliente: list/create/get/patch/delete + upload + publish
     state.js               PARAMS, PRESETS, SLIDERS, STATE
     shaders.js             VS_SRC, FS_SRC
     gl.js                  WebGL boot + render + pixel IO
