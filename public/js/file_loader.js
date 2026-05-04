@@ -9,28 +9,26 @@ let onLoadedCb = null;
 
 const $btnLoad = document.getElementById('btn-load');
 const $fileInput = document.getElementById('file-input');
-const $fileName = document.getElementById('file-name');
 const $canvasWrap = document.getElementById('canvas-wrap');
 const $dropOverlay = document.getElementById('drop-overlay');
 
+let onFileSelectedCb = null;
+
 export function bindFileLoader(deps) {
   onLoadedCb = deps.onLoaded;
+  onFileSelectedCb = deps.onFileSelected;
 }
 
-function setBusy(name) {
-  $fileName.innerHTML = `carregando <b>${name}</b>…`;
-}
-function setLoaded(name) {
-  $fileName.innerHTML = `<b>${name}</b>`;
+function setLoaded() {
   document.body.classList.remove('no-video');
 }
 
 function loadFile(file) {
   if (!file || !file.type.startsWith('video/')) {
-    $fileName.textContent = 'arquivo inválido — use um vídeo';
+    console.warn('arquivo inválido — use um vídeo');
     return;
   }
-  setBusy(file.name);
+  if (onFileSelectedCb) onFileSelectedCb(file);
 
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
@@ -49,11 +47,35 @@ function loadFile(file) {
     STATE.inS = 0;
     STATE.outS = Math.min(3, vid.duration);
     resizeCanvasToDims(vid.videoWidth, vid.videoHeight);
-    setLoaded(file.name);
+    setLoaded();
     if (onLoadedCb) onLoadedCb();
   };
   vid.addEventListener('loadedmetadata', onMeta);
   vid.src = currentObjectUrl;
+  vid.load();
+}
+
+// Carrega vídeo direto de uma URL (ex: gcs_url). Não precisa de file picker.
+export function loadFromUrl(url) {
+  if (currentObjectUrl) {
+    URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = null;
+  }
+  STATE.frames = [];
+  STATE.dirty = true;
+  STATE.playIdx = 0;
+
+  const onMeta = () => {
+    vid.removeEventListener('loadedmetadata', onMeta);
+    STATE.videoDurS = vid.duration;
+    STATE.inS = 0;
+    STATE.outS = Math.min(3, vid.duration);
+    resizeCanvasToDims(vid.videoWidth, vid.videoHeight);
+    setLoaded();
+    if (onLoadedCb) onLoadedCb();
+  };
+  vid.addEventListener('loadedmetadata', onMeta);
+  vid.src = url;
   vid.load();
 }
 

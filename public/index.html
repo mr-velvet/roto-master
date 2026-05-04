@@ -1,932 +1,454 @@
-<!DOCTYPE html>
-<html lang="pt-br">
+<!doctype html>
+<html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<title>Rotoscope PoC — fidelidade web ↔ aseprite</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<style>
-  :root {
-    --bg: #0a0a0a;
-    --fg: #e0e0e0;
-    --dim: #777;
-    --accent: #ff00c8;
-    --accent2: #00ff50;
-    --accent3: #ffaa00;
-    --line: #222;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: 'IBM Plex Mono', 'Consolas', 'Monaco', monospace;
-    height: 100%;
-    overflow: hidden;
-  }
-  body { display: flex; flex-direction: column; }
-  header {
-    border-bottom: 1px solid var(--line);
-    padding: 14px 18px;
-    flex-shrink: 0;
-  }
-  .title {
-    font-size: 13px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--dim);
-    margin-bottom: 12px;
-  }
-  .title span { color: var(--accent); }
-  .title em { color: var(--accent3); font-style: normal; }
-  .header-row {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .presets { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
-  .file-picker {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .btn-load {
-    background: transparent;
-    color: var(--accent3);
-    border: 1px solid var(--accent3);
-    padding: 6px 12px;
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-load:hover { background: rgba(255, 170, 0, 0.1); }
-  .file-name {
-    font-size: 10px;
-    color: var(--dim);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .file-name b { color: var(--accent2); font-weight: normal; }
-  .drop-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 255, 80, 0.08);
-    border: 2px dashed var(--accent2);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    z-index: 10;
-  }
-  .drop-overlay.active { display: flex; }
-  .drop-overlay span {
-    color: var(--accent2);
-    font-size: 14px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-  }
-  .empty-hint {
-    color: var(--dim);
-    font-size: 12px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    text-align: center;
-    line-height: 1.8;
-  }
-  .empty-hint b { color: var(--accent2); font-weight: normal; }
-  .empty-hint em { color: var(--accent3); font-style: normal; }
-  .preset-btn {
-    background: transparent;
-    color: var(--fg);
-    border: 1px solid var(--line);
-    padding: 6px 12px;
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .preset-btn:hover { border-color: var(--accent2); color: var(--accent2); }
-  .preset-btn.active {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(255, 0, 200, 0.08);
-  }
-  main {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 320px;
-    min-height: 0;
-  }
-  .canvas-wrap {
-    background: #000;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    position: relative;
-    padding: 20px;
-    gap: 14px;
-  }
-  .canvas-stage {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-  }
-  body.no-video #gl { display: none; }
-  body:not(.no-video) #empty-hint { display: none; }
-  body.no-video .transport { display: none; }
-  body.no-video #btn-export { opacity: 0.4; pointer-events: none; }
-  canvas {
-    max-width: 100%;
-    max-height: 100%;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-  }
-  .transport {
-    width: 100%;
-    max-width: 800px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .transport-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .btn-play {
-    background: transparent;
-    color: var(--accent2);
-    border: 1px solid var(--accent2);
-    padding: 8px 18px;
-    font: inherit;
-    font-size: 12px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    cursor: pointer;
-    min-width: 90px;
-  }
-  .btn-play:hover:not(:disabled) { background: rgba(0,255,80,0.1); }
-  .btn-play.playing { color: var(--accent); border-color: var(--accent); }
-  .btn-play:disabled { opacity: 0.4; cursor: not-allowed; }
-  .frame-info {
-    flex: 1;
-    font-size: 11px;
-    color: var(--dim);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-  }
-  .frame-info b { color: var(--accent3); font-weight: normal; }
-  .scrub {
-    width: 100%;
-    appearance: none;
-    background: transparent;
-    height: 18px;
-  }
-  .scrub::-webkit-slider-runnable-track { height: 2px; background: var(--line); }
-  .scrub::-webkit-slider-thumb {
-    appearance: none;
-    width: 10px;
-    height: 14px;
-    background: var(--accent3);
-    margin-top: -6px;
-    cursor: pointer;
-  }
-  .controls {
-    border-left: 1px solid var(--line);
-    padding: 18px;
-    overflow-y: auto;
-    background: #050505;
-  }
-  .controls h2 {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    color: var(--dim);
-    text-transform: uppercase;
-    margin-bottom: 14px;
-  }
-  .controls h2.export { color: var(--accent3); margin-top: 8px; }
-  .ctrl { margin-bottom: 14px; }
-  .ctrl label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11px;
-    color: var(--dim);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 6px;
-  }
-  .ctrl label .val {
-    color: var(--accent2);
-    font-variant-numeric: tabular-nums;
-  }
-  input[type=range] {
-    width: 100%;
-    appearance: none;
-    background: transparent;
-    height: 18px;
-  }
-  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line); }
-  input[type=range]::-webkit-slider-thumb {
-    appearance: none;
-    width: 10px;
-    height: 14px;
-    background: var(--accent);
-    margin-top: -6px;
-    cursor: pointer;
-  }
-  .timing-panel {
-    border-top: 1px solid var(--line);
-    margin-top: 18px;
-    padding-top: 14px;
-  }
-  .timing-row {
-    display: grid;
-    grid-template-columns: 1fr 90px;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 10px;
-  }
-  .timing-row label {
-    font-size: 11px;
-    color: var(--dim);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  .timing-row input {
-    background: #0a0a0a;
-    color: var(--accent2);
-    border: 1px solid var(--line);
-    padding: 6px 8px;
-    font: inherit;
-    font-size: 12px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .timing-row input:focus { outline: none; border-color: var(--accent3); }
-  .ctrl-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-  .ctrl-row input[type=checkbox] {
-    accent-color: var(--accent3);
-    cursor: pointer;
-  }
-  .ctrl-row label {
-    font-size: 11px;
-    color: var(--dim);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    cursor: pointer;
-    user-select: none;
-  }
-  .btn-export {
-    width: 100%;
-    background: transparent;
-    color: var(--accent3);
-    border: 1px solid var(--accent3);
-    padding: 10px;
-    font: inherit;
-    font-size: 12px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    cursor: pointer;
-    margin-top: 8px;
-    transition: all 0.15s;
-  }
-  .btn-export:hover:not(:disabled) { background: rgba(255, 170, 0, 0.1); }
-  .btn-export:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); color: var(--dim); }
-  .progress {
-    margin-top: 12px;
-    font-size: 10px;
-    color: var(--dim);
-    line-height: 1.6;
-    min-height: 32px;
-  }
-  .progress .ok { color: var(--accent2); }
-  .progress .err { color: #ff3050; }
-  .progress .stage { color: var(--accent3); }
-  .progress-bar {
-    height: 3px;
-    background: var(--line);
-    margin-top: 6px;
-    position: relative;
-    overflow: hidden;
-  }
-  .progress-bar::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; bottom: 0;
-    width: var(--p, 0%);
-    background: var(--accent3);
-    transition: width 0.1s linear;
-  }
-  .footer {
-    margin-top: 18px;
-    padding-top: 14px;
-    border-top: 1px solid var(--line);
-    font-size: 10px;
-    color: var(--dim);
-    line-height: 1.6;
-  }
-  .footer code { color: var(--accent2); }
-  .footer b { color: var(--accent3); font-weight: normal; }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>roto-master</title>
 
-  /* mode toggle */
-  .mode-tabs {
-    display: flex;
-    gap: 0;
-    border: 1px solid var(--line);
-    margin-right: 10px;
-    flex-shrink: 0;
-  }
-  .mode-tab {
-    background: transparent;
-    color: var(--dim);
-    border: 0;
-    padding: 6px 14px;
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    border-right: 1px solid var(--line);
-  }
-  .mode-tab:last-child { border-right: 0; }
-  .mode-tab.active {
-    color: var(--accent);
-    background: rgba(255, 0, 200, 0.08);
-  }
-  .mode-tab:hover:not(.active) { color: var(--accent2); }
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  /* dual-thumb range pra marcar in/out */
-  .range-wrap {
-    position: relative;
-    height: 24px;
-    padding: 0 6px;
-  }
-  .range-wrap .track {
-    position: absolute;
-    top: 11px;
-    left: 6px;
-    right: 6px;
-    height: 2px;
-    background: var(--line);
-  }
-  .range-wrap .track-active {
-    position: absolute;
-    top: 11px;
-    height: 2px;
-    background: var(--accent3);
-  }
-  .range-wrap input[type=range] {
-    position: absolute;
-    top: 0;
-    left: 6px;
-    right: 6px;
-    width: calc(100% - 12px);
-    height: 24px;
-    margin: 0;
-    background: transparent;
-    pointer-events: none;
-    appearance: none;
-    -webkit-appearance: none;
-  }
-  .range-wrap input[type=range]::-webkit-slider-runnable-track {
-    height: 2px;
-    background: transparent;
-  }
-  .range-wrap input[type=range]::-webkit-slider-thumb {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 12px;
-    height: 16px;
-    background: var(--accent);
-    margin-top: -7px;
-    cursor: pointer;
-    pointer-events: auto;
-    border: 0;
-  }
-  .range-wrap input.in-range::-webkit-slider-thumb {
-    background: var(--accent2);
-  }
-  .range-wrap input.out-range::-webkit-slider-thumb {
-    background: var(--accent3);
-  }
-  .markers-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--dim);
-    margin-top: 4px;
-    font-variant-numeric: tabular-nums;
-    padding: 0 6px;
-  }
-  .markers-row b { font-weight: normal; }
-  .markers-row .in-val { color: var(--accent2); }
-  .markers-row .out-val { color: var(--accent3); }
-
-  /* login screen — gating */
-  body.app-loading,
-  body.app-unauth { overflow: hidden; }
-  body.app-loading > header,
-  body.app-loading > main,
-  body.app-unauth > header,
-  body.app-unauth > main { display: none; }
-
-  #login-screen {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 28px;
-    z-index: 100;
-  }
-  body.app-loading #login-screen,
-  body.app-unauth #login-screen { display: flex; }
-  #login-screen .brand {
-    font-size: 14px;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    color: var(--dim);
-  }
-  #login-screen .brand span { color: var(--accent); }
-  #login-screen .brand em { color: var(--accent3); font-style: normal; }
-  #login-screen .tagline {
-    font-size: 12px;
-    color: var(--dim);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    max-width: 420px;
-    text-align: center;
-    line-height: 1.8;
-  }
-  #login-screen .btn-google {
-    background: transparent;
-    color: var(--accent2);
-    border: 1px solid var(--accent2);
-    padding: 12px 28px;
-    font: inherit;
-    font-size: 13px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  #login-screen .btn-google:hover { background: rgba(0,255,80,0.1); }
-  #login-screen .loading-msg {
-    font-size: 11px;
-    color: var(--dim);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-  }
-  body.app-loading #login-actions { display: none; }
-  body:not(.app-loading) #login-loading { display: none; }
-  #login-screen .err {
-    color: #ff3050;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    text-align: center;
-    max-width: 420px;
-  }
-
-  /* user info no header */
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-left: auto;
-    flex-shrink: 0;
-  }
-  .user-info .avatar {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: var(--line);
-    object-fit: cover;
-  }
-  .user-info .email {
-    font-size: 10px;
-    color: var(--dim);
-    letter-spacing: 0.1em;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .btn-logout {
-    background: transparent;
-    color: var(--dim);
-    border: 1px solid var(--line);
-    padding: 4px 10px;
-    font: inherit;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-  .btn-logout:hover { color: var(--accent); border-color: var(--accent); }
-
-  /* ===== Lista de vídeos ===== */
-  body.view-list > main { display: none; }
-  body.view-list .file-picker,
-  body.view-list .presets,
-  body.view-list .btn-back { display: none; }
-  body.view-list .list-only { display: flex; }
-  body:not(.view-list) .list-only { display: none; }
-  body:not(.view-list) .btn-back { display: inline-block; }
-
-  #video-list {
-    flex: 1;
-    flex-direction: column;
-    padding: 28px 32px 60px;
-    overflow-y: auto;
-    display: none;
-  }
-  body.view-list #video-list { display: flex; }
-  .list-header {
-    display: flex;
-    align-items: baseline;
-    gap: 18px;
-    margin-bottom: 28px;
-    flex-wrap: wrap;
-  }
-  .list-title {
-    font-size: 11px;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    color: var(--dim);
-  }
-  .list-title b { color: var(--accent); font-weight: normal; }
-  .btn-new-video {
-    background: transparent;
-    color: var(--accent2);
-    border: 1px solid var(--accent2);
-    padding: 8px 18px;
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-new-video:hover { background: rgba(0,255,80,0.1); }
-  .video-list-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 14px;
-  }
-  .video-card {
-    background: #0a0a0a;
-    border: 1px solid var(--line);
-    cursor: pointer;
-    position: relative;
-    transition: border-color 0.15s;
-    overflow: hidden;
-  }
-  .video-card:hover { border-color: var(--accent2); }
-  .video-card-thumb {
-    aspect-ratio: 16 / 9;
-    background: #050505;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-bottom: 1px solid var(--line);
-    position: relative;
-  }
-  .video-card-thumb.empty .placeholder {
-    color: var(--dim);
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-  }
-  .video-card-thumb .meta {
-    position: absolute;
-    bottom: 6px;
-    right: 8px;
-    font-size: 9px;
-    color: var(--dim);
-    letter-spacing: 0.15em;
-    background: rgba(0,0,0,0.6);
-    padding: 2px 6px;
-  }
-  .video-card-body {
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .video-card-name {
-    font-size: 12px;
-    color: var(--fg);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .video-card-meta {
-    font-size: 9px;
-    color: var(--dim);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  .video-card-delete {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 22px;
-    height: 22px;
-    background: rgba(0,0,0,0.6);
-    color: var(--dim);
-    border: 0;
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    opacity: 0;
-    transition: all 0.15s;
-  }
-  .video-card:hover .video-card-delete { opacity: 1; }
-  .video-card-delete:hover { color: #ff3050; }
-  #video-list-empty {
-    color: var(--dim);
-    font-size: 12px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    line-height: 1.8;
-    padding: 60px 0;
-    text-align: center;
-  }
-  #video-list-empty em { color: var(--accent2); font-style: normal; }
-  #video-list-empty .err { color: #ff3050; }
-
-  /* botão voltar no header (só aparece no modo editor) */
-  .btn-back {
-    background: transparent;
-    color: var(--dim);
-    border: 1px solid var(--line);
-    padding: 6px 12px;
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    margin-right: 8px;
-  }
-  .btn-back:hover { color: var(--accent2); border-color: var(--accent2); }
-  .video-name-display {
-    font-size: 11px;
-    color: var(--accent3);
-    letter-spacing: 0.1em;
-    margin-right: 16px;
-    max-width: 260px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* ===== Modais ===== */
-  .modal-bg {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.75);
-    z-index: 200;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .modal {
-    background: var(--bg);
-    border: 1px solid var(--line);
-    padding: 24px 28px;
-    max-width: 420px;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .modal h3 {
-    font-size: 11px;
-    letter-spacing: 0.25em;
-    color: var(--accent3);
-    text-transform: uppercase;
-    font-weight: normal;
-  }
-  .modal p {
-    font-size: 12px;
-    color: var(--fg);
-    line-height: 1.6;
-  }
-  .modal input[type=text] {
-    background: #0a0a0a;
-    color: var(--accent2);
-    border: 1px solid var(--line);
-    padding: 10px 12px;
-    font: inherit;
-    font-size: 13px;
-  }
-  .modal input[type=text]:focus { outline: none; border-color: var(--accent2); }
-  .modal-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-  }
-  .modal-actions button {
-    background: transparent;
-    border: 1px solid var(--line);
-    color: var(--dim);
-    padding: 8px 16px;
-    font: inherit;
-    font-size: 11px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .modal-actions button.primary {
-    color: var(--accent2);
-    border-color: var(--accent2);
-  }
-  .modal-actions button.primary:hover { background: rgba(0,255,80,0.1); }
-  .modal-actions button.danger {
-    color: #ff3050;
-    border-color: #ff3050;
-  }
-  .modal-actions button.danger:hover { background: rgba(255,48,80,0.1); }
-  .modal-actions button:hover:not(.primary):not(.danger) {
-    color: var(--fg);
-    border-color: var(--fg);
-  }
-  .modal-err {
-    color: #ff3050;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    min-height: 14px;
-  }
-</style>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
-<body class="app-loading">
+<body class="app-loading no-video" data-space="galeria" data-screen="home">
+
+  <!-- ====================================================
+       LOGIN
+       ==================================================== -->
   <div id="login-screen">
-    <div class="brand">ROTOSCOPE <span>POC</span> — <em>web ↔ .aseprite</em></div>
-    <div class="tagline">vídeo no celular ou pc → ajuste efeitos → exporta <em>.aseprite</em> pronto pra rotoscopar</div>
+    <div class="login-brand"><span class="mark">◆</span>roto<span style="color:var(--paper-4)">·</span>master</div>
+    <div class="login-tagline">vídeo → <em style="color:var(--copper); font-style:italic">.aseprite</em> pronto pra rotoscopar</div>
     <div id="login-loading" class="loading-msg">verificando sessão…</div>
     <div id="login-actions" style="display:flex; flex-direction:column; gap:14px; align-items:center;">
       <button class="btn-google" id="btn-signin">▸ entrar com Google</button>
       <div id="login-err" class="err"></div>
     </div>
   </div>
-  <header>
-    <div class="title">ROTOSCOPE <span>POC</span> — fidelidade <em>web ↔ .aseprite</em></div>
-    <div class="header-row">
-      <button class="btn-back" id="btn-back">‹ voltar</button>
-      <span class="video-name-display" id="video-name-display"></span>
-      <div class="presets" id="presets"></div>
-      <div class="file-picker">
-        <button class="btn-load" id="btn-load">▸ carregar vídeo</button>
-        <input type="file" id="file-input" accept="video/*" style="display:none">
-        <span class="file-name" id="file-name">nenhum vídeo carregado</span>
+
+  <!-- ====================================================
+       CHROME GLOBAL
+       ==================================================== -->
+  <header class="chrome">
+    <div class="chrome-left">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">roto<span class="brand-sep">·</span>master</span>
       </div>
-      <div class="user-info">
-        <img class="avatar" id="user-avatar" alt="" referrerpolicy="no-referrer">
-        <span class="email" id="user-email"></span>
-        <button class="btn-logout" id="btn-logout">sair</button>
+      <div class="space-label">
+        <span class="space-label-here">você está em</span>
+        <span class="space-label-name" data-bind="space-name">Galeria</span>
+      </div>
+    </div>
+
+    <nav class="chrome-center" aria-label="caminho atual">
+      <ol class="breadcrumb" data-bind="breadcrumb">
+        <li>Galeria</li>
+      </ol>
+    </nav>
+
+    <div class="chrome-right">
+      <div class="space-switch" role="tablist" aria-label="alternar entre Galeria e Ateliê">
+        <button class="space-switch-btn is-active" data-action="goto-space" data-space="galeria" role="tab" aria-selected="true">
+          <span class="space-switch-icon">▦</span>
+          <span class="space-switch-name">Galeria</span>
+        </button>
+        <button class="space-switch-btn" data-action="goto-space" data-space="atelie" role="tab" aria-selected="false">
+          <span class="space-switch-icon">✦</span>
+          <span class="space-switch-name">Ateliê</span>
+        </button>
+        <div class="space-switch-thumb" aria-hidden="true"></div>
+      </div>
+
+      <div class="user-pill">
+        <img class="user-pill-avatar" id="user-avatar" alt="" referrerpolicy="no-referrer" style="display:none; width:24px; height:24px; border-radius:50%;" />
+        <span class="user-pill-avatar" id="user-avatar-letter">m</span>
+        <span class="user-pill-email" id="user-email">—</span>
+        <button class="btn-logout" id="btn-logout" title="sair" style="margin-left:6px; font-size:10px; color:var(--paper-4);">sair</button>
       </div>
     </div>
   </header>
 
-  <section id="video-list">
-    <div class="list-header">
-      <div class="list-title">meus <b>vídeos</b></div>
-      <button class="btn-new-video" id="btn-new-video">+ novo vídeo</button>
+  <!-- transição entre espaços (overlay animado) -->
+  <div class="space-transition" data-bind="transition" aria-hidden="true">
+    <div class="space-transition-inner">
+      <div class="space-transition-label" data-bind="transition-label">Ateliê</div>
+      <div class="space-transition-sub">entrando…</div>
     </div>
-    <div class="video-list-grid" id="video-list-grid"></div>
-    <div id="video-list-empty"></div>
-  </section>
-  <main>
-    <div class="canvas-wrap" id="canvas-wrap">
-      <div class="canvas-stage">
-        <canvas id="gl"></canvas>
-        <div class="empty-hint" id="empty-hint">
-          <b>arraste um vídeo aqui</b><br>
-          ou clique em <em>carregar vídeo</em> no topo
-        </div>
-      </div>
-      <div class="drop-overlay" id="drop-overlay"><span>solte o vídeo</span></div>
-      <div class="transport">
-        <div class="transport-row">
-          <div class="mode-tabs">
-            <button class="mode-tab active" data-mode="source">vídeo original</button>
-            <button class="mode-tab" data-mode="rotoscope">rotoscopia</button>
+  </div>
+
+  <!-- ====================================================
+       MAIN STAGE
+       ==================================================== -->
+  <main class="stage">
+
+    <!-- GALERIA · HOME -->
+    <section class="screen screen-gal-home">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">Galeria</div>
+            <h1 class="page-head-title"><em>Seus</em> projetos</h1>
+            <p class="page-head-sub">Cada projeto reúne os assets já entregues ou em vias de. Um asset nasce ao publicar um vídeo do seu Ateliê.</p>
           </div>
-          <button class="btn-play" id="btn-play">▶ play</button>
-          <div class="frame-info" id="frame-info">— / —</div>
+          <div class="page-head-actions">
+            <button class="btn btn-primary" data-action="new-project">
+              <span class="btn-icon">+</span>
+              novo projeto
+            </button>
+          </div>
         </div>
-        <!-- dual-thumb range pra marcar [in, out] no vídeo -->
-        <div class="range-wrap" id="range-wrap">
-          <div class="track"></div>
-          <div class="track-active" id="track-active"></div>
-          <input type="range" class="in-range" id="in-range" min="0" max="100" step="0.01" value="0">
-          <input type="range" class="out-range" id="out-range" min="0" max="100" step="0.01" value="100">
-        </div>
-        <div class="markers-row">
-          <span>in: <b class="in-val" id="in-val">0.00s</b></span>
-          <span class="playhead" id="playhead-info">cursor: <b>0.00s</b></span>
-          <span>out: <b class="out-val" id="out-val">0.00s</b></span>
+        <div class="project-grid" data-bind="project-grid"></div>
+        <div class="empty-state" data-bind="projects-empty" hidden>
+          <p>Você ainda não tem projetos. Crie o primeiro pra começar a entregar assets.</p>
         </div>
       </div>
-    </div>
-    <aside class="controls">
-      <h2>Trecho do vídeo</h2>
-      <div class="timing-panel" style="border:0;margin:0;padding:0">
-        <div class="timing-row">
-          <label>início (s)</label>
-          <input type="number" id="cap-start" value="0" min="0" step="0.1">
-        </div>
-        <div class="timing-row">
-          <label>fim (s)</label>
-          <input type="number" id="cap-end" value="3" min="0.1" step="0.1">
-        </div>
-        <div class="timing-row">
-          <label>fps</label>
-          <input type="number" id="cap-fps" value="12" min="1" max="60" step="1">
-        </div>
-        <div class="timing-row">
-          <label>escala (%)</label>
-          <input type="number" id="cap-scale" value="100" min="10" max="200" step="10">
-        </div>
-        <div class="ctrl-row">
-          <input type="checkbox" id="cap-overlay" checked>
-          <label for="cap-overlay">overlay frame # (validação)</label>
-        </div>
-      </div>
+    </section>
 
-      <h2 style="margin-top:24px">Efeitos</h2>
-      <div id="sliders"></div>
-
-      <div class="timing-panel">
-        <h2 class="export">Exportar .aseprite</h2>
-        <button class="btn-export" id="btn-export">Exportar arquivo</button>
-        <div class="progress" id="progress">Defina parâmetros, dê play pra preview ou clique exportar.</div>
-        <div class="progress-bar" id="pbar"></div>
+    <!-- GALERIA · PROJETO -->
+    <section class="screen screen-gal-project">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">
+              <button class="link-back" data-action="goto-home">‹ Galeria</button>
+              <span class="sep">/</span>
+              Projeto
+            </div>
+            <h1 class="page-head-title" data-bind="project-name">—</h1>
+            <p class="page-head-sub" data-bind="project-sub">—</p>
+          </div>
+          <div class="page-head-actions">
+            <div class="filter-chips" role="tablist" data-bind="asset-filter">
+              <button class="chip is-active" data-filter="all">todos</button>
+              <button class="chip" data-filter="pending">pendentes</button>
+              <button class="chip" data-filter="done">feitos</button>
+            </div>
+          </div>
+        </div>
+        <div class="asset-grid" data-bind="asset-grid"></div>
+        <div class="empty-call" data-bind="empty-call" hidden>
+          <div class="empty-call-mark">◇</div>
+          <p>
+            Assets nascem ao <strong>publicar um vídeo</strong> do seu Ateliê neste projeto.
+            Vai pro Ateliê, abre um vídeo no editor e clica em <em>publicar como asset</em>.
+          </p>
+          <button class="btn btn-ghost" data-action="goto-atelie-videos">
+            ✦ ir pro Ateliê → Vídeos
+          </button>
+        </div>
       </div>
+    </section>
 
-      <div class="footer">
-        <b>Modo "vídeo original":</b> reproduz o vídeo nativo, sem efeito. Use os marcadores <b style="color:var(--accent2)">in</b> e <b style="color:var(--accent3)">out</b> pra delimitar o trecho.<br><br>
-        <b>Modo "rotoscopia":</b> reconstrói o trecho com efeitos em frames discretos a <code>1000/fps ms</code>. <b>O que toca aqui é o que vai pro .aseprite.</b><br><br>
-        Overlay "FRAME k/N" gravado no pixel pra validação cruzada com o Aseprite.
+    <!-- ATELIÊ -->
+    <section class="screen screen-atelie">
+      <aside class="atelie-side">
+        <div class="atelie-side-head">
+          <div class="atelie-side-eyebrow">Ateliê</div>
+          <div class="atelie-side-tagline"><em>seu</em> espaço de fabricação</div>
+        </div>
+        <nav class="atelie-nav" aria-label="subseções do ateliê">
+          <button class="atelie-nav-item is-active" data-action="goto-atelie-sub" data-sub="videos">
+            <span class="atelie-nav-icon">▶</span>
+            <span class="atelie-nav-label">Vídeos</span>
+            <span class="atelie-nav-count" data-bind="count-videos">0</span>
+          </button>
+          <button class="atelie-nav-item" data-sub="personagens" disabled title="em breve">
+            <span class="atelie-nav-icon">☻</span>
+            <span class="atelie-nav-label">Personagens</span>
+            <span class="atelie-nav-count" style="opacity:0.4">soon</span>
+          </button>
+          <button class="atelie-nav-item" data-sub="enquadramentos" disabled title="em breve">
+            <span class="atelie-nav-icon">▭</span>
+            <span class="atelie-nav-label">Enquadramentos</span>
+            <span class="atelie-nav-count" style="opacity:0.4">soon</span>
+          </button>
+          <button class="atelie-nav-item" data-sub="cameras" disabled title="em breve">
+            <span class="atelie-nav-icon">◉</span>
+            <span class="atelie-nav-label">Câmeras salvas</span>
+            <span class="atelie-nav-count" style="opacity:0.4">soon</span>
+          </button>
+        </nav>
+        <div class="atelie-side-foot">
+          <p>Tudo aqui é <em>seu</em>. Nada chega à Galeria sem você publicar.</p>
+        </div>
+      </aside>
+
+      <div class="atelie-stage">
+        <div class="atelie-sub" data-sub="videos">
+          <div class="page-head">
+            <div class="page-head-meta">
+              <div class="page-head-eyebrow">Ateliê / Vídeos</div>
+              <h2 class="page-head-title"><em>Vídeos</em> em fabricação</h2>
+              <p class="page-head-sub">Matéria-prima da rotoscopia. Cada vídeo é seu até você publicar como asset.</p>
+            </div>
+            <div class="page-head-actions">
+              <button class="btn btn-primary btn-lg" data-action="new-video">
+                <span class="btn-icon">+</span>
+                criar vídeo
+              </button>
+            </div>
+          </div>
+          <div class="video-grid" data-bind="video-grid"></div>
+          <div class="empty-state" data-bind="videos-empty" hidden>
+            <p>Nenhum vídeo ainda. Crie o primeiro pra começar a editar.</p>
+          </div>
+        </div>
       </div>
-    </aside>
+    </section>
+
+    <!-- EDITOR (real, não mock) -->
+    <section class="screen screen-editor editor-real">
+      <div class="editor-real-shell">
+        <div class="editor-canvas-wrap" id="canvas-wrap">
+          <div class="editor-canvas-stage">
+            <canvas id="gl"></canvas>
+            <div class="empty-hint" id="empty-hint">
+              <strong>arraste um vídeo aqui</strong><br>
+              ou clique em <em>carregar vídeo</em>
+            </div>
+          </div>
+          <div class="drop-overlay" id="drop-overlay"><span>solte o vídeo</span></div>
+          <div class="editor-transport-real">
+            <div class="transport-row-real">
+              <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="source">vídeo original</button>
+                <button class="mode-tab" data-mode="rotoscope">rotoscopia</button>
+              </div>
+              <button class="btn-play" id="btn-play">▶ play</button>
+              <div class="frame-info" id="frame-info">— / —</div>
+            </div>
+            <div class="range-wrap" id="range-wrap">
+              <div class="track"></div>
+              <div class="track-active" id="track-active"></div>
+              <input type="range" class="in-range" id="in-range" min="0" max="100" step="0.01" value="0">
+              <input type="range" class="out-range" id="out-range" min="0" max="100" step="0.01" value="100">
+            </div>
+            <div class="markers-row">
+              <span>in: <b class="in-val" id="in-val">0.00s</b></span>
+              <span class="ph" id="playhead-info">cursor: <b>0.00s</b></span>
+              <span>out: <b class="out-val" id="out-val">0.00s</b></span>
+            </div>
+            <input type="file" id="file-input" accept="video/*" style="display:none">
+          </div>
+        </div>
+
+        <aside class="editor-controls">
+          <div class="ctrl-section">
+            <h3>vídeo</h3>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
+              <div class="video-name-display" id="video-name-display" style="font-family:var(--font-display); font-style:italic; font-size:16px; color:var(--paper);">—</div>
+              <div id="video-publish-state" class="editor-publish-state-real" style="margin:0;"><span class="dot-warn"></span>ainda não publicado</div>
+            </div>
+            <button class="btn-export" id="btn-load" style="margin-top:0;">▸ carregar vídeo</button>
+          </div>
+
+          <div class="ctrl-section">
+            <h3>trecho</h3>
+            <div class="timing-row">
+              <label>início (s)</label>
+              <input type="number" id="cap-start" value="0" min="0" step="0.1">
+            </div>
+            <div class="timing-row">
+              <label>fim (s)</label>
+              <input type="number" id="cap-end" value="3" min="0.1" step="0.1">
+            </div>
+            <div class="timing-row">
+              <label>fps</label>
+              <input type="number" id="cap-fps" value="12" min="1" max="60" step="1">
+            </div>
+            <div class="timing-row">
+              <label>escala (%)</label>
+              <input type="number" id="cap-scale" value="100" min="10" max="200" step="10">
+            </div>
+            <div class="ctrl-row">
+              <input type="checkbox" id="cap-overlay" checked>
+              <label for="cap-overlay">overlay frame # (validação)</label>
+            </div>
+          </div>
+
+          <div class="ctrl-section">
+            <h3>preset</h3>
+            <div class="preset-grid-real" id="presets"></div>
+          </div>
+
+          <div class="ctrl-section">
+            <h3>efeitos</h3>
+            <div id="sliders"></div>
+          </div>
+
+          <div class="ctrl-section">
+            <h3>exportar local</h3>
+            <button class="btn-export" id="btn-export">Exportar .aseprite</button>
+            <div class="progress" id="progress">Defina parâmetros, dê play pra preview ou clique exportar.</div>
+            <div class="progress-bar" id="pbar"></div>
+            <div class="editor-publish-real">
+              <button id="btn-publish-asset"><span style="margin-right:8px">◆</span>publicar como asset</button>
+              <p class="editor-publish-hint-real">
+                Publicar gera o <code>.aseprite</code> final, sobe pro storage e cria o asset no projeto que você escolher.
+              </p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
   </main>
 
-  <div class="modal-bg" id="name-modal">
-    <div class="modal">
-      <h3>novo vídeo</h3>
-      <p style="color:var(--dim); font-size:11px; letter-spacing:0.1em; text-transform:uppercase;">dê um nome ao vídeo (você pode mudar depois)</p>
-      <input type="text" id="name-modal-input" placeholder="ex: skate na praça" maxlength="200">
-      <div class="modal-err" id="name-modal-err"></div>
-      <div class="modal-actions">
-        <button id="name-modal-cancel">cancelar</button>
-        <button class="primary" id="name-modal-confirm">criar</button>
+  <!-- ====================================================
+       MODAIS
+       ==================================================== -->
+
+  <!-- modal: novo projeto -->
+  <div class="modal" data-modal="new-project" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Galeria</div>
+        <h3>Novo projeto</h3>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>nome do projeto</span>
+          <input type="text" data-bind="new-project-name" placeholder="ex: Cavaleiros do Vale" maxlength="200" />
+        </label>
+        <div class="modal-err" data-bind="new-project-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="confirm-new-project">criar projeto</button>
       </div>
     </div>
   </div>
 
-  <div class="modal-bg" id="confirm-modal">
-    <div class="modal">
-      <h3>confirmar</h3>
-      <p id="confirm-modal-msg"></p>
-      <div class="modal-actions">
-        <button id="confirm-modal-no">cancelar</button>
-        <button class="danger" id="confirm-modal-yes">apagar</button>
+  <!-- modal: novo vídeo (seletor de fluxo) -->
+  <div class="modal modal-wide" data-modal="new-video" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Vídeos</div>
+        <h3>Como você quer começar esse vídeo?</h3>
+        <p class="modal-sub">Quatro caminhos, todos terminam num vídeo na sua workbench. A escolha aqui é só sobre <em>como conseguir o vídeo</em> — depois disso o editor é o mesmo.</p>
+      </div>
+      <div class="modal-body">
+        <div class="flow-grid">
+          <button class="flow-card" data-action="pick-flow" data-flow="A">
+            <div class="flow-card-letter">A</div>
+            <div class="flow-card-name">Upload de vídeo</div>
+            <p>Você já tem um <code>.mp4</code>. Sobe e abre no editor.</p>
+          </button>
+          <button class="flow-card is-soon" data-flow="B" disabled>
+            <div class="flow-card-letter">B</div>
+            <div class="flow-card-name">Vídeo de URL</div>
+            <p>Cola um link, baixa, edita. <span class="soon">em breve</span></p>
+          </button>
+          <button class="flow-card is-soon" data-flow="C" disabled>
+            <div class="flow-card-letter">C</div>
+            <div class="flow-card-name">Geração genérica</div>
+            <p>Prompt + modelo, vídeo direto. <span class="soon">em breve</span></p>
+          </button>
+          <button class="flow-card flow-card-D is-soon" data-flow="D" disabled>
+            <div class="flow-card-letter">D</div>
+            <div class="flow-card-name">Caminho personagem</div>
+            <p>Personagem → enquadramento → movimento. <span class="soon">em breve</span></p>
+          </button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
       </div>
     </div>
   </div>
 
+  <!-- modal: nome do vídeo (após escolher fluxo A) -->
+  <div class="modal" data-modal="name-video" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Vídeos</div>
+        <h3>Nome do vídeo</h3>
+        <p class="modal-sub">Você pode renomear depois.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>nome</span>
+          <input type="text" data-bind="name-video-input" placeholder="ex: skate na praça" maxlength="200" />
+        </label>
+        <div class="modal-err" data-bind="name-video-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="confirm-name-video">criar e abrir editor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: publicar como asset -->
+  <div class="modal" data-modal="publish" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Editor → Galeria</div>
+        <h3>Publicar como asset</h3>
+        <p class="modal-sub">Gera o <code>.aseprite</code> final e cria o asset no projeto-destino. Disponibiliza pro time.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>projeto-destino</span>
+          <div class="custom-select" data-bind="publish-project-select">
+            <button class="custom-select-btn" data-action="toggle-project-select" type="button">
+              <span data-bind="publish-project-label">— escolher —</span>
+              <span class="caret">▾</span>
+            </button>
+            <ul class="custom-select-menu" data-bind="publish-project-menu" hidden></ul>
+          </div>
+        </label>
+        <label class="field">
+          <span>nome do asset</span>
+          <input type="text" data-bind="publish-asset-name" placeholder="herda do nome do vídeo" maxlength="200" />
+        </label>
+        <div class="field-row" data-bind="publish-overwrite-warn" hidden>
+          <span class="dot dot-warn"></span>
+          Esse vídeo já tem asset publicado. Confirmar vai <strong>sobrescrever</strong> o <code>.aseprite</code> existente.
+        </div>
+        <div class="modal-err" data-bind="publish-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-publish" data-action="confirm-publish">
+          <span class="btn-icon">◆</span>
+          publicar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: confirmar (deletar) -->
+  <div class="modal" data-modal="confirm" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-bind="confirm-title">Confirmar</h3>
+        <p class="modal-sub" data-bind="confirm-msg">—</p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-danger" data-action="confirm-yes">apagar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div class="toast" data-bind="toast" hidden>
+    <span class="toast-mark">◆</span>
+    <span class="toast-msg" data-bind="toast-msg">—</span>
+  </div>
+
+  <!-- vídeo escondido pro editor -->
   <video id="vid" muted playsinline loop crossorigin="anonymous" preload="auto" style="display:none"></video>
 
   <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
   <script src="./logto-auth.js"></script>
-
   <script type="module" src="./js/main.js"></script>
 </body>
 </html>

@@ -1,29 +1,19 @@
-// =============================================================
-//  ROTOSCOPE PoC — TRANSPORT ÚNICO (princípio WYSIWYG)
-//  -----------------------------------------------------------
-//  Não existe RAF contínuo a 60fps. Existe um array `frames[]` de
-//  N RGBA buffers que é regenerado quando duração ou fps mudam.
-//  Play, scrub e export consomem EXATAMENTE o mesmo array.
-// =============================================================
+// Bootstrap. Auth → router → screens.
 
-import { bindUI as bindPlaybackUI, bootMode, stopPlay } from './playback.js';
-import {
-  buildUI, wireHandlers, setProgress, initRangeUI, refreshRangeUI, updateInfo, dom,
-} from './ui.js';
-import { initFileLoader, bindFileLoader } from './file_loader.js';
 import { initAuth, signIn, signOut, getUser } from './auth.js';
-import { getVideo } from './videos_api.js';
-import { initVideoListUI, bindVideoList, showVideoList, hideVideoList } from './video_list.js';
-import { bindRouter, startRouter, navigateList, navigateVideo } from './router.js';
+import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateEditor, currentRoute } from './router.js';
+import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
+import { showHome } from './gal_home.js';
+import { showProject } from './gal_project.js';
+import { showAtelieVideos } from './atelie_videos.js';
+import { initEditor, openEditor } from './editor.js';
 
-// ----- Login screen handlers -----
 const $loginErr = document.getElementById('login-err');
 const $btnSignin = document.getElementById('btn-signin');
 const $btnLogout = document.getElementById('btn-logout');
 const $userAvatar = document.getElementById('user-avatar');
+const $userAvatarLetter = document.getElementById('user-avatar-letter');
 const $userEmail = document.getElementById('user-email');
-const $btnBack = document.getElementById('btn-back');
-const $videoNameDisplay = document.getElementById('video-name-display');
 
 $btnSignin.addEventListener('click', async () => {
   $loginErr.textContent = '';
@@ -32,76 +22,41 @@ $btnSignin.addEventListener('click', async () => {
 });
 
 $btnLogout.addEventListener('click', async () => {
-  try { await signOut(); } catch(e) { console.warn(e); }
+  try { await signOut(); } catch (e) { console.warn(e); }
 });
 
-$btnBack.addEventListener('click', () => {
-  stopPlay();
-  navigateList();
-});
-
-let editorBooted = false;
-let currentVideo = null;
-
-function bootEditorOnce() {
-  if (editorBooted) return;
-  editorBooted = true;
-  buildUI();
-  bindPlaybackUI({
-    setProgress, updateInfo,
-    $btnPlay: dom.$btnPlay,
-    $btnExport: dom.$btnExport,
-    $modeTabs: dom.$modeTabs,
-  });
-  wireHandlers();
-  bindFileLoader({
-    onLoaded: () => {
-      initRangeUI();
-      refreshRangeUI();
-      setProgress('<span class="stage">Vídeo carregado.</span> Use os marcadores pra delimitar trecho, depois mude pra "rotoscopia" e exporte.', 0);
-      updateInfo();
-      bootMode('source');
-    },
-  });
-  initFileLoader();
+function showHomeScreen() {
+  setSpace('galeria', 'home');
+  setBreadcrumb([{ label: 'Galeria' }]);
+  showHome();
 }
 
-async function showEditor(videoId) {
-  // Carrega metadata do vídeo
-  let v;
-  try {
-    v = await getVideo(videoId);
-  } catch (e) {
-    alert('erro ao abrir vídeo: ' + e.message);
-    navigateList();
-    return;
-  }
-  if (!v) {
-    alert('vídeo não encontrado');
-    navigateList();
-    return;
-  }
-  currentVideo = v;
-
-  hideVideoList();
-  document.body.classList.remove('view-list');
-  document.body.classList.add('no-video'); // editor começa sem vídeo carregado
-  bootEditorOnce();
-
-  $videoNameDisplay.textContent = v.name;
-
-  // TODO próxima sessão: se v.gcs_url, atribuir vid.src = v.gcs_url e disparar fluxo de loaded.
-  // Por ora: editor abre vazio, user precisa carregar arquivo manualmente (que ainda só fica em browser).
-  if (v.gcs_url) {
-    setProgress('<span class="stage">Upload pra storage virá no próximo passo.</span> Por agora, carregue o vídeo manualmente.', 0);
-  }
+function showProjectScreen(id) {
+  setSpace('galeria', 'project');
+  setBreadcrumb([
+    { label: 'Galeria', action: () => navigateHome() },
+    { label: 'Projeto' },
+  ]);
+  showProject(id);
 }
 
-function showList() {
-  document.body.classList.add('view-list');
-  $videoNameDisplay.textContent = '';
-  currentVideo = null;
-  showVideoList();
+function showAtelieScreen() {
+  setSpace('atelie', 'atelie');
+  setBreadcrumb([
+    { label: 'Ateliê' },
+    { label: 'Vídeos' },
+  ]);
+  showAtelieVideos();
+}
+
+function showEditorScreen(id) {
+  setSpace('atelie', 'editor');
+  setBreadcrumb([
+    { label: 'Ateliê', action: () => navigateAtelie() },
+    { label: 'Vídeos', action: () => navigateAtelie('videos') },
+    { label: 'Editor' },
+  ]);
+  openEditor(id);
 }
 
 (async () => {
@@ -123,17 +78,33 @@ function showList() {
   }
 
   const u = getUser();
-  if (u.userPicture) $userAvatar.src = u.userPicture; else $userAvatar.style.display = 'none';
+  if (u.userPicture) {
+    $userAvatar.src = u.userPicture;
+    $userAvatar.style.display = '';
+    $userAvatarLetter.style.display = 'none';
+  } else {
+    $userAvatarLetter.textContent = (u.userEmail || u.userId || '?')[0].toUpperCase();
+  }
   $userEmail.textContent = u.userEmail || u.userId;
 
   document.body.classList.remove('app-loading');
 
-  // Wiring de lista + roteador
-  initVideoListUI();
-  bindVideoList({ onOpenVideo: (id) => navigateVideo(id) });
+  // boot do editor (só DOM/listeners; não carrega vídeo até openEditor)
+  initEditor();
+
+  // chrome com handler de troca de espaço
+  bindChrome({
+    onSwitchSpace: (target) => {
+      if (target === 'galeria') navigateHome();
+      else navigateAtelie('videos');
+    },
+  });
+
   bindRouter({
-    onList: showList,
-    onVideo: (id) => showEditor(id),
+    onHome: showHomeScreen,
+    onProject: showProjectScreen,
+    onAtelie: showAtelieScreen,
+    onEditor: showEditorScreen,
   });
   startRouter();
 })();
