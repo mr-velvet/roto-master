@@ -1,7 +1,9 @@
 # Visão da Ferramenta — roto-master
 
-Última atualização: 2026-05-04 (patch v3 — antidelírio). **Status: visão de produto fechada. Arquitetura técnica e schema ainda não definidos.**
+Última atualização: 2026-05-04 (patch v4 — fecha decisão de detalhe de asset, atualiza estado pós-implementação da v1). **Status: visão de produto fechada. Arquitetura técnica fechada. Fatia mínima da v1 em produção em https://roto.did.lu (pendente: detalhe do asset, ver seção 6.7).**
 
+> **Patch 2026-05-04 (v4 — pós-v1):** após a fatia mínima entrar em produção, ficou claro que o "Detalhe de asset" (seção 6.2 ponto 5) precisava de decisão, não podia continuar "futura" — sem ele o asset vira card sem ação e quebra os princípios "asset é cidadão central" e a regra 4 da seção 6.6. Decisão fechada em 6.2 (modal) e detalhada na nova seção 6.7. Seção 11 atualizada: o protótipo `prototype/` é o **terceiro** (refeito em contexto limpo após o patch v3) e está aprovado como referência viva — não foi descartado. Seção 12 reescrita: a fase de protótipo + arquitetura terminou; a fase atual é **fechar a v1 mínima**.
+>
 > **Patch 2026-05-04 (v3 — antidelírio):** seção 6 (UI) reescrita com decisões cruas; seção 6.1 (metáfora do ateliê) adicionada como modelo mental obrigatório; seção 6.5 (anti-padrões de UI) adicionada listando explicitamente o que NÃO pode aparecer, com exemplo do erro real ocorrido em 2026-05-04 ao construir o primeiro protótipo v2. Resto da visão inalterado.
 >
 > **Patch 2026-05-03 (v2):** decisões consolidadas em conversa de produto. Mudanças principais: workbench passa a ser do **usuário**, não do projeto; asset vinculado a projeto **só no momento da publicação**; relação **1:1** entre vídeo e asset (reuso = duplicar vídeo); republicação **sobrescreve** sem histórico; vídeos do Fluxo D são **snapshots imutáveis**; Fluxos B (URL) e C (genérico) ficam com **espaço reservado na UI** mas implementação adiada. Detalhes nas seções 4, 6, 7 e 9.
@@ -140,7 +142,7 @@ Existem cinco telas principais. Sem mais, sem menos.
 2. **Detalhe de projeto** — lista de assets do projeto. Entrada principal de cada projeto.
 3. **Ateliê (Workbench)** — quatro subseções, cada uma é uma tela: Vídeos, Personagens, Enquadramentos, Câmeras salvas.
 4. **Editor de vídeo** — tela cheia, onde se edita um vídeo do ateliê e se aciona "publicar como asset".
-5. **Detalhe de asset** — pode ser modal ou tela própria, decisão futura.
+5. **Detalhe de asset** — modal sobre a tela de detalhe do projeto (decisão fechada no patch v4; ver 6.7).
 
 Não existe "tela de workbench como container das 4 subseções". As 4 subseções **são** a workbench. Quando o usuário está em "Ateliê → Vídeos", ele já está no ateliê. Não há um lugar a mais a alcançar.
 
@@ -180,6 +182,10 @@ Não existe "tela de workbench como container das 4 subseções". As 4 subseçõ
 - Tem header global persistente com breadcrumbs. Breadcrumbs mostram de onde se veio (de um projeto ou do ateliê).
 - Não tem: botão "voltar pro projeto X" duplicado em vários cantos. O breadcrumb já é o caminho de volta.
 
+**Detalhe do asset (modal)** — ver seção 6.7 pra detalhamento.
+- Tem: preview, nome, status (chip clicável que alterna pendente↔feito), vínculo visível com o vídeo-fonte, ação "baixar `.aseprite`", ação "abrir editor pra re-editar".
+- Não tem: histórico de versões (republicar sobrescreve, conforme decisão 6); "atribuir a artista" (decisão adiada na seção 10); botão "novo asset" (asset nasce no ato de publicar, não aqui).
+
 ### 6.5 Anti-padrões de UI (proibidos)
 
 Lista de coisas que **não pode acontecer**, com explicação de por que cada uma é erro. Esta lista nasceu do delírio real ocorrido em 2026-05-04 ao construir o primeiro protótipo v2. Se o protótipo (ou produto) tem qualquer um desses padrões, **descartar e refazer**.
@@ -214,6 +220,39 @@ Antes de aprovar qualquer protótipo ou tela, perguntar:
 6. **Tem algum elemento de UI que aparece "por padrão de SaaS" e não por necessidade desta ferramenta?** Se sim, remover.
 
 Se qualquer resposta for não, voltar antes de avançar.
+
+### 6.7 Detalhe do asset (modal)
+
+Decisão fechada no patch v4: **modal** sobre a tela de Detalhe do projeto, não tela própria. Razões:
+
+- **Não tira o usuário do contexto.** Ele está inspecionando obras de uma sala da galeria; um modal é olhar de perto sem sair da sala.
+- **Asset não tem subnavegação.** Tela própria sugere que tem mais coisa pra explorar dentro dele — não tem. É um entregável simples (status, vídeo-fonte, arquivo final, ação).
+- **Custa menos atenção.** ESC fecha. Volta imediato pra grid de assets pra inspecionar o próximo.
+
+**O que o modal mostra**, em ordem visual de cima pra baixo:
+
+1. **Eyebrow + nome do asset.** Eyebrow indica de onde se está olhando ("Galeria · Projeto X"). Nome em tipografia de obra (mesma família dos títulos de projeto).
+2. **Preview.** Idealmente miniatura/thumbnail real da rotoscopia ou do vídeo-fonte. Enquanto isso não existe, marca tipográfica grande (não o losango ◇ genérico) que comunica "obra".
+3. **Chip de status, clicável.** Alterna `pendente ↔ feito` direto. Sem dropdown, sem submenu. Reflete na lista atrás imediatamente.
+4. **Vínculo com o vídeo-fonte (cumpre regra 4 da 6.6).** Linha tipo "fonte: nome do vídeo no Ateliê" com seta. Clicar nela leva pro editor daquele vídeo.
+5. **Ações primárias:**
+   - **Baixar `.aseprite`** — ação principal, link direto pro `gcs_url` do asset.
+   - **Re-editar** — equivalente a clicar no vídeo-fonte; vai pro editor. Republicar ali sobrescreve este asset (já implementado no backend).
+6. **Metadata discreta** (rodapé do modal): versão atual, data de publicação, quem publicou.
+7. **Ação destrutiva escondida** (não destacada): "despublicar asset" — apaga o asset, vídeo volta a ser rascunho na workbench. Comportamento conservador: não apaga o vídeo-fonte. Pede confirmação.
+
+**O que o modal NÃO tem:**
+
+- **Atribuição a artista** (decisão adiada na seção 10).
+- **Histórico de versões** (republicar sobrescreve, conforme decisão 6).
+- **Comentários, threads, conversa.** Asset é entregável, não tarefa de Trello (anti-padrão 7 da 6.5).
+- **Edição direta do nome.** Renomeia se necessário (clicar no nome alterna pra input). Mas não é foco.
+
+**Comportamento do card de asset na grid (Detalhe do projeto):**
+
+- **Click no card** → abre modal.
+- **Card mostra**: preview, nome, status (chip não-clicável, só visual), data, **selo discreto da origem do vídeo** (upload/url/genérico/personagem) — comunica "esta obra veio de qual fluxo".
+- **Hover** revela dois atalhos canto inferior: `↓` (baixar `.aseprite` direto, sem abrir modal) e `↗` (abrir editor direto).
 
 ## 7. O ato de publicar (asset ↔ vídeo)
 
@@ -274,26 +313,31 @@ Nenhuma dessas evoluções pede repensar Assets vs Workbench. Esse é o teste de
 - Outros formatos de saída além de `.aseprite`.
 - Histórico de versões publicadas do mesmo asset (hoje sobrescreve).
 
-## 11. Documentos relacionados
+## 11. Documentos relacionados e estado dos protótipos
 
+### Documentos
+- `arquitetura-tecnica.md` — espelho técnico desta visão (entidades, endpoints, GCS, jobs, fluxo de publicação como transação). Régua: time interno pequeno, sem cerimônia de SaaS.
 - `modulo-personagem.md` — detalha o Fluxo D (caminho personagem). Esta visão é a referência mestra; aquele doc é especialização.
-- `PROGRESS.md` — estado atual de implementação da ferramenta.
-- `prototype-v1-personagem/` — protótipo navegável v1, preservado como referência histórica do Fluxo D (estética Atelier 2087 + viewport 3D + presets de câmera reaproveitáveis).
-- ~~`prototype/`~~ — protótipo navegável v2 foi tentado em 2026-05-04 e **descartado** por violar diretamente os anti-padrões da seção 6.5. O patch v3 desta visão nasceu desse fracasso. Próxima tentativa só após releitura completa da seção 6.
-- App em produção: https://roto.did.lu
+- `PROGRESS.md` — estado vivo da implementação.
+
+### Protótipos
+- `prototype-v1-personagem/` — primeiro protótipo, foco no módulo personagem isolado. **Preservado** como referência histórica do Fluxo D (estética Atelier 2087 + viewport 3D + presets de câmera reaproveitáveis quando o Fluxo D for implementado de verdade).
+- `prototype/` — **terceiro protótipo, aprovado como referência viva da UI da ferramenta inteira.** Histórico: o segundo protótipo foi tentado em 2026-05-04 e descartado por violar os anti-padrões da seção 6.5; o patch v3 desta visão nasceu desse fracasso; em seguida o protótipo foi refeito do zero em contexto limpo, lendo a seção 6 antes, e este terceiro está vivo. A v1 em produção espelha decisões dele (alternador binário, transição animada entre espaços, sidebar do Ateliê listando subseções diretamente, asset como objeto tangível).
+
+### Produção
+- App em produção: https://roto.did.lu (login Google, multi-user via Logto).
 
 ## 12. Próximos passos do produto
 
-Antes de qualquer descida pra arquitetura técnica:
-1. **Refazer o protótipo navegável v2 do zero, em contexto limpo**, lendo antes seção 6 inteira (especialmente 6.1 metáfora e 6.5 anti-padrões). A primeira tentativa em 2026-05-04 falhou exatamente nesses pontos — não pular essa leitura.
-2. Validar a visão com o protótipo navegável.
-3. Só então: schema de dados, endpoints, ordem de implementação.
+A fase de visão + protótipo + arquitetura técnica está fechada. A v1 mínima está em produção mas **não está completa** — falta o **detalhe do asset** (seção 6.7), sem o qual o asset vira card sem ação e o princípio "asset é cidadão central" fica quebrado.
 
-### Checklist obrigatório antes de produzir UI
+A ordem de produto pra fechar a v1 está em `PROGRESS.md`. Em uma frase: **fechar o detalhe do asset (modal da 6.7) é prioridade um**, antes de qualquer extensão. Depois disso a v1 está formalmente entregue e pode-se atacar v2 (Fluxo D, jobs/Gerações, Fluxos B/C, share link).
+
+### Checklist obrigatório antes de produzir UI nova
 
 Marcar cada item antes de escrever qualquer HTML/CSS/JS de tela:
 
-- [ ] Li seção 6 inteira (incluindo anti-padrões 6.5).
+- [ ] Li seção 6 inteira (incluindo anti-padrões 6.5 e detalhe do asset 6.7).
 - [ ] Sei dizer em uma frase a diferença entre Galeria (Projetos+Assets) e Ateliê (Workbench).
 - [ ] Sei dizer por que "workbench" não pode aparecer como botão repetido em headers.
 - [ ] Sei dizer onde nasce um asset (resposta única: ato de publicar).

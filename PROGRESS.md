@@ -1,113 +1,122 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 (fatia mínima da v1 implementada localmente; pendente de deploy + smoke test em produção)
+Última atualização: 2026-05-04 (fatia mínima da v1 em produção; **falta detalhe do asset 6.7 pra fechar a v1 — esse é o próximo passo**)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
-A visão do produto foi reformulada em 2026-05-03 (patch v2: workbench do usuário, asset 1:1 com vídeo, vinculação só na publicação, fluxos B/C adiados) e **endurecida em 2026-05-04 (patch v3 antidelírio)** após uma tentativa de protótipo v2 ter falhado por violar princípios de UI básicos.
+### Ordem de leitura — não inverter
 
-### Ordem de leitura obrigatória — não inverter
-
-1. **`docs/visao-da-ferramenta.md`** — referência mestra. **Ler INTEIRO**, com atenção redobrada à **seção 6** (UI). Subseções críticas: 6.1 (metáfora Ateliê/Galeria), 6.5 (anti-padrões — lista do que NÃO pode aparecer, com exemplos do delírio real), 6.6 (regra de validação).
-2. **`docs/arquitetura-tecnica.md`** — espelho técnico da visão. Tabelas, endpoints, storage, jobs assíncronos, fluxo de publicação como transação. Régua: **time interno pequeno** — não inventar cerimônia de produto público.
+1. **`docs/visao-da-ferramenta.md`** — referência mestra. **Ler INTEIRO**. Em ordem de criticidade pra UI: seção 6.1 (metáfora Ateliê/Galeria), 6.5 (anti-padrões — lista do que NÃO pode aparecer), 6.7 (detalhe do asset, decisão fechada no patch v4), 6.6 (regra de validação).
+2. **`docs/arquitetura-tecnica.md`** — espelho técnico. Régua: **time interno pequeno** — não inventar cerimônia de SaaS público.
 3. **`docs/modulo-personagem.md`** — especialização do Fluxo D. Anterior à visão mestra; em conflito **vale a visão**.
 
-### Pontos de atenção (cicatrizes de erros reais)
+### Cicatrizes de erros reais (não esquecer)
 
-- **2026-05-04:** ao construir o primeiro protótipo v2 (descartado), ignorei a seção de UI e produzi delírio: botão "workbench" repetido no header, dropdown que misturava workbench com suas próprias subseções, "+ novo asset" no projeto (asset não nasce ali), home global sem identidade do conceito. Sintoma de produzir muito de uma vez sem releitura intermediária. Patch v3 da visão nasceu desse erro — seção 6 inteira foi reescrita.
-- **Antes de produzir QUALQUER UI** (HTML, mockup, wireframe), passar pelo checklist no fim de `docs/visao-da-ferramenta.md` (seção 12). Se não passar, parar.
-- **Não confundir "menu global pra alternar Galeria/Ateliê" com "atalhos contextuais em todo header"**. O menu já é a forma. Repetir é ruído.
-- **Asset é cidadão central**, não label técnico. Se entrar na ferramenta e não ver "isto é um asset" como objeto tangível na tela, a UI errou.
+- **2026-05-04:** o segundo protótipo violou anti-padrões de UI por pular a seção 6. Patch v3 da visão nasceu desse erro. **Antes de produzir QUALQUER UI**, passar pelo checklist da seção 12 da visão. Se não passar, parar.
+- **2026-05-04:** durante o trabalho da fatia mínima, ao tentar conversar com o user sobre decisões técnicas, deliri trazendo preocupações de produto público (membership pra prevenir vazamento, etc.) num contexto de time interno pequeno e fechado. Régua é "isso aparece porque é necessidade desta ferramenta ou porque é padrão de SaaS?". Se for o segundo, remover.
+- **2026-05-04:** durante a v1, ignorei a definição de "Detalhe de asset" (seção 6.2 ponto 5) tratando como "decisão futura" e entreguei o asset card sem ação alguma. Resultado: o usuário publicou um asset e ficou olhando pra um card morto. Princípio "asset é cidadão central" quebrado. Patch v4 da visão fechou a decisão (modal, ver 6.7).
+- **Asset é cidadão central**, não label técnico. Se entrar na ferramenta e não ver "isto é um asset" como objeto tangível e **interagível**, a UI errou.
 
-A implementação em produção ainda não reflete a visão. **O protótipo navegável v2** (em `prototype/`) foi aprovado em 2026-05-04 como **modelo de referência da UI** para a implementação real — quando descer pra código de produção, espelhar as decisões dele (metáfora Galeria↔Ateliê com diferenciação visual deliberada, transição animada entre espaços, sidebar do Ateliê listando 4 subseções diretamente, asset como objeto tangível, publicação como ato deliberado). O protótipo v1 (módulo personagem isolado) continua **preservado** em `prototype-v1-personagem/` como referência histórica e fonte de reaproveitamento do Fluxo D (estética Atelier 2087, viewport 3D, presets de câmera).
+## Estado atual
 
-### Modelo de referência (protótipo v2)
+App em produção em **https://roto.did.lu** rodando a **fatia mínima da v1** (commits até `ee8f30a`). Login Google + multi-user via Logto + criar projeto + criar vídeo no Ateliê + upload pro GCS + editor + publicar como asset + autosave de edit_state. Migrations 002–009 aplicadas no Postgres da plataforma (tabelas de v2 já criadas mas vazias — Fluxo D, jobs, models não consumidas ainda).
 
-Decisões da UI a preservar quando implementar de verdade:
+**A v1 não está completa.** Ver "O que falta pra fechar a v1" abaixo. O bloqueador principal é o **detalhe do asset (seção 6.7 da visão)** — sem ele, o asset publicado vira card sem ação e o princípio central "asset é cidadão" fica quebrado.
 
-- **Dois espaços, não duas abas.** Galeria (projetos+assets) e Ateliê (workbench do usuário) com paletas distintas — Galeria fria/ink puro, Ateliê quente/cobre — e header que muda de cor entre os dois.
-- **Alternador binário no canto direito do header** é a única forma de trocar de espaço. Sem botão "workbench" replicado em cantos contextuais.
-- **Transição animada (~500ms)** ao trocar de espaço: overlay full-screen com label do destino + "entrando…". Anuncia a mudança em vez de só pular.
-- **Sidebar do Ateliê** lista as 4 subseções (Vídeos, Personagens, Enquadramentos, Câmeras salvas) diretamente, sem item-pai "Workbench". A sidebar *é* a workbench.
-- **Detalhe do projeto sem botão "+ novo asset"** — chamada redigida explicando que asset nasce ao publicar.
-- **Card de vídeo no Ateliê** mostra dois selos: origem (upload/url/genérico/personagem) e estado de publicação ("publicado em Projeto X" ou "rascunho").
-- **Editor com publicação como ritual** — modal próprio com escolha de projeto-destino, aviso explícito de sobrescrita ao republicar, transição animada de volta pra Galeria após confirmar.
-- **Breadcrumb persistente no header** mostra o caminho real ("Galeria › Projeto X › Asset Y" ou "Ateliê › Vídeos › nome do vídeo"). Sem botões "voltar" duplicados.
-- Reaproveitar a estética **Atelier 2087** (paleta cobre, Fraunces serif itálica, JetBrains Mono).
+## O que está em produção e funcionando
 
-## Estado atual (em uma frase)
-
-App em produção em **https://roto.did.lu** com login Google. **A v1 da nova visão (galeria + ateliê + ato de publicar + upload pro GCS) está implementada no código (commits `5daffb4`, `431837c`, `e031e17`) mas ainda não foi deployada** — falta rodar `bash /home/manu/platform/scripts/deploy.sh roto-master` na VM pra aplicar as migrations 002–004 e atualizar o container.
-
-## O que já está em produção (antes da fatia v1)
-
-### Editor de rotoscopia (núcleo da PoC)
-- File picker / drag-drop carrega qualquer vídeo (`URL.createObjectURL`).
-- Dois modos: "vídeo original" (playback nativo) e "rotoscopia" (frames discretos com efeitos WebGL).
-- Dual-thumb in/out range pra delimitar trecho.
-- Transport único (princípio WYSIWYG): play, scrub e export consomem o mesmo `frames[]`.
-- Export `.aseprite` válido com layer `ref` (referência travada esmaecida) + layer `draw` (vazia em cima). Writer JS puro contra spec oficial.
-- Presets de efeito (CGA, magenta, amber, scanlines, glitch, etc.).
-
-### Plataforma did.lu
+### Plataforma e infra
 - Container `roto-master` em `:5031`, Caddy serve `roto.did.lu` com HTTPS automático.
-- `did.json` declara `port: 5031, domain: "roto.did.lu", database: true, logto: true, migrations: "migrations/"`.
-- Postgres compartilhado da plataforma.
-- Logto App ID `36iz4iomybe4r1n67a7jc` (Google OAuth), hardcoded em `public/js/auth.js`.
-- Multi-user via `req.user.sub` do Logto, tudo escopado.
+- Postgres compartilhado da plataforma, database `roto_master`. Migrations 001–009 aplicadas (as 005–009 criaram tabelas de v2 que ainda não são consumidas).
+- Logto App ID `36iz4iomybe4r1n67a7jc` (Google OAuth), `auth.did.lu`. Multi-user via `req.user.sub`.
+- GCS: bucket `didlu-imagestore`, URL pública via `https://st.did.lu/...`. Auth via `GCS_SERVICE_ACCOUNT` injetada pela plataforma.
 
-## O que está implementado no código (fatia v1) — pendente de deploy
+### Galeria
+- Home (`#/`): lista projetos onde o user é membro.
+- Modal "novo projeto": cria + insere creator como owner em transação.
+- Detalhe do projeto (`#/p/:id`): lista assets, filtros (todos/pendentes/feitos), chamada redigida quando vazio (sem "+ novo asset", anti-padrão 6.5).
 
-### Backend
-- Migrations 002–004 escritas (videos com origin/published_asset_id/source_*; projects + project_members; assets 1:1 com videos via UNIQUE).
-- `routes/projects.js`: CRUD com membership; criação insere creator como owner em transação.
-- `routes/assets.js`: lista escopada por membership, PATCH (rename, status), republicação incrementa version.
-- `POST /api/videos/:id/upload`: multipart, sobe pro GCS em `roto-master/videos/<id>/source.<ext>`.
-- `POST /api/videos/:id/publish`: primeira publicação como transação atômica (cria asset + atualiza video.published_asset_id).
-- `lib/gcs.js`: helper de upload (`@google-cloud/storage`, bucket `didlu-imagestore`, URL via `https://st.did.lu`).
-- `middleware/membership.js`: `isMember` / `isOwner`.
+### Ateliê
+- Subseção Vídeos (`#/atelie`): grid de vídeos do user, selos (origem + publicado/rascunho), criar vídeo (fluxo A), apagar via confirm modal.
+- Outras 3 subseções (Personagens, Enquadramentos, Câmeras) com selo "em breve" na sidebar — placeholders deferidos pra v2.
 
-### Frontend
-- `public/styles.css`: sistema visual do protótipo v2 (Atelier 2087: paleta cobre/ink, Fraunces serif itálica, JetBrains Mono) + estilos do editor reestilizados.
-- `public/index.html`: chrome global com alternador Galeria/Ateliê, breadcrumb, transição animada (~500ms) ao trocar de espaço, screens (home / projeto / ateliê / editor) + modais (novo projeto, novo vídeo, publicar, confirmar).
-- `chrome.js`: `setSpace` + `setBreadcrumb` + transição animada.
-- `modals.js`: sistema centralizado, sem `prompt()`/`confirm()` nativo, ESC fecha, Enter confirma; helpers `confirmModal` e `showToast`.
-- `gal_home.js`: lista projetos + criar projeto (modal).
-- `gal_project.js`: detalhe do projeto + lista de assets + filtro (todos/pendentes/feitos). Sem botão "+ novo asset" (regra anti-padrão 6.5) — chamada redigida quando vazio.
-- `atelie_videos.js`: lista vídeos + criar vídeo (fluxo A; B/C/D com selo "em breve").
-- `editor.js`: wrapper do editor. Carrega `gcs_url` se já upado; senão espera file picker e sobe pro storage em background. Modal de publicação com escolha de projeto-destino e aviso de sobrescrita.
-- `autosave.js`: debounce 1s + flush no beforeunload, restaura `edit_state` ao reabrir vídeo.
-- `router.js`: hash routing (`#/`, `#/p/:id`, `#/atelie`, `#/v/:id`).
+### Editor (`#/v/:id`)
+- Editor de rotoscopia preservado: dois modos, dual-thumb in/out, transport único WYSIWYG, presets, sliders de PARAMS, export `.aseprite` local.
+- Carrega vídeo do GCS se já upado; senão espera file picker e sobe em background.
+- Autosave debounced (1s) + flush no beforeunload; `edit_state` restaurado ao reabrir.
+- Modal "publicar como asset": escolhe projeto, aviso de sobrescrita ao republicar, transição animada de volta pra Galeria → Detalhe do projeto.
 
-## O que NÃO está nesta v1 (fica pra v2)
+### Chrome global
+- Alternador binário Galeria/Ateliê no canto direito do header.
+- Header muda de cor entre os dois espaços (ink frio / cobre quente).
+- Transição animada (~500ms) ao trocar de espaço, com label do destino.
+- Breadcrumb persistente refletindo o caminho.
 
-- Fluxo D inteiro (módulo personagem, viewport 3D, jobs assíncronos, área de Gerações).
-- Convite de membros pelo UI (no v1 precisa INSERT manual no DB pra adicionar membros num projeto).
+## O que falta pra fechar a v1
+
+Lista ordenada por bloqueio. Item 1 é o bloqueador principal — sem ele a v1 não está formalmente entregue.
+
+1. **Detalhe do asset (modal, conforme 6.7 da visão).** Sem isso o asset publicado vira card sem ação. Inclui: preview (no v1 pode ser tipográfico, não thumbnail real), chip de status pendente↔feito clicável, vínculo com vídeo-fonte (linha "fonte: nome do vídeo" com seta que leva pro editor), botão "baixar `.aseprite`", botão "re-editar" (vai pro editor; republicar sobrescreve), metadata discreta no rodapé, ação destrutiva escondida "despublicar". Card na grid mostra preview + nome + status + selo de origem do vídeo, com atalhos no hover (`↓` baixar direto, `↗` editor direto).
+2. **Vínculo asset↔vídeo visível dos dois lados.** Hoje o card de vídeo no Ateliê só mostra "publicado / rascunho" sem dizer onde. A regra 4 da seção 6.6 pede que diga: "publicado em [Projeto X]" — clicável, leva pro detalhe do projeto. Quebra simétrica do que falta no item 1.
+3. **Duplicar vídeo na workbench.** A visão (decisão 5) define duplicação como operação de primeira classe — única forma de reusar trabalho em outro projeto. Hoje não tem nem endpoint nem UI. Endpoint: `POST /api/videos/:id/duplicate` (cria nova row `videos`, copia o arquivo no GCS, sai sem `published_asset_id`). UI: ação no card do vídeo no Ateliê e/ou dentro do detalhe do asset.
+4. **Convite de membros pelo UI.** Hoje só dá pra adicionar pessoas via INSERT manual no banco. Endpoint `POST /api/projects/:id/members` (lookup por email no Logto), listagem de membros no detalhe do projeto, ação "remover" pra owner.
+5. **Smoke test sistemático com você usando.** Após 1–4, fazer um pente-fino seu, listar tudo que parecer estranho, corrigir em batch.
+
+## O que NÃO está na v1 (fica pra v2)
+
+- Fluxo D (módulo personagem completo: aparências, enquadramentos, movimentos, viewport 3D, hierarquia de prompt).
+- Jobs assíncronos + worker + tela "Gerações" no Ateliê + indicador no header.
+- Catálogo de modelos consumido pela UI (tabela `models` já tem seed mas frontend não lê).
 - Fluxos B (URL) e C (geração genérica).
 - Share link público via `share_id`.
-- Migrations 005–009 (personagens, enquadramentos, câmeras, jobs, models) escritas mas não aplicadas no deploy ainda.
+- Histórico de versões publicadas do mesmo asset (republish sobrescreve).
+- Permissionamento granular dentro do projeto.
+- Outros formatos de saída além de `.aseprite`.
 
-## Próximos passos
+## Próximos passos — plano pra fechar a v1
 
-### Imediato — deployar e testar a v1
+A ordem aqui é intencional. **Itens 1 e 2 são pareados** (um do lado do asset, outro do lado do vídeo) e fecham a regra 4 da seção 6.6 (vínculo asset↔vídeo visível). Item 3 é a operação de primeira classe que a visão (decisão 5) deixou faltando. Item 4 transforma "projeto compartilhado" de promessa do schema em coisa real. Item 5 é amarração final.
 
-1. **Deploy na VM:** `bash /home/manu/platform/scripts/deploy.sh roto-master`. Aplica migrations 002–004 automaticamente. Smoke test no `https://roto.did.lu`:
-   - Login Google
-   - Criar projeto na Galeria
-   - Trocar pra Ateliê → Vídeos, criar vídeo, abrir editor
-   - Carregar arquivo de vídeo (deve subir pro GCS em background)
-   - Editar trecho, mudar pra rotoscopia, dar play (constrói frames)
-   - Publicar como asset → escolher projeto → confirmar → ver transição pra Galeria → asset aparece no projeto
-   - Recarregar a página → asset persiste, vídeo carrega do GCS, edit_state restaurado
-2. Se algum bug aparecer, corrigir antes de v2.
+### 1. Detalhe do asset (modal)
+Conforme `docs/visao-da-ferramenta.md` seção 6.7. Inclui o card também — hoje é puro losango sem ação.
 
-### v2 — depois da v1 estar de pé
+Quebra em sub-passos:
+- **Backend:** rota `DELETE /api/assets/:id` ("despublicar"; vídeo volta a ser rascunho, asset some). Já existe `PATCH /api/assets/:id` pra status — confirmar se aceita transição pendente↔feito sem regalia.
+- **Frontend:**
+  - Card de asset no `gal_project.js` ganha: click abre modal, hover revela atalhos `↓` (download direto) e `↗` (abrir editor direto), preview tipográfico (substituir o `◇`), selo de origem do vídeo.
+  - Novo arquivo `asset_modal.js`: monta e gerencia o modal de detalhe. Lê o asset + busca o vídeo associado pra mostrar nome no vínculo "fonte".
+  - Integração com router: opcional adicionar `#/p/:id/a/:asset_id` pra deep-link, mas pode ficar pra depois.
 
-1. **Convite de membros pelo UI** — `POST /api/projects/:id/members` por email, listagem na tela de detalhe do projeto.
-2. **Worker + tela de Gerações** — `worker.js` consome `jobs WHERE status='queued'` com `FOR UPDATE SKIP LOCKED`. Subseção "Gerações" no Ateliê com lista cronológica + retry. Indicador no header global. Aplicar migrations 008 + 009.
-3. **Fluxo D (módulo personagem)** — viewport 3D reaproveitando `prototype-v1-personagem/`, etapas aparência → enquadramento → movimento. Aplicar migrations 005 + 006 + 007.
-4. **Fluxos B/C** — vídeo de URL e geração genérica.
-5. **Share link público.** Rota `GET /api/share/:share_id` retorna metadata + URL do `.aseprite`.
+### 2. Vínculo asset↔vídeo visível do lado do vídeo
+- Card de vídeo no Ateliê hoje mostra "publicado" sem dizer onde. Trocar pra "publicado em [Projeto X]" com nome do projeto, **clicável** — leva pro detalhe do projeto.
+- Backend: `GET /api/videos` já retorna `published_asset_id`; expandir pra incluir `project_id` e `project_name` quando publicado (subquery via JOIN).
+- Frontend: `atelie_videos.js` consome o campo novo e renderiza.
+
+### 3. Duplicar vídeo na workbench
+Operação de primeira classe (decisão 5 da seção 9 da visão).
+
+- **Backend:** `POST /api/videos/:id/duplicate`. Cria row `videos` nova com mesmos `name` (com sufixo "(cópia)" ou similar), `origin`, `edit_state`, mas **sem** `published_asset_id` e **sem** `source_*_id` (duplicata é independente — visão fala explicitamente disso). Copia o arquivo no GCS pra path novo (`roto-master/videos/<novo-id>/source.<ext>`).
+- **Frontend:** ação "duplicar" no card de vídeo (Ateliê) e no modal de detalhe do asset (item 1) — fluxo "publicar em outro projeto" começa por aqui.
+
+### 4. Convite de membros pelo UI
+Hoje a tabela `project_members` existe e é honrada nas queries, mas só dá pra adicionar membros via INSERT manual no banco. Sem UI, "projeto compartilhado" é só promessa.
+
+- **Backend:**
+  - `POST /api/projects/:id/members` body `{ email }`. Faz lookup no Logto (existe API `/api/users?search=<email>` em `auth.did.lu` — confirmar antes de implementar; se não existir, cair em INSERT cego e a primeira vez que o convidado logar o `member_sub` é resolvido). Retorna o membro adicionado.
+  - `DELETE /api/projects/:id/members/:sub`. Só owner pode. Não deixa remover o último owner.
+- **Frontend:** seção "Membros" no detalhe do projeto (`gal_project.js`), com lista atual e campo "adicionar por email" (só visível pra owner).
+
+### 5. Smoke test sistemático
+Após 1–4, você navega no app, lista tudo que parecer estranho (visual, fluxo confuso, console error), eu corrijo em batch. Atualizar PROGRESS pra marcar v1 fechada.
+
+## v2 — depois da v1 fechar
+
+Aplicar migrations 005–009 já está feito; falta o código que consome.
+
+1. **Worker + tela de Gerações** — `worker.js` em paralelo ao `server.js`, consome `jobs WHERE status='queued'` com `FOR UPDATE SKIP LOCKED`. Subseção "Gerações" no Ateliê (5ª da sidebar) com lista cronológica + botão retry pra falhas. Indicador no header global com contador de jobs ativos.
+2. **Fluxo D (módulo personagem)** — viewport 3D reaproveitando `prototype-v1-personagem/`, etapas aparência → enquadramento → movimento. Hierarquia de prompt embutida. Catálogo `models` consumido pela UI.
+3. **Fluxos B/C** — vídeo de URL e geração genérica.
+4. **Share link público** — rota `GET /api/share/:share_id` (sem auth) retorna metadata + URL do `.aseprite`.
 
 ## Estrutura do projeto
 
