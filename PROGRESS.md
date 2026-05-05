@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-05 (smoke test em andamento; corrigidos dois bugs: feedback do "re-editar" e republish-como-novo quando muda nome/projeto. **Não comitado nem deployado ainda.**)
+Última atualização: 2026-05-05 fim do dia (smoke test fixes + Fluxo D em prod. Tudo comitado (`9267494`) e deployado em `https://roto.did.lu` — saudável, código atual rodando. Deploy passou a sincronizar via git no `deploy.sh` da VM.)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -262,6 +262,11 @@ Aplicados na VM (`/home/manu/platform/scripts/`) mas **não sincronizados** com 
 - `new-app.sh`: aceita flag `--domain` que sobrescreve `${APP_NAME}.did.lu`.
 - `deploy.sh`: lê `domain` do `did.json` e propaga via `--domain`.
 - `compose-update.py`: regex tolerante a linhas em branco no bloco `environment:`.
+
+Aplicados na VM **e sincronizados** com `adorable-devops` em 2026-05-05 (commit `c539cd6`):
+
+- `deploy.sh` STEP 0: IS_NEW check via mktemp + `grep -Fxq`, sem pipe. Antes `docker compose config --services | grep -qx` sofria de SIGPIPE não-determinístico sob `pipefail` (255), fazendo apps existentes serem detectados como novos.
+- `deploy.sh` STEP 0.5 (novo): se `/home/manu/platform/<svc>/` é git repo, faz `fetch + reset --hard` antes do build. Antes o sync de código pra prod dependia de cron em `~/dev/`, mas projetos novos em `~/ved/` ficavam órfãos — deploys reportavam SUCCESS com código velho. Para uma app começar a usar isso: `cd /home/manu/platform/<app> && git init && git remote add origin <repo-url> && git fetch && git reset --hard origin/main`.
 
 Bugs ainda **não corrigidos** nos scripts da VM:
 
