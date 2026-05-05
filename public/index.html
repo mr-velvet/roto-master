@@ -230,6 +230,9 @@
 
           <!-- ETAPA 1: imagem inicial -->
           <section class="generate-pane" data-bind="gen-pane-image">
+            <div class="generate-drop-overlay" data-bind="gen-drop-overlay">
+              <div class="generate-drop-overlay-msg">solte pra usar como imagem inicial</div>
+            </div>
             <header class="generate-pane-head">
               <span class="generate-step-num">1</span>
               <h3>Imagem inicial</h3>
@@ -263,6 +266,15 @@
                 <span data-bind="gen-image-btn-label">gerar imagem</span>
               </button>
               <button class="btn btn-ghost" data-action="gen-image-retry" data-bind="gen-image-retry" hidden>tentar de novo</button>
+            </div>
+
+            <div class="generate-or-upload">
+              ou
+              <label class="generate-upload-link">
+                <input type="file" accept="image/*" data-bind="gen-initial-file-input" hidden />
+                <span>subir imagem direto</span>
+              </label>
+              <span class="generate-or-upload-hint">— você pode arrastar ou colar (ctrl+v) também</span>
             </div>
 
             <div class="generate-status" data-bind="gen-image-status" hidden></div>
@@ -572,6 +584,29 @@
           <span class="btn-icon">◆</span>
           publicar
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: imagem colada/arrastada — perguntar como usar -->
+  <div class="modal modal-wide" data-modal="paste-image" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Imagem detectada</div>
+        <h3>Como você quer usar?</h3>
+      </div>
+      <div class="modal-body">
+        <div class="paste-preview-wrap">
+          <img class="paste-preview-img" data-bind="paste-preview-img" alt="preview" />
+        </div>
+        <div class="paste-status" data-bind="paste-status" hidden>subindo pro storage…</div>
+        <div class="paste-err" data-bind="paste-err"></div>
+      </div>
+      <div class="modal-foot modal-foot-wrap">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-ghost" data-action="paste-as-ref">como referência</button>
+        <button class="btn btn-primary" data-action="paste-as-initial">como imagem inicial</button>
       </div>
     </div>
   </div>

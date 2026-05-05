@@ -2,7 +2,7 @@
 // Síncrono: trava UI durante geração, mostra status, custo e erros do provider.
 
 import { listModels, generateImage, generateVideo, uploadRef, setActiveAttempt, enhancePrompt } from './generate_api.js';
-import { showToast } from './modals.js';
+import { showToast, openModal, closeModal } from './modals.js';
 import { navigateEditor } from './router.js';
 
 // === refs DOM ===
@@ -34,10 +34,18 @@ const $attemptsCount = document.querySelector('[data-bind="gen-attempts-count"]'
 const $attemptsList = document.querySelector('[data-bind="gen-attempts-list"]');
 const $finalize = document.querySelector('[data-bind="gen-finalize"]');
 
+const $imagePane = document.querySelector('[data-bind="gen-pane-image"]');
+const $dropOverlay = document.querySelector('[data-bind="gen-drop-overlay"]');
+const $initialFileInput = document.querySelector('[data-bind="gen-initial-file-input"]');
+const $pasteImg = document.querySelector('[data-bind="paste-preview-img"]');
+const $pasteStatus = document.querySelector('[data-bind="paste-status"]');
+const $pasteErr = document.querySelector('[data-bind="paste-err"]');
+
 // === estado ===
 let modelsByKey = {};
 let imageUrl = null;        // URL da imagem ativa (escolhida pra etapa 2)
-let imagePrompt = null;     // prompt usado pra gerar imageUrl
+let imagePrompt = null;     // prompt usado pra gerar imageUrl ('' se foi uploaded)
+let imageSourceKind = null; // 'generated' | 'uploaded'
 let refUrls = [];           // URLs das refs já uploadadas
 let refLocalPreviews = [];  // {file, url:objectURL} pra preview antes do upload
 let videoId = null;         // primeiro vídeo gerado vira id da workbench
@@ -46,6 +54,7 @@ let videoAttempts = [];
 let durationS = 5;
 let lastImageBody = null;   // pra retry
 let lastVideoBody = null;
+let pastedFile = null;      // file do paste/drop esperando decisão no modal
 
 // === bootstrap ===
 let initialized = false;
@@ -74,6 +83,8 @@ function updateCostLabels() {
 function resetAll() {
   imageUrl = null;
   imagePrompt = null;
+  imageSourceKind = null;
+  pastedFile = null;
   refUrls = [];
   refLocalPreviews.forEach((r) => URL.revokeObjectURL(r.url));
   refLocalPreviews = [];
@@ -112,6 +123,34 @@ function unlockVideoPane() {
   $videoBody.removeAttribute('hidden');
   $videoLockMsg.style.display = 'none';
   $baseImg.src = imageUrl;
+}
+
+// Centraliza "esta URL é agora a imagem inicial ativa".
+// Substitui a anterior sem aviso (decisão: comportamento simples).
+function useImageAsInitial(url, opts = {}) {
+  imageUrl = url;
+  imagePrompt = opts.prompt || '';
+  imageSourceKind = opts.kind || 'uploaded';
+  $imgImg.src = url;
+  $imgPreview.removeAttribute('hidden');
+  $imgBtnLabel.textContent = imageSourceKind === 'generated' ? 'gerar nova' : 'gerar imagem (substitui a subida)';
+  unlockVideoPane();
+}
+
+function addRefFromUrl(url) {
+  const wrap = document.createElement('div');
+  wrap.className = 'generate-ref-item';
+  wrap.innerHTML = `
+    <img src="${url}" alt="ref" />
+    <button class="generate-ref-remove" type="button">×</button>
+  `;
+  wrap.querySelector('.generate-ref-remove').addEventListener('click', () => {
+    const idx = refUrls.indexOf(url);
+    if (idx >= 0) refUrls.splice(idx, 1);
+    wrap.remove();
+  });
+  $refsList.appendChild(wrap);
+  refUrls.push(url);
 }
 
 // === refs upload (drag-drop / file picker) ===
@@ -160,18 +199,11 @@ async function runGenImage(body) {
   $imgStatus.textContent = 'gerando imagem... isso leva ~30s';
   try {
     const result = await generateImage(body);
-    imageUrl = result.image_url;
-    imagePrompt = body.prompt;
     lastImageBody = body;
-
-    $imgImg.src = imageUrl;
-    $imgPreview.removeAttribute('hidden');
+    useImageAsInitial(result.image_url, { prompt: body.prompt, kind: 'generated' });
     $imgStatus.setAttribute('hidden', '');
-    $imgBtnLabel.textContent = 'gerar nova';
     $imgRetry.setAttribute('hidden', '');
     showToast(`imagem pronta — $${result.cost_actual?.toFixed(2) || '?'}`);
-
-    unlockVideoPane();
   } catch (e) {
     $imgStatus.setAttribute('hidden', '');
     $imgErr.textContent = e.message;
@@ -373,6 +405,139 @@ document.addEventListener('click', (e) => {
     delete cfg.textarea.dataset.preEnhance;
   }
   btn.setAttribute('hidden', '');
+});
+
+// === upload de imagem inicial direto (file picker) ===
+$initialFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file || !file.type.startsWith('image/')) return;
+  await openPasteModal(file);
+});
+
+// === drag-drop no pane da etapa 1 ===
+let dragDepth = 0;
+$imagePane.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return;
+  e.preventDefault();
+  dragDepth++;
+  $dropOverlay.classList.add('is-active');
+});
+$imagePane.addEventListener('dragover', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+$imagePane.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) $dropOverlay.classList.remove('is-active');
+});
+$imagePane.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $dropOverlay.classList.remove('is-active');
+  const file = e.dataTransfer?.files?.[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  // se foi dropado dentro da área de refs, tratar como ref direto (já existe handler no input).
+  // pra qualquer outro lugar do pane, abrir modal pra escolher.
+  if (e.target.closest('[data-bind="gen-refs"]')) {
+    await uploadAndAddAsRef(file);
+  } else {
+    await openPasteModal(file);
+  }
+});
+
+async function uploadAndAddAsRef(file) {
+  try {
+    const url = await uploadRef(file);
+    addRefFromUrl(url);
+    showToast('imagem adicionada como referência');
+  } catch (err) {
+    showToast('falha: ' + err.message);
+  }
+}
+
+// === ctrl+v: paste de imagem ===
+let pasteHandler = null;
+function activatePasteListener() {
+  if (pasteHandler) return;
+  pasteHandler = async (e) => {
+    // só ativa quando estamos na tela de geração
+    if (document.body.getAttribute('data-screen') !== 'atelie-generate') return;
+    // não rouba paste de inputs/textareas (texto colado lá vai pro textarea normalmente)
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+    const items = Array.from(e.clipboardData?.items || []);
+    const imgItem = items.find((it) => it.type?.startsWith('image/'));
+    if (!imgItem) return;
+    e.preventDefault();
+    const file = imgItem.getAsFile();
+    if (file) await openPasteModal(file);
+  };
+  document.addEventListener('paste', pasteHandler);
+}
+function deactivatePasteListener() {
+  if (!pasteHandler) return;
+  document.removeEventListener('paste', pasteHandler);
+  pasteHandler = null;
+}
+// liga ao mostrar a tela
+const _origShow = showAtelieGenerate;
+// monkey-patch impossível em export const; em vez disso, chamamos na primeira renderização via init.
+// Solução simples: monitorar mudança no data-screen.
+const screenObserver = new MutationObserver(() => {
+  if (document.body.getAttribute('data-screen') === 'atelie-generate') activatePasteListener();
+  else deactivatePasteListener();
+});
+screenObserver.observe(document.body, { attributes: true, attributeFilter: ['data-screen'] });
+
+// === modal "como usar" ===
+async function openPasteModal(file) {
+  pastedFile = file;
+  const previewUrl = URL.createObjectURL(file);
+  $pasteImg.src = previewUrl;
+  $pasteImg.dataset.localUrl = previewUrl;
+  $pasteStatus.setAttribute('hidden', '');
+  $pasteErr.textContent = '';
+  openModal('paste-image', {
+    onClose: () => {
+      const u = $pasteImg.dataset.localUrl;
+      if (u) URL.revokeObjectURL(u);
+      delete $pasteImg.dataset.localUrl;
+      pastedFile = null;
+    },
+  });
+}
+
+async function pasteUploadAndUse(asInitial) {
+  if (!pastedFile) return;
+  $pasteErr.textContent = '';
+  $pasteStatus.removeAttribute('hidden');
+  $pasteStatus.textContent = 'subindo pro storage…';
+  // desabilita botões
+  document.querySelectorAll('[data-action^="paste-"]').forEach((b) => { b.disabled = true; });
+  try {
+    const url = await uploadRef(pastedFile);
+    if (asInitial) {
+      useImageAsInitial(url, { kind: 'uploaded' });
+      showToast('imagem definida como inicial');
+    } else {
+      addRefFromUrl(url);
+      showToast('imagem adicionada como referência');
+    }
+    closeModal();
+  } catch (err) {
+    $pasteErr.textContent = err.message;
+    $pasteStatus.setAttribute('hidden', '');
+  } finally {
+    document.querySelectorAll('[data-action^="paste-"]').forEach((b) => { b.disabled = false; });
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-action="paste-as-initial"]')) pasteUploadAndUse(true);
+  if (e.target.closest('[data-action="paste-as-ref"]')) pasteUploadAndUse(false);
 });
 
 function escapeHtml(s) {

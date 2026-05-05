@@ -1281,6 +1281,11 @@ button.tag {
   border-top: 1px solid var(--line);
   display: flex; justify-content: flex-end; gap: 10px;
 }
+.modal-foot-wrap {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.modal-foot-wrap .btn { flex: 0 1 auto; }
 
 .field {
   display: block;
@@ -2351,6 +2356,52 @@ body[data-screen="atelie-generate"] .screen-atelie-generate { display: block; }
   position: relative;
   transition: opacity 200ms var(--ease);
 }
+
+.generate-drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(217, 122, 58, 0.12);
+  border: 2px dashed var(--copper);
+  display: none;
+  z-index: 10;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+}
+.generate-drop-overlay.is-active { display: flex; }
+.generate-drop-overlay-msg {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--copper);
+  letter-spacing: -0.01em;
+}
+
+.generate-or-upload {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--paper-4);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.generate-upload-link {
+  cursor: pointer;
+  color: var(--paper-2);
+  border-bottom: 1px dashed var(--paper-4);
+  transition: all 140ms var(--ease);
+  padding: 1px 0;
+}
+.generate-upload-link:hover {
+  color: var(--copper);
+  border-bottom-color: var(--copper);
+}
+.generate-or-upload-hint {
+  font-size: 10px;
+  color: var(--paper-5);
+}
 .generate-pane.is-locked {
   opacity: 0.55;
 }
@@ -2744,6 +2795,38 @@ body[data-screen="atelie-generate"] .screen-atelie-generate { display: block; }
   color: var(--paper);
   cursor: text;
   background: var(--ink-2);
+}
+
+/* ----------------------------------------------------------------------------
+   modal: imagem colada/arrastada
+   ---------------------------------------------------------------------------- */
+
+.paste-preview-wrap {
+  display: grid;
+  place-items: center;
+  background: var(--ink-0);
+  border: 1px solid var(--line);
+  padding: 14px;
+  margin-bottom: 10px;
+  max-height: 280px;
+  overflow: hidden;
+}
+.paste-preview-img {
+  max-width: 100%;
+  max-height: 250px;
+  display: block;
+  object-fit: contain;
+}
+.paste-status {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--copper);
+  padding: 6px 0;
+}
+.paste-err {
+  font-size: 11px;
+  color: var(--rust);
+  min-height: 14px;
 }
 
 /* ----------------------------------------------------------------------------
