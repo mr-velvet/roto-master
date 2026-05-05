@@ -1,17 +1,19 @@
 // Roteador hash-based.
 // Rotas:
-//   #/                  → galeria, home (lista de projetos)
-//   #/p/:project_id     → galeria, detalhe do projeto
-//   #/atelie            → ateliê, default = vídeos
-//   #/atelie/videos     → ateliê, vídeos
-//   #/atelie/generate   → ateliê, fluxo C (geração genérica)
-//   #/v/:video_id       → editor
+//   #/                    → galeria, home (lista de projetos)
+//   #/p/:project_id       → galeria, detalhe do projeto
+//   #/atelie              → ateliê, default = vídeos
+//   #/atelie/videos       → ateliê, vídeos
+//   #/atelie/generate     → ateliê, fluxo C (imagem → vídeo)
+//   #/atelie/text2video   → ateliê, fluxo D (texto → vídeo)
+//   #/v/:video_id         → editor
 
 let handlers = {
   onHome: () => {},
   onProject: () => {},
   onAtelie: () => {},
   onGenerate: () => {},
+  onTextVideo: () => {},
   onEditor: () => {},
 };
 
@@ -27,6 +29,7 @@ function parseHash() {
   if ((m = h.match(/^#\/p\/([0-9a-f-]+)$/i))) return { route: 'project', id: m[1] };
   if ((m = h.match(/^#\/v\/([0-9a-f-]+)$/i))) return { route: 'editor', id: m[1] };
   if (h === '#/atelie/generate') return { route: 'generate' };
+  if (h === '#/atelie/text2video') return { route: 'text-video' };
   if (h === '#/atelie' || h === '#/atelie/videos') return { route: 'atelie', sub: 'videos' };
 
   return { route: 'home' };
@@ -38,6 +41,7 @@ function dispatch() {
   else if (r.route === 'project') handlers.onProject(r.id);
   else if (r.route === 'atelie') handlers.onAtelie(r.sub);
   else if (r.route === 'generate') handlers.onGenerate();
+  else if (r.route === 'text-video') handlers.onTextVideo();
   else if (r.route === 'editor') handlers.onEditor(r.id);
 }
 
@@ -52,6 +56,9 @@ export function navigateAtelie(sub = 'videos') {
 }
 export function navigateGenerate() {
   setHash('#/atelie/generate');
+}
+export function navigateTextVideo() {
+  setHash('#/atelie/text2video');
 }
 export function navigateEditor(id) {
   setHash(`#/v/${id}`);

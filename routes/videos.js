@@ -212,6 +212,98 @@ router.post('/:id/publish', requireUser, upload.single('file'), async (req, res)
   }
 });
 
+// Republicar como novo asset: o usuário re-editou um vídeo já publicado
+// e mudou nome ou projeto. Por baixo, duplica o vídeo (linhagem
+// 1:1 vídeo↔asset) e publica a cópia como asset novo. O vídeo/asset
+// originais ficam intactos.
+//
+// Body multipart: file (.aseprite), project_id, asset_name.
+router.post('/:id/publish-as-new', requireUser, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'arquivo .aseprite é obrigatório' });
+  const projectId = req.body.project_id;
+  if (!projectId) return res.status(400).json({ error: 'project_id é obrigatório' });
+  const assetName = (typeof req.body.asset_name === 'string' ? req.body.asset_name.trim() : '');
+  if (!assetName) return res.status(400).json({ error: 'asset_name é obrigatório' });
+
+  const pool = req.app.locals.pool;
+  const member = await isMember(pool, projectId, req.user.sub);
+  if (!member) return res.status(403).json({ error: 'não é membro do projeto' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT id, name, origin, gcs_path, size_bytes, duration_s, width, height, edit_state
+         FROM videos WHERE id = $1 AND owner_sub = $2 FOR SHARE`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'vídeo não encontrado' });
+    }
+    const src = rows[0];
+
+    // 1) duplica o vídeo (mesma lógica do /duplicate, sem o sufixo "(cópia)" —
+    // aqui o user já está dando um nome explícito ao asset).
+    const { rows: ins } = await client.query(
+      `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url,
+                           size_bytes, duration_s, width, height, edit_state)
+       VALUES ($1, $2, $3, $4, '', '', $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [
+        req.user.sub, req.user.email || '', assetName, src.origin || 'uploaded',
+        src.size_bytes || 0, src.duration_s, src.width, src.height, src.edit_state || {},
+      ]
+    );
+    const newVideoId = ins[0].id;
+
+    if (src.gcs_path) {
+      const ext = (src.gcs_path.split('.').pop() || 'mp4').toLowerCase();
+      const dstVideo = `roto-master/videos/${newVideoId}/source.${ext}`;
+      const copied = await copyObject(src.gcs_path, dstVideo);
+      await client.query(
+        `UPDATE videos SET gcs_path = $1, gcs_url = $2, updated_at = NOW() WHERE id = $3`,
+        [copied.gcs_path, copied.gcs_url, newVideoId]
+      );
+    }
+
+    // 2) cria asset novo apontando pro vídeo duplicado
+    const { rows: aRows } = await client.query(
+      `INSERT INTO assets (project_id, video_id, owner_sub, name, status, gcs_path, gcs_url, version)
+       VALUES ($1, $2, $3, $4, 'pending', '', '', 1)
+       RETURNING id`,
+      [projectId, newVideoId, req.user.sub, assetName]
+    );
+    const newAssetId = aRows[0].id;
+
+    const asePath = asepritePath(newAssetId, 1);
+    const stored = await uploadBuffer(asePath, req.file.buffer, 'application/octet-stream');
+
+    const { rows: finalAsset } = await client.query(
+      `UPDATE assets SET gcs_path = $1, gcs_url = $2, updated_at = NOW()
+        WHERE id = $3
+        RETURNING id, project_id, video_id, owner_sub, name, status, gcs_path, gcs_url, version, created_at, updated_at`,
+      [stored.gcs_path, stored.gcs_url, newAssetId]
+    );
+
+    // 3) vincula vídeo novo ao asset novo
+    await client.query(
+      `UPDATE videos SET published_asset_id = $1, updated_at = NOW() WHERE id = $2`,
+      [newAssetId, newVideoId]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ asset: finalAsset[0], new_video_id: newVideoId });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('publish-as-new:', e);
+    res.status(500).json({ error: 'publish-as-new failed' });
+  } finally {
+    client.release();
+  }
+});
+
 // Upload de thumbnail (primeiro frame, capturado pelo cliente no editor).
 // Idempotente: se já tem thumb_url, retorna a existente sem regravar.
 router.post('/:id/thumb', requireUser, upload.single('file'), async (req, res) => {

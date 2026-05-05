@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 fim do dia (v1 fechada + Fluxo C completo + Fluxo B completo + ambiente local de pé. **Não deployado em prod ainda — só commitado no main.** Próxima sessão: abrir contexto novo com PROGRESS atualizado e seguir.)
+Última atualização: 2026-05-05 (smoke test em andamento; corrigidos dois bugs: feedback do "re-editar" e republish-como-novo quando muda nome/projeto. **Não comitado nem deployado ainda.**)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -35,6 +35,11 @@ Dockerfile precisa de yt-dlp+ffmpeg (já adicionado no commit `5977749`). Migrat
 ### Bug aberto
 
 - **"Usar como imagem inicial" no modal de paste/drop:** botão clica mas request `/api/generate/ref-upload` não dispara. Adicionei console.log de debug — precisa o user reproduzir e me trazer o log.
+
+### Smoke test 2026-05-05 — fixes feitos (não comitados)
+
+- **Feedback do "re-editar" no modal de detalhe do asset.** O botão funcionava mas dava sensação de quebrado: entre o click e o vídeo aparecer no editor podia passar quase 1 min em vídeos grandes. Agora `openEditor` mostra o spinner `#video-loading` imediatamente ("abrindo vídeo…" → "baixando vídeo do storage…"). `editor.js` modificado.
+- **Republish que muda nome/projeto cria asset novo (mantendo asset original).** Visão diz "1:1 vídeo↔asset, reuso = duplicar vídeo". Implementação: novo endpoint `POST /api/videos/:id/publish-as-new` que duplica vídeo + cria asset novo numa transação (usa `copyObject` do GCS, sem baixar blob). Modal de publish agora pré-preenche projeto+nome do asset existente quando vídeo já está publicado e mostra info ao vivo "vai sobrescrever" vs "vai criar novo" conforme user altera nome/projeto. Sobrescreve só quando ambos batem. Arquivos: `routes/videos.js`, `public/js/videos_api.js`, `public/js/editor.js`, `public/index.html`, `public/styles.css`.
 
 ### Pendências de futuro
 

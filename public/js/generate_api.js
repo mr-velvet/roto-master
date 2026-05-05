@@ -74,6 +74,19 @@ export async function generateVideo({ image_url, motion_prompt, duration_s, imag
   return r.json();
 }
 
+export async function generateTextVideo({ prompt, duration_s, video_id, mode, structured }) {
+  const r = await authedFetch('/api/generate/text-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, duration_s, video_id, mode, structured }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'generate text-video: ' + r.status);
+  }
+  return r.json();
+}
+
 export async function setActiveAttempt(videoId, idx) {
   const r = await authedFetch(`/api/videos/${videoId}/active-attempt`, {
     method: 'PATCH',

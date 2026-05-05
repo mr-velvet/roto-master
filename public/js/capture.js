@@ -74,20 +74,23 @@ const GLYPH_5x7 = {
   ' ':[0,0,0,0,0,0,0],
 };
 // Desenha texto "FRAME k/N" no buffer RGBA in-place. Pixels amarelos com borda preta.
-// O buffer está em Y nativo do GL (bottom-up). Pra texto aparecer no TOPO da
-// imagem final (após flip), desenhar perto do bottom do array.
+//
+// Convenção do buffer: linha 0 = topo visual (top-down). Pra texto aparecer no
+// canto superior esquerdo: escrever próximo da linha 0, glifos crescendo PARA
+// BAIXO (gy crescente → linhas crescentes do array).
+//
+// Tamanho discreto: o overlay é só pra validar ordem de frames na edição.
 export function drawOverlay(rgba, w, h, text) {
-  const SCALE = Math.max(2, Math.round(Math.min(w, h) / 80));
+  const SCALE = Math.max(1, Math.round(Math.min(w, h) / 320));
   const charW = 5, charH = 7;
-  const padX = 6 * SCALE, padY = 6 * SCALE;
+  const padX = 4 * SCALE, padY = 4 * SCALE;
   const setPixel = (x, yArray, r, g, b) => {
     if (x < 0 || yArray < 0 || x >= w || yArray >= h) return;
     const i = (yArray * w + x) * 4;
     rgba[i] = r; rgba[i+1] = g; rgba[i+2] = b; rgba[i+3] = 255;
   };
   let cx = padX;
-  let cyTopVisual = padY;
-  let cy = (h - 1) - cyTopVisual;
+  const charTop = padY; // topo do char fica próximo da linha 0
   for (let ci = 0; ci < text.length; ci++) {
     const ch = text[ci].toUpperCase();
     const glyph = GLYPH_5x7[ch] || GLYPH_5x7[' '];
@@ -96,15 +99,15 @@ export function drawOverlay(rgba, w, h, text) {
         const lit = (glyph[gy] >> (charW - 1 - gx)) & 1;
         if (!lit) continue;
         const px0 = cx + gx * SCALE;
-        const py0 = cy - gy * SCALE;
+        const py0 = charTop + gy * SCALE; // glifo desce no array (top-down)
         for (let dy = -1; dy <= SCALE; dy++) {
           for (let dx = -1; dx <= SCALE; dx++) {
-            setPixel(px0 + dx, py0 - dy, 0, 0, 0);
+            setPixel(px0 + dx, py0 + dy, 0, 0, 0);
           }
         }
         for (let dy = 0; dy < SCALE; dy++) {
           for (let dx = 0; dx < SCALE; dx++) {
-            setPixel(px0 + dx, py0 - dy, 255, 255, 0);
+            setPixel(px0 + dx, py0 + dy, 255, 255, 0);
           }
         }
       }
@@ -120,9 +123,11 @@ export async function buildTimeline(onProgress) {
   if (!isFinite(vid.duration) || vid.duration <= 0) {
     throw new Error('vídeo ainda não carregou');
   }
-  const fps = parseFloat(document.getElementById('cap-fps').value);
-  const scale = parseFloat(document.getElementById('cap-scale').value) / 100;
-  const overlay = document.getElementById('cap-overlay').checked;
+  // Tudo vindo de STATE — UI atualiza STATE em listeners; restore via
+  // applyEditState também escreve em STATE *e* sincroniza DOM.
+  const fps = STATE.fps;
+  const scale = STATE.scale;
+  const overlay = STATE.overlay;
   const inS = STATE.inS;
   const outS = STATE.outS;
   if (!(fps > 0) || !(scale > 0)) throw new Error('parâmetros inválidos');
@@ -147,11 +152,22 @@ export async function buildTimeline(onProgress) {
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+  // Limpar TAMBÉM o fbTex (não só prevTex) — a 2ª build começa com swap em
+  // estado X residual da 1ª, e a textura agora-fbTex pode ter conteúdo antigo.
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, glmod.fbTex, 0);
+  gl.viewport(0, 0, sw, sh);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
   const frames = new Array(N);
   for (let i = 0; i < N; i++) {
     const tVid = inS + i / fps;
     await seekVideoTo(tVid);
-    renderShaderFrame(i, fps);
+    // Cada chamada de renderShaderFrame faz swap [prevTex,fbTex] — uma chamada
+    // por frame: lê prev (resultado anterior, ou clear no frame 0), escreve em
+    // fb, swap, e a leitura via readPrevTexRGBA pega o último escrito.
     renderShaderFrame(i, fps);
     const raw = readPrevTexRGBA(sw, sh);
     const out = (sw === dw && sh === dh) ? raw : resampleRGBA(raw, sw, sh, dw, dh);

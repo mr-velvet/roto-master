@@ -44,8 +44,7 @@ function loadFile(file) {
   const onMeta = () => {
     vid.removeEventListener('loadedmetadata', onMeta);
     STATE.videoDurS = vid.duration;
-    STATE.inS = 0;
-    STATE.outS = Math.min(3, vid.duration);
+    applyInOutWithRestore(vid.duration);
     resizeCanvasToDims(vid.videoWidth, vid.videoHeight);
     setLoaded();
     if (onLoadedCb) onLoadedCb();
@@ -53,6 +52,20 @@ function loadFile(file) {
   vid.addEventListener('loadedmetadata', onMeta);
   vid.src = currentObjectUrl;
   vid.load();
+}
+
+// Se in/out já foram restaurados de edit_state, mantém (clampando ao novo
+// duration). Senão, defaults: in=0, out=min(3, duration).
+function applyInOutWithRestore(duration) {
+  if (!STATE.restoredFromState) {
+    STATE.inS = 0;
+    STATE.outS = Math.min(3, duration);
+    return;
+  }
+  STATE.inS = Math.max(0, Math.min(STATE.inS, duration - 0.1));
+  STATE.outS = Math.max(STATE.inS + 0.1, Math.min(STATE.outS, duration));
+  // consumiu o restore — próximo loadFromUrl sem novo openEditor usa defaults
+  STATE.restoredFromState = false;
 }
 
 // Carrega vídeo direto de uma URL (ex: gcs_url). Não precisa de file picker.
@@ -74,8 +87,7 @@ export function loadFromUrl(url) {
     if (onErr) vid.removeEventListener('error', onErr);
     if ($loading) $loading.setAttribute('hidden', '');
     STATE.videoDurS = vid.duration;
-    STATE.inS = 0;
-    STATE.outS = Math.min(3, vid.duration);
+    applyInOutWithRestore(vid.duration);
     resizeCanvasToDims(vid.videoWidth, vid.videoHeight);
     setLoaded();
     if (onLoadedCb) onLoadedCb();

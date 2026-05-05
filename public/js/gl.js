@@ -79,7 +79,21 @@ export function resizeCanvasToDims(w, h) {
 // `<video>` em alguns browsers entra invertido vertical em texImage2D sem flip
 // (vs canvas 2D que entra natural). Forçamos UNPACK_FLIP_Y_WEBGL=true só pro
 // upload do vídeo pra orientação ficar consistente com o resto do pipeline.
+// Pra evitar leak de estado global pra outras chamadas que dependem de
+// FLIP_Y=false (ex.: `uploadAndDrawTexture`), fechamos o ciclo set→reset
+// EM TODA chamada e também forçamos useProgram(prog) na entrada — caller pode
+// ter deixado plainProg ativo.
 export function renderShaderFrame(frameIndex, fps) {
+  gl.useProgram(prog);
+  // re-bind do attribute do quad — outros programs podem ter mudado o vertex pointer
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const aPosLoc = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(aPosLoc);
+  gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+  // defesa: começa em FLIP_Y=false antes de tocar em qualquer textura
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
   if (vid.readyState >= 2) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -117,9 +131,12 @@ export function renderShaderFrame(frameIndex, fps) {
 }
 
 // Lê o último FBO renderizado (que após swap ficou em prevTex).
-// Mantém Y nativo do GL (bottom-up). Pintura na tela usa UNPACK_FLIP_Y_WEBGL
-// pra mostrar correto. Flip pra top-down só acontece no momento de escrever
-// o cel chunk do .aseprite (em buildAseprite).
+// Convenção do array retornado: TOP-DOWN (linha 0 = topo visual). Resultado
+// do conjunto pipeline: upload do <video> com UNPACK_FLIP_Y=true coloca a
+// linha 0 da textura como bottom visual; o VS principal flippa v_uv.y; o
+// quad é renderizado de tal forma que pixels do topo visual ficam em
+// y_FBO=0 (que é o que readPixels lê primeiro). Esse é o formato direto
+// que .aseprite espera — não precisa de flip extra.
 export function readPrevTexRGBA(w, h) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, prevTex, 0);
@@ -140,13 +157,19 @@ export function flipYRGBA(src, w, h) {
 }
 
 // ========== Plain shader (passthrough sem efeito) ==========
-// O RGBA chega bottom-up (linha 0 = base visual da imagem) — é o que `readPrevTexRGBA`
-// retorna após o pipeline efeito (validado pelo test-orientation.html).
-// Pra mostrar correto: VS sem flip de v_uv.y, e upload SEM UNPACK_FLIP_Y_WEBGL —
-// linha 0 do buffer (base visual) vai pra texture y=0 (bottom da textura), shader
-// sample em v_uv.y=0 (bottom canvas) → tex y=0 → base visual. Identidade.
+// Existem dois variants:
+//   plainProg        — VS sem flip de v_uv.y. Não usado pelo pipeline atual.
+//                      Mantido caso alguém queira blit "raw" de uma textura.
+//   plainProgFlipped — VS com `v_uv.y = 1.0 - v_uv.y`. Usado em:
+//                        - paintFrameToCanvas (rotoscope): texImage2D do
+//                          array TOP-DOWN, blit pro canvas.
+//                        - source loop (preview): blit FBO→canvas após
+//                          renderShaderFrame.
+// Os dois caminhos têm dado em "top-down do conteúdo visual" e precisam do
+// flip pra mostrar com topo visual no topo da tela.
 export let plainProg = null;
 export let plainTex = null;
+export let plainProgFlipped = null;
 export function ensurePlainProg() {
   if (plainProg) return;
   const pvs = compile(gl.VERTEX_SHADER, `
@@ -162,6 +185,15 @@ export function ensurePlainProg() {
   `);
   plainProg = gl.createProgram();
   gl.attachShader(plainProg, pvs); gl.attachShader(plainProg, pfs); gl.linkProgram(plainProg);
+
+  const pvsFlip = compile(gl.VERTEX_SHADER, `
+    attribute vec2 a_pos;
+    varying vec2 v_uv;
+    void main() { v_uv = a_pos * 0.5 + 0.5; v_uv.y = 1.0 - v_uv.y; gl_Position = vec4(a_pos, 0.0, 1.0); }
+  `);
+  plainProgFlipped = gl.createProgram();
+  gl.attachShader(plainProgFlipped, pvsFlip); gl.attachShader(plainProgFlipped, pfs); gl.linkProgram(plainProgFlipped);
+
   plainTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, plainTex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -171,16 +203,21 @@ export function ensurePlainProg() {
 }
 export function uploadAndDrawTexture(rgba, w, h) {
   ensurePlainProg();
-  gl.useProgram(plainProg);
-  const aPos2 = gl.getAttribLocation(plainProg, 'a_pos');
+  // Usa o plain shader FLIPPADO pra render no canvas. O array RGBA chega de
+  // readPixels (linha 0 = bottom-left do FBO = topo visual no caso do nosso
+  // pipeline). Sem flip o canvas mostraria de cabeça pra baixo.
+  // O export pra .aseprite continua flipando o array pq o formato espera
+  // top-down — flip aqui é só pra tela.
+  gl.useProgram(plainProgFlipped);
+  const aPos2 = gl.getAttribLocation(plainProgFlipped, 'a_pos');
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.enableVertexAttribArray(aPos2);
   gl.vertexAttribPointer(aPos2, 2, gl.FLOAT, false, 0, 0);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, plainTex);
-  // RGBA está em GL natural (bottom-up): linha 0 = base visual. Sem flip no upload.
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
-  gl.uniform1i(gl.getUniformLocation(plainProg, 'u_tex'), 0);
+  gl.uniform1i(gl.getUniformLocation(plainProgFlipped, 'u_tex'), 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.drawArrays(gl.TRIANGLES, 0, 6);

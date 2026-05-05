@@ -7,6 +7,7 @@ import { showHome } from './gal_home.js';
 import { showProject } from './gal_project.js';
 import { showAtelieVideos } from './atelie_videos.js';
 import { showAtelieGenerate } from './atelie_generate.js';
+import { showAtelieTextVideo } from './atelie_text2video.js';
 import { initEditor, openEditor } from './editor.js';
 
 const $loginErr = document.getElementById('login-err');
@@ -58,6 +59,16 @@ function showGenerateScreen() {
     { label: 'Gerar' },
   ]);
   showAtelieGenerate();
+}
+
+function showTextVideoScreen() {
+  setSpace('atelie', 'atelie-text2video');
+  setBreadcrumb([
+    { label: 'Ateliê', action: () => navigateAtelie() },
+    { label: 'Vídeos', action: () => navigateAtelie('videos') },
+    { label: 'Texto → Vídeo' },
+  ]);
+  showAtelieTextVideo();
 }
 
 function showEditorScreen(id) {
@@ -116,6 +127,7 @@ function showEditorScreen(id) {
     onProject: showProjectScreen,
     onAtelie: showAtelieScreen,
     onGenerate: showGenerateScreen,
+    onTextVideo: showTextVideoScreen,
     onEditor: showEditorScreen,
   });
   startRouter();

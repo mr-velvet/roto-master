@@ -2,11 +2,12 @@
 
 import { buildAseprite } from './aseprite.js';
 import { PARAMS, PRESETS, SLIDERS, STATE } from './state.js';
-import { vid, flipYRGBA } from './gl.js';
+import { vid } from './gl.js';
 import {
   setMode, stopPlay, stopRotoscopePlay,
   startRotoscopePlay, ensureBuilt,
 } from './playback.js';
+import { notifyChange } from './autosave.js';
 
 // ----- DOM refs -----
 const $btnPlay = document.getElementById('btn-play');
@@ -112,6 +113,7 @@ export function buildUI() {
 }
 export function applyPreset(name) {
   const p = PRESETS[name];
+  if (!p) return;
   Object.keys(p).forEach(k => {
     PARAMS[k] = p[k];
     const inp = document.getElementById('in-' + k);
@@ -121,6 +123,7 @@ export function applyPreset(name) {
   });
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.dataset.name === name));
   markDirty();
+  notifyChange(name);
 }
 
 function onRangeInput(which) {
@@ -188,9 +191,25 @@ export function wireHandlers() {
   $startInput.addEventListener('change', onNumInput);
   $endInput.addEventListener('change', onNumInput);
 
-  // Outros parâmetros que afetam só o build
-  ['cap-fps','cap-scale','cap-overlay'].forEach(id => {
-    document.getElementById(id).addEventListener('change', () => markDirty());
+  // Outros parâmetros que afetam só o build — mantemos STATE em sincronia
+  // com o DOM pra que `buildTimeline` (capture.js) e `applyEditState`
+  // (autosave) leiam de uma única fonte de verdade (STATE).
+  const $capFps = document.getElementById('cap-fps');
+  const $capScale = document.getElementById('cap-scale');
+  const $capOverlay = document.getElementById('cap-overlay');
+  $capFps.addEventListener('change', () => {
+    const v = parseFloat($capFps.value);
+    if (Number.isFinite(v) && v > 0) STATE.fps = v;
+    markDirty();
+  });
+  $capScale.addEventListener('change', () => {
+    const v = parseFloat($capScale.value);
+    if (Number.isFinite(v) && v > 0) STATE.scale = v / 100;
+    markDirty();
+  });
+  $capOverlay.addEventListener('change', () => {
+    STATE.overlay = !!$capOverlay.checked;
+    markDirty();
   });
 
   // Export
@@ -202,9 +221,10 @@ export function wireHandlers() {
       if (!N) throw new Error('sem frames');
       setProgress('<span class="stage">Empacotando .aseprite…</span>', 100);
       await new Promise(r => setTimeout(r, 16));
-      // Frames estão em Y nativo do GL (bottom-up). Aseprite quer top-down.
-      const flipped = STATE.frames.map(f => flipYRGBA(f, STATE.dw, STATE.dh));
-      const aseBytes = buildAseprite(flipped, STATE.dw, STATE.dh, STATE.frameDurationMs);
+      // STATE.frames já é top-down (linha 0 = topo visual), formato que
+      // .aseprite espera. O `flipYRGBA` antigo era resíduo de uma convenção
+      // bottom-up que não corresponde mais ao pipeline real.
+      const aseBytes = buildAseprite(STATE.frames, STATE.dw, STATE.dh, STATE.frameDurationMs);
       const blob = new Blob([aseBytes], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

@@ -58,7 +58,7 @@ router.post('/ref-upload', requireUser, upload.single('file'), async (req, res) 
 });
 
 // Melhora um prompt usando Claude Sonnet 4.6 com receita do kind dado.
-// Body: { prompt, kind: 'image' | 'motion' }
+// Body: { prompt, kind: 'image' | 'motion' | 'motion-text' }
 // Resposta: { prompt: <reescrito> }
 router.post('/enhance-prompt', requireUser, async (req, res) => {
   const prompt = (req.body?.prompt || '').trim();
@@ -66,7 +66,7 @@ router.post('/enhance-prompt', requireUser, async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
   if (prompt.length > 4000) return res.status(400).json({ error: 'prompt muito longo' });
   const system = getRecipe(kind);
-  if (!system) return res.status(400).json({ error: 'kind inválido (image | motion)' });
+  if (!system) return res.status(400).json({ error: 'kind inválido (image | motion | motion-text)' });
 
   try {
     const result = await anthropic.complete({ system, user: prompt });
@@ -258,6 +258,136 @@ router.post('/video', requireUser, async (req, res) => {
     }
   } catch (e) {
     console.error('generate video:', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Fluxo D — text-to-video. Sem image_url. Body:
+//   { prompt, duration_s, video_id?, mode?, structured? }
+// mode: 'free' | 'structured' | 'structured-edited' (telemetria)
+// structured: campos do modo rigoroso (guardado em meta pra histórico)
+router.post('/text-video', requireUser, async (req, res) => {
+  const prompt = (req.body?.prompt || '').trim();
+  const duration_s = req.body?.duration_s === 10 ? 10 : 5;
+  const videoId = req.body?.video_id || null;
+  const mode = ['free', 'structured', 'structured-edited'].includes(req.body?.mode) ? req.body.mode : 'free';
+  const structured = req.body?.structured && typeof req.body.structured === 'object' ? req.body.structured : null;
+
+  if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
+  if (prompt.length > 4000) return res.status(400).json({ error: 'prompt muito longo' });
+
+  const pool = req.app.locals.pool;
+
+  if (videoId) {
+    const { rows } = await pool.query(
+      `SELECT id FROM videos WHERE id = $1 AND owner_sub = $2`,
+      [videoId, req.user.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'video_id não encontrado' });
+  }
+
+  try {
+    const result = await fal.generateTextVideo({ prompt, duration_s });
+    const cost = await modelCost(pool, result.model, duration_s);
+    const costValue = cost?.cost ?? null;
+    const generated_at = new Date().toISOString();
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      let videoRow;
+      let attemptIdx;
+
+      if (videoId) {
+        const { rows } = await client.query(
+          `SELECT generation_meta FROM videos WHERE id = $1 AND owner_sub = $2 FOR UPDATE`,
+          [videoId, req.user.sub]
+        );
+        const meta = rows[0].generation_meta || {};
+        const attempts = Array.isArray(meta.attempts) ? meta.attempts : [];
+
+        const attemptId = `att-${attempts.length}-${Date.now()}`;
+        const dstPath = `roto-master/videos/${videoId}/source-${attemptId}.mp4`;
+        const stored = await uploadFromUrl(result.url, dstPath, 'video/mp4');
+
+        const newAttempt = {
+          url: stored.gcs_url,
+          motion_prompt: prompt,
+          duration_s,
+          mode,
+          structured,
+          cost: costValue,
+          generated_at,
+        };
+        attempts.push(newAttempt);
+        attemptIdx = attempts.length - 1;
+
+        const newMeta = {
+          ...meta,
+          model_motion: result.model,
+          attempts,
+          active_attempt_idx: attemptIdx,
+        };
+
+        const { rows: upd } = await client.query(
+          `UPDATE videos
+              SET gcs_path = $1, gcs_url = $2, duration_s = $3,
+                  generation_meta = $4, updated_at = NOW()
+            WHERE id = $5
+            RETURNING ${VIDEO_COLS}`,
+          [stored.gcs_path, stored.gcs_url, duration_s, newMeta, videoId]
+        );
+        videoRow = upd[0];
+      } else {
+        const name = prompt.slice(0, 60).trim() || 'sem nome';
+
+        const { rows: ins } = await client.query(
+          `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url, duration_s)
+           VALUES ($1, $2, $3, 'generated-t2v', '', '', $4)
+           RETURNING id`,
+          [req.user.sub, req.user.email || '', name, duration_s]
+        );
+        const newId = ins[0].id;
+
+        const dstPath = `roto-master/videos/${newId}/source-att-0-${Date.now()}.mp4`;
+        const stored = await uploadFromUrl(result.url, dstPath, 'video/mp4');
+
+        const newMeta = {
+          model_motion: result.model,
+          attempts: [{
+            url: stored.gcs_url,
+            motion_prompt: prompt,
+            duration_s,
+            mode,
+            structured,
+            cost: costValue,
+            generated_at,
+          }],
+          active_attempt_idx: 0,
+        };
+
+        const { rows: upd } = await client.query(
+          `UPDATE videos
+              SET gcs_path = $1, gcs_url = $2, generation_meta = $3, updated_at = NOW()
+            WHERE id = $4
+            RETURNING ${VIDEO_COLS}`,
+          [stored.gcs_path, stored.gcs_url, newMeta, newId]
+        );
+        videoRow = upd[0];
+        attemptIdx = 0;
+      }
+
+      await client.query('COMMIT');
+      res.status(videoId ? 200 : 201).json({ video: videoRow, attempt_idx: attemptIdx });
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    console.error('generate text-video:', e.message);
     res.status(502).json({ error: e.message });
   }
 });

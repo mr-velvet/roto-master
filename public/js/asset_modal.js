@@ -156,8 +156,10 @@ $nameInput.addEventListener('keydown', (e) => {
 // fonte: leva pro editor do vídeo associado
 $btnGotoSource?.addEventListener('click', () => {
   if (!currentAsset || !currentAsset.video_id) return;
+  // captura ANTES de closeModal — onClose zera currentAsset síncronamente.
+  const videoId = currentAsset.video_id;
   closeModal();
-  navigateEditor(currentAsset.video_id);
+  navigateEditor(videoId);
 });
 
 // re-editar
@@ -166,8 +168,9 @@ $btnReedit?.addEventListener('click', () => {
     showToast('vídeo-fonte indisponível');
     return;
   }
+  const videoId = currentAsset.video_id;
   closeModal();
-  navigateEditor(currentAsset.video_id);
+  navigateEditor(videoId);
 });
 
 // baixar .aseprite
@@ -190,8 +193,9 @@ $btnDuplicate?.addEventListener('click', async () => {
     showToast('vídeo-fonte indisponível');
     return;
   }
+  const videoId = currentAsset.video_id;
   try {
-    const dup = await duplicateVideo(currentAsset.video_id);
+    const dup = await duplicateVideo(videoId);
     showToast('vídeo duplicado — agora é independente');
     closeModal();
     navigateEditor(dup.id);

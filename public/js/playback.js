@@ -3,7 +3,7 @@
 // pra evitar import circular com ui.js.
 
 import { STATE } from './state.js';
-import { gl, vid, buf, canvas, ensurePlainProg, resizeCanvasToDims } from './gl.js';
+import { gl, vid, buf, canvas, ensurePlainProg, resizeCanvasToDims, renderShaderFrame } from './gl.js';
 import * as glmod from './gl.js';
 import { buildTimeline, paintFrameToCanvas } from './capture.js';
 
@@ -21,33 +21,68 @@ export function bindUI(deps) {
   _modeTabs = deps.$modeTabs;
 }
 
-// ---- Modo source: tocar vídeo nativo ----
+// ---- Modo source: preview com shader principal em tempo real ----
+// Mesma lógica do build (`renderShaderFrame` aplica PARAMS no FBO e faz swap
+// prevTex↔fbTex pra alimentar feedback temporal), mas a cada tick blita o
+// resultado pro canvas via plainProg lendo `prevTex` (que após o swap contém
+// o frame recém-renderizado). Sliders/presets/feedback refletem ao vivo.
 let sourceRAF = 0;
+let sourceFrameIdx = 0;
+let sourcePrevCleared = false;
 export function startSourceLoop() {
   cancelAnimationFrame(sourceRAF);
+  sourceFrameIdx = 0;
+  sourcePrevCleared = false;
   const tick = () => {
     if (STATE.mode !== 'source') return;
-    // wrap entre in e out se vídeo estourar
     if (vid.currentTime >= STATE.outS) {
       try { vid.currentTime = STATE.inS; } catch(e) {}
     }
-    // upload do frame de vídeo direto (mostra original sem efeito)
-    if (vid.readyState >= 2) {
+    if (vid.readyState >= 2 && vid.videoWidth > 0) {
+      // Sincroniza dimensões do canvas/FBO/prev com o vídeo. Idempotente.
+      if (canvas.width !== vid.videoWidth || canvas.height !== vid.videoHeight) {
+        resizeCanvasToDims(vid.videoWidth, vid.videoHeight);
+        sourcePrevCleared = false;
+      }
+      // Limpa prev/fb texture conteúdo lixo na primeira iteração depois de
+      // resize. Sem isso, feedback>0 amostra random ↦ tela cinza/colorida.
+      if (!sourcePrevCleared) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, glmod.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, glmod.prevTex, 0);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, glmod.fbTex, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        sourcePrevCleared = true;
+      }
+
+      // 1) Render do shader principal no FBO (feedback ativo via prevTex).
+      // renderShaderFrame faz: useProgram(prog), upload do <video>, render em
+      // fbTex, e swap [prevTex,fbTex] = [fbTex,prevTex] no fim.
+      renderShaderFrame(sourceFrameIdx, 30);
+
+      // 2) Blit pro canvas (FBO=null) via plainProgFlipped lendo prevTex.
+      // Por que flippado: o render principal (renderShaderFrame) já escreve
+      // no FBO com orientação visual correta (FLIP_Y=true no upload + flip
+      // no VS principal). Ler com VS plain "comum" inverteria de volta. O
+      // VS flippado neutraliza esse efeito apenas no caminho FBO→canvas.
       ensurePlainProg();
-      gl.useProgram(glmod.plainProg);
-      const aPos2 = gl.getAttribLocation(glmod.plainProg, 'a_pos');
+      gl.useProgram(glmod.plainProgFlipped);
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      const aPos2 = gl.getAttribLocation(glmod.plainProgFlipped, 'a_pos');
       gl.enableVertexAttribArray(aPos2);
       gl.vertexAttribPointer(aPos2, 2, gl.FLOAT, false, 0, 0);
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, glmod.plainTex);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, vid);
+      gl.bindTexture(gl.TEXTURE_2D, glmod.prevTex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.uniform1i(gl.getUniformLocation(glmod.plainProg, 'u_tex'), 0);
+      gl.uniform1i(gl.getUniformLocation(glmod.plainProgFlipped, 'u_tex'), 0);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      sourceFrameIdx++;
     }
     _updateInfo();
     sourceRAF = requestAnimationFrame(tick);
@@ -72,6 +107,8 @@ export async function ensureBuilt() {
     _setProgress(`<span class="ok">✓ Timeline pronta</span> · ${info.N} frames · ${info.dw}×${info.dh} · ${info.frameDurationMs}ms cada`, 100);
     paintFrameToCanvas(0);
     _updateInfo();
+    const $rotoEmpty = document.getElementById('rotoscope-empty');
+    if ($rotoEmpty) $rotoEmpty.setAttribute('hidden', '');
   } finally {
     _btnPlay.disabled = false;
     _btnExport.disabled = false;
@@ -119,12 +156,14 @@ export function stopPlay() {
 function applyMode(mode) {
   STATE.mode = mode;
   _modeTabs.forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  const $rotoEmpty = document.getElementById('rotoscope-empty');
   if (mode === 'source') {
     stopRotoscopePlay();
     resizeCanvasToDims(vid.videoWidth || 960, vid.videoHeight || 528);
     try { vid.currentTime = Math.max(STATE.inS, Math.min(vid.currentTime, STATE.outS)); } catch(e) {}
     _btnPlay.textContent = '▶ play';
     _setProgress('<span class="stage">Modo vídeo original.</span> Use os marcadores in/out pra delimitar trecho.', 0);
+    if ($rotoEmpty) $rotoEmpty.setAttribute('hidden', '');
     startSourceLoop();
   } else {
     stopSourceLoop();
@@ -132,6 +171,9 @@ function applyMode(mode) {
     if (STATE.frames.length && !STATE.dirty) {
       resizeCanvasToDims(STATE.dw, STATE.dh);
       paintFrameToCanvas(STATE.playIdx);
+      if ($rotoEmpty) $rotoEmpty.setAttribute('hidden', '');
+    } else if ($rotoEmpty) {
+      $rotoEmpty.removeAttribute('hidden');
     }
     _btnPlay.textContent = STATE.dirty || !STATE.frames.length ? '▶ build & play' : '▶ play';
     _setProgress(STATE.dirty || !STATE.frames.length

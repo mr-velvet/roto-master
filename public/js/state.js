@@ -54,4 +54,7 @@ export const STATE = {
   playing: false,
   playIdx: 0,            // só usado no modo rotoscope
   playStartMs: 0,
+  // marca que valores foram restaurados de edit_state (vs defaults do boot).
+  // Usado pelo file_loader pra não sobrescrever in/out na carga do vídeo.
+  restoredFromState: false,
 };

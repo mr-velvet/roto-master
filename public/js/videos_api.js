@@ -157,6 +157,23 @@ export async function publishVideo(id, file, projectId, assetName) {
   return asset;
 }
 
+// Republicar como novo asset (vídeo já tem asset, mas user mudou nome ou
+// projeto). Backend duplica o vídeo e cria asset novo. Vídeo/asset originais
+// ficam intactos.
+export async function publishVideoAsNew(videoId, file, projectId, assetName) {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('project_id', projectId);
+  fd.append('asset_name', assetName);
+  const r = await authedFetch(`/api/videos/${videoId}/publish-as-new`, { method: 'POST', body: fd });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'publish-as-new: ' + r.status);
+  }
+  const { asset, new_video_id } = await r.json();
+  return { asset, new_video_id };
+}
+
 export async function publishAsset(assetId, file) {
   const fd = new FormData();
   fd.append('file', file);

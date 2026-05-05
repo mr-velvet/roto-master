@@ -2,7 +2,7 @@
 
 import { listVideos, createVideo, deleteVideo, duplicateVideo, previewUrl, createVideoFromUrl } from './videos_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
-import { navigateEditor, navigateProject, navigateGenerate } from './router.js';
+import { navigateEditor, navigateProject, navigateGenerate, navigateTextVideo } from './router.js';
 
 const $grid = document.querySelector('[data-bind="video-grid"]');
 const $empty = document.querySelector('[data-bind="videos-empty"]');
@@ -49,6 +49,7 @@ function render() {
       'uploaded': { label: 'upload', cls: 'tag-origin-upload', icon: '▲' },
       'url': { label: 'url', cls: 'tag-origin-url', icon: '↗' },
       'generated-generic': { label: 'gerado', cls: 'tag-origin-generic', icon: '✦' },
+      'generated-t2v': { label: 'texto→vídeo', cls: 'tag-origin-generic', icon: '✦' },
       'generated-from-character': { label: 'personagem', cls: 'tag-origin-character', icon: '☻' },
     };
     const o = originMap[origin] || { label: origin, cls: '', icon: '·' };
@@ -134,8 +135,10 @@ document.addEventListener('click', (e) => {
   } else if (flow === 'C') {
     closeModal();
     navigateGenerate();
+  } else if (flow === 'D') {
+    closeModal();
+    navigateTextVideo();
   }
-  // D continua "em breve"
 });
 
 function openStartVideoModal(flow) {

@@ -360,6 +360,184 @@
       </div>
     </section>
 
+    <!-- ATELIÊ → TEXT2VIDEO (Fluxo D: prompt textual → vídeo, sem imagem inicial) -->
+    <section class="screen screen-atelie-text2video">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">
+              <button class="link-back" data-action="goto-atelie-videos">‹ Ateliê / Vídeos</button>
+              <span class="sep">/</span>
+              Texto → Vídeo
+            </div>
+            <h2 class="page-head-title">Vídeo a partir <em>só de texto</em></h2>
+            <p class="page-head-sub">Sem imagem inicial — o modelo decide tudo a partir do prompt. Quanto mais rigoroso e específico, mais previsível a saída.</p>
+          </div>
+        </div>
+
+        <div class="t2v-wrap">
+
+          <!-- abas -->
+          <div class="t2v-tabs" role="tablist">
+            <button class="t2v-tab is-active" data-action="t2v-set-mode" data-mode="free" role="tab" aria-selected="true">
+              <span class="t2v-tab-num">1</span>
+              <span class="t2v-tab-label">prompt livre + melhorar</span>
+            </button>
+            <button class="t2v-tab" data-action="t2v-set-mode" data-mode="structured" role="tab" aria-selected="false">
+              <span class="t2v-tab-num">2</span>
+              <span class="t2v-tab-label">prompt rigoroso (paleta)</span>
+            </button>
+          </div>
+
+          <!-- aba 1: livre -->
+          <section class="t2v-pane" data-bind="t2v-pane-free">
+            <label class="field">
+              <span class="field-label-row">
+                seu prompt
+                <button class="enhance-btn" data-action="enhance-prompt" data-target="t2v-free" type="button" title="melhorar prompt com IA">
+                  <span class="enhance-icon">✦</span>
+                  <span class="enhance-label">melhorar</span>
+                </button>
+              </span>
+              <textarea data-bind="t2v-free-prompt" placeholder="ex: garoto de capacete andando de skate numa praça vazia ao entardecer, câmera começa em close-up no rosto e abre lentamente até wide" rows="6"></textarea>
+              <button class="enhance-undo" data-bind="t2v-free-undo" type="button" hidden>↶ desfazer melhoria</button>
+            </label>
+          </section>
+
+          <!-- aba 2: rigoroso -->
+          <section class="t2v-pane" data-bind="t2v-pane-structured" hidden>
+            <div class="t2v-grid">
+
+              <label class="field t2v-field-wide">
+                <span>cena / ação principal <em>livre</em></span>
+                <textarea data-bind="t2v-scene" placeholder="ex: a boy on a skateboard glides across an empty plaza, fallen leaves swirling behind" rows="2"></textarea>
+              </label>
+
+              <label class="field t2v-field-wide">
+                <span>sujeito / personagem <em>livre</em></span>
+                <textarea data-bind="t2v-subject" placeholder="ex: 12-year-old boy with worn helmet, baggy hoodie, sun-bleached hair, focused expression" rows="2"></textarea>
+              </label>
+
+              <div class="field">
+                <span>câmera inicial</span>
+                <div class="t2v-chips" data-bind="t2v-camera-start"></div>
+                <input type="text" class="t2v-chip-custom" data-bind="t2v-camera-start-custom" placeholder="ou descreva: ex. low-angle close-up framed by leaves" />
+              </div>
+
+              <div class="field">
+                <span>movimento de câmera</span>
+                <div class="t2v-chips" data-bind="t2v-camera-movement"></div>
+                <input type="text" class="t2v-chip-custom" data-bind="t2v-camera-movement-custom" placeholder="ou descreva: ex. handheld follow with slight sway" />
+              </div>
+
+              <div class="field">
+                <span>câmera final <em>opcional</em></span>
+                <div class="t2v-chips" data-bind="t2v-camera-end"></div>
+                <input type="text" class="t2v-chip-custom" data-bind="t2v-camera-end-custom" placeholder="ou descreva: ex. wide reveal of the entire plaza" />
+              </div>
+
+              <div class="field">
+                <span>iluminação</span>
+                <div class="t2v-chips" data-bind="t2v-lighting"></div>
+                <input type="text" class="t2v-chip-custom" data-bind="t2v-lighting-custom" placeholder="ou descreva" />
+              </div>
+
+              <div class="field">
+                <span>atmosfera</span>
+                <div class="t2v-chips" data-bind="t2v-atmosphere"></div>
+                <input type="text" class="t2v-chip-custom" data-bind="t2v-atmosphere-custom" placeholder="ou descreva" />
+              </div>
+
+              <div class="field">
+                <span>estilo</span>
+                <div class="t2v-chips" data-bind="t2v-style"></div>
+                <input type="text" class="t2v-chip-custom" data-bind="t2v-style-custom" placeholder="ou descreva" />
+              </div>
+
+              <label class="field t2v-field-wide">
+                <span>física / detalhes do mundo <em>livre, opcional</em></span>
+                <textarea data-bind="t2v-physics" placeholder="ex: leaves rustle in the wind, hood ripples with motion, dust kicks up behind the wheels" rows="2"></textarea>
+              </label>
+            </div>
+          </section>
+
+          <!-- controles comuns -->
+          <div class="t2v-controls">
+            <label class="field t2v-duration-field">
+              <span>duração</span>
+              <div class="generate-duration">
+                <button class="chip is-active" data-action="t2v-set-duration" data-duration="5" type="button">5s</button>
+                <button class="chip" data-action="t2v-set-duration" data-duration="10" type="button">10s</button>
+              </div>
+            </label>
+
+            <span class="t2v-cost" data-bind="t2v-cost">—</span>
+
+            <div class="t2v-actions">
+              <button class="btn btn-ghost" data-action="t2v-preview" data-bind="t2v-preview-btn" type="button" title="ver o prompt final que vai pro modelo" style="display:none">
+                <span class="btn-icon">⚏</span>
+                ver prompt compilado
+              </button>
+              <button class="btn btn-primary" data-action="t2v-generate" data-bind="t2v-generate-btn" type="button">
+                <span class="btn-icon">▶</span>
+                <span data-bind="t2v-generate-label">gerar vídeo</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="generate-status" data-bind="t2v-status" hidden></div>
+          <div class="generate-err" data-bind="t2v-err"></div>
+
+          <!-- histórico de tentativas (igual ao C) -->
+          <div class="generate-attempts" data-bind="t2v-attempts" hidden>
+            <div class="generate-attempts-label">tentativas <span data-bind="t2v-attempts-count">0</span></div>
+            <div class="generate-attempts-list" data-bind="t2v-attempts-list"></div>
+          </div>
+
+          <div class="generate-finalize" data-bind="t2v-finalize" hidden>
+            <button class="btn btn-publish" data-action="t2v-open-editor">
+              <span class="btn-icon">✎</span>
+              abrir no editor
+            </button>
+            <p class="generate-finalize-hint">Você ainda pode gerar mais tentativas depois — o vídeo guarda o histórico.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- modal: prompt compilado (preview do t2v rigoroso) -->
+    <div class="modal modal-wide" data-modal="t2v-prompt-preview" hidden>
+      <div class="modal-backdrop" data-action="modal-close"></div>
+      <div class="modal-card">
+        <div class="modal-head">
+          <div class="modal-eyebrow">Texto → Vídeo</div>
+          <h3>Prompt compilado</h3>
+          <p class="modal-sub">Esse é o texto exato que vai pro modelo. Você pode editar manualmente antes de mandar.</p>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span class="field-label-row">
+              prompt em inglês
+              <button class="enhance-btn" data-action="enhance-prompt" data-target="t2v-compiled" type="button" title="passar pelo Sonnet 4.6 pra refinar">
+                <span class="enhance-icon">✦</span>
+                <span class="enhance-label">refinar</span>
+              </button>
+            </span>
+            <textarea data-bind="t2v-preview-prompt" rows="10"></textarea>
+          </label>
+          <div class="modal-err" data-bind="t2v-preview-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+          <button class="btn btn-primary" data-action="t2v-confirm-generate">
+            <span class="btn-icon">▶</span>
+            gerar com este prompt
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- EDITOR (real, não mock) -->
     <section class="screen screen-editor editor-real">
       <div class="editor-real-shell">
@@ -377,6 +555,10 @@
             <div class="video-loading" id="video-loading" hidden>
               <div class="video-loading-spinner"></div>
               <div class="video-loading-msg">carregando vídeo do storage…</div>
+            </div>
+            <div class="rotoscope-empty" id="rotoscope-empty" hidden>
+              <strong>modo rotoscopia</strong>
+              <p>clique <em>build &amp; play</em> pra construir frames discretos a partir do trecho marcado.</p>
             </div>
           </div>
           <div class="drop-overlay" id="drop-overlay"><span>solte o vídeo</span></div>
@@ -410,6 +592,7 @@
             <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
               <div class="video-name-display" id="video-name-display" style="font-family:var(--font-display); font-style:italic; font-size:16px; color:var(--paper);">—</div>
               <div id="video-publish-state" class="editor-publish-state-real" style="margin:0;"><span class="dot-warn"></span>ainda não publicado</div>
+              <div id="autosave-indicator" class="autosave-indicator" data-status="idle"><span class="autosave-dot"></span><span class="autosave-label">—</span></div>
             </div>
             <button class="btn-export" id="btn-load" style="margin-top:0;">▸ carregar vídeo</button>
             <button class="btn-export" id="btn-extract" style="margin-top:8px; display:none;" title="cria novo vídeo na workbench a partir do trecho marcado (in/out)">
@@ -521,10 +704,10 @@
             <div class="flow-card-name">Geração genérica</div>
             <p>Prompt → imagem → vídeo, em duas etapas.</p>
           </button>
-          <button class="flow-card flow-card-D is-soon" data-flow="D" disabled>
+          <button class="flow-card flow-card-D" data-action="pick-flow" data-flow="D">
             <div class="flow-card-letter">D</div>
-            <div class="flow-card-name">Caminho personagem</div>
-            <p>Personagem → enquadramento → movimento. <span class="soon">em breve</span></p>
+            <div class="flow-card-name">Texto → Vídeo</div>
+            <p>Sem imagem inicial. Prompt rigoroso ou livre, melhorado com IA.</p>
           </button>
         </div>
       </div>
@@ -591,9 +774,9 @@
           <span>nome do asset</span>
           <input type="text" data-bind="publish-asset-name" placeholder="herda do nome do vídeo" maxlength="200" />
         </label>
-        <div class="field-row" data-bind="publish-overwrite-warn" hidden>
-          <span class="dot dot-warn"></span>
-          Esse vídeo já tem asset publicado. Confirmar vai <strong>sobrescrever</strong> o <code>.aseprite</code> existente.
+        <div class="field-row" data-bind="publish-republish-info" hidden>
+          <span class="dot" data-bind="publish-republish-dot"></span>
+          <span data-bind="publish-republish-msg">—</span>
         </div>
         <div class="modal-err" data-bind="publish-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
       </div>
