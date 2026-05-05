@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-05 fim do dia (smoke test fixes + Fluxo D em prod. Tudo comitado (`9267494`) e deployado em `https://roto.did.lu` — saudável, código atual rodando. Deploy passou a sincronizar via git no `deploy.sh` da VM.)
+Última atualização: 2026-05-05 fim do dia (smoke test fixes + Fluxo D em prod, commit `773697d`. `FAL_KEY` adicionada ao `.env` da VM e declarada no `did.json`. `deploy.sh` da VM consertado: IS_NEW sem race + git pull automático antes do build.)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -19,33 +19,27 @@
 
 ## Estado atual
 
-**Em produção em https://roto.did.lu:** v1 fechada (commit `10d59fc`).
+**Em produção em https://roto.did.lu:** commit `773697d` (Fluxo D em prod, fixes de smoke test, env vars completas). Container saudável (recriado em 6s no último deploy).
 
-**Em main mas NÃO deployado ainda** (commits `bef6eb7`, `9e7465a`, `5977749`):
+Conteúdo em prod:
+- **v1** completa (galeria, ateliê, editor, publish, membros).
+- **Fluxo B** completo (vídeo de URL/YouTube): cola URL → streaming → "extrair trecho" gera novo vídeo no GCS.
 - **Fluxo C** completo (geração genérica): prompt → imagem (Nano Banana Pro) → vídeo (Kling 2.5 Turbo Pro i2v).
-- **Fluxo B** completo (vídeo de URL/YouTube): cola URL → editor com streaming → "extrair trecho" gera novo vídeo no GCS.
-- **UX:** botão voltar no editor, nome inline editável, loading do vídeo, thumb (1º frame), context menu no asset, "melhorar prompt" via Sonnet 4.6, sanitizar imagem via Nano Banana edit, timer de geração, upload/paste/drop de imagem inicial.
+- **Fluxo D** completo (texto → vídeo): texto → vídeo direto (sem etapa intermediária de imagem).
+- **UX:** botão voltar no editor, nome inline editável, loading do vídeo, thumb (1º frame), context menu no asset, "melhorar prompt" via Sonnet, sanitizar imagem via Nano Banana edit, timer de geração, upload/paste/drop de imagem inicial.
+- **Smoke test fixes (2026-05-05):** spinner imediato ao re-editar; modal de publish pré-preenche projeto+nome do asset existente e mostra info ao vivo "vai sobrescrever" vs "vai criar novo" — mudou nome/projeto, backend duplica vídeo + cria asset novo (visão 1:1 preservada via novo endpoint `POST /api/videos/:id/publish-as-new`); listeners do modal de detalhe do asset capturam `video_id` antes do `closeModal` (que zerava `currentAsset` e fazia o handler explodir silenciosamente).
 
 **Ambiente local funcionando** com bypass de auth + túnel IAP pro Postgres da VM. Ver "ambiente local" abaixo.
-
-### Antes do próximo deploy
-
-Dockerfile precisa de yt-dlp+ffmpeg (já adicionado no commit `5977749`). Migrations 010, 011, 012 precisam rodar via deploy.sh da plataforma. Receita Anthropic em `lib/prompt-recipes.js` é editável — manter atualizada conforme modelos evoluem.
 
 ### Bug aberto
 
 - **"Usar como imagem inicial" no modal de paste/drop:** botão clica mas request `/api/generate/ref-upload` não dispara. Adicionei console.log de debug — precisa o user reproduzir e me trazer o log.
 
-### Smoke test 2026-05-05 — fixes feitos (não comitados)
-
-- **Feedback do "re-editar" no modal de detalhe do asset.** O botão funcionava mas dava sensação de quebrado: entre o click e o vídeo aparecer no editor podia passar quase 1 min em vídeos grandes. Agora `openEditor` mostra o spinner `#video-loading` imediatamente ("abrindo vídeo…" → "baixando vídeo do storage…"). `editor.js` modificado.
-- **Republish que muda nome/projeto cria asset novo (mantendo asset original).** Visão diz "1:1 vídeo↔asset, reuso = duplicar vídeo". Implementação: novo endpoint `POST /api/videos/:id/publish-as-new` que duplica vídeo + cria asset novo numa transação (usa `copyObject` do GCS, sem baixar blob). Modal de publish agora pré-preenche projeto+nome do asset existente quando vídeo já está publicado e mostra info ao vivo "vai sobrescrever" vs "vai criar novo" conforme user altera nome/projeto. Sobrescreve só quando ambos batem. Arquivos: `routes/videos.js`, `public/js/videos_api.js`, `public/js/editor.js`, `public/index.html`, `public/styles.css`.
-
 ### Pendências de futuro
 
 - Cobrir edição/recorte de uploads/gerados (não só url) — `extract` só funciona com source_url hoje.
 - "Adapt for content policy" automático antes do gerar (se quiser virar opt-in).
-- Adicionar crédito Anthropic na chave pra o "melhorar" funcionar local (já funciona em prod).
+- Adicionar crédito Anthropic na chave pra o "melhorar" funcionar (chave atual está sem crédito em local e em prod — UI mostra mensagem clara quando falha).
 
 ## Ambiente local (dev no Windows)
 
@@ -255,20 +249,62 @@ Sem código. Discussão profunda de produto que produziu dois documentos centrai
 
 **Próximo passo é refazer o protótipo** refletindo a visão mestra antes de qualquer código de produção.
 
-## Patches pendentes nos scripts da plataforma
+## Deploy
 
-Aplicados na VM (`/home/manu/platform/scripts/`) mas **não sincronizados** com o repo `mr-velvet/adorable-devops`:
+### Fluxo (rápido)
 
-- `new-app.sh`: aceita flag `--domain` que sobrescreve `${APP_NAME}.did.lu`.
-- `deploy.sh`: lê `domain` do `did.json` e propaga via `--domain`.
-- `compose-update.py`: regex tolerante a linhas em branco no bloco `environment:`.
+Local (Windows) → push pra `main` → na VM, rodar `deploy.sh roto-master`:
 
-Aplicados na VM **e sincronizados** com `adorable-devops` em 2026-05-05 (commit `c539cd6`):
+```powershell
+# da máquina local, depois do git push:
+gcloud compute ssh adorable-claude --zone=us-central1-a --project=didlu-main `
+  --command="bash /home/manu/platform/scripts/deploy.sh roto-master"
+```
 
-- `deploy.sh` STEP 0: IS_NEW check via mktemp + `grep -Fxq`, sem pipe. Antes `docker compose config --services | grep -qx` sofria de SIGPIPE não-determinístico sob `pipefail` (255), fazendo apps existentes serem detectados como novos.
-- `deploy.sh` STEP 0.5 (novo): se `/home/manu/platform/<svc>/` é git repo, faz `fetch + reset --hard` antes do build. Antes o sync de código pra prod dependia de cron em `~/dev/`, mas projetos novos em `~/ved/` ficavam órfãos — deploys reportavam SUCCESS com código velho. Para uma app começar a usar isso: `cd /home/manu/platform/<app> && git init && git remote add origin <repo-url> && git fetch && git reset --hard origin/main`.
+O `deploy.sh` patchado em 2026-05-05 (`adorable-devops` commit `c539cd6`) faz:
+1. **STEP 0** — auto-detecta se app é novo (sem race condition).
+2. **STEP 0.5** — `git fetch + reset --hard` em `/home/manu/platform/roto-master/` (que é repo git apontando pra `mr-velvet/roto-master`). **Esse passo é o que sincroniza o código novo pra prod.**
+3. **STEP 1** — valida secrets em `did.json` contra `/home/manu/platform/.env`.
+4. **STEP 2** — sincroniza env vars no `docker-compose.yml` via `compose-update.py`.
+5. **STEP 3** — aplica migrations pendentes (tabela `_migrations` no banco).
+6. **STEP 4** — `docker compose build`.
+7. **STEP 5** — `docker compose up -d` + healthcheck.
 
-Bugs ainda **não corrigidos** nos scripts da VM:
+### Env vars em prod (declaradas em `did.json`)
+
+| Var | Origem | Notas |
+|---|---|---|
+| `GCS_SERVICE_ACCOUNT` | `.env` da plataforma | JSON multilinha, mesma da plataforma |
+| `FAL_KEY` | `.env` da plataforma | Adicionada em 2026-05-05 (toolbelt pessoal `~/dev/universal-toolbelt/.api-keys.json` → fal_ai). Mesma do dev local |
+| `ANTHROPIC_API_KEY` | `.env` da plataforma | Já existia. Sem crédito → "melhorar prompt" falha com 400 e mensagem clara no UI |
+
+Pra adicionar var nova: editar `did.json` (`{ "source": "platform", "required": true }`) + garantir que está em `/home/manu/platform/.env` na VM antes do deploy. `deploy.sh` falha cedo se var marcada `required` está faltando.
+
+### Bootstrap de uma app nova nesse fluxo (one-shot)
+
+Pra um app começar a usar o `git pull` automático do STEP 0.5, transformar a pasta `/home/manu/platform/<app>/` em repo git apontando pro GitHub:
+
+```bash
+cd /home/manu/platform/<app>
+git init
+git remote add origin https://github.com/mr-velvet/<app>.git
+git fetch origin
+git checkout -b main
+git reset --hard origin/main
+```
+
+Depois disso todo `deploy.sh <app>` puxa o HEAD remoto antes de buildar. Já feito pro `roto-master`.
+
+### Patches no `adorable-devops`
+
+- **Sincronizados** (commits no repo + aplicados na VM):
+  - `c539cd6` (2026-05-05): `deploy.sh` STEP 0 sem race; STEP 0.5 com git pull.
+- **Aplicados só na VM** (não sincronizados):
+  - `new-app.sh`: aceita flag `--domain`.
+  - `deploy.sh`: lê `.domain` do `did.json` e propaga via `--domain` (versão da VM tem isso, repo ainda não).
+  - `compose-update.py`: regex tolerante a linhas em branco no bloco `environment:`.
+
+### Bugs conhecidos nos scripts da VM (não corrigidos)
 
 - `kill-app.sh` não suporta `domain` customizado (deixa Caddyfile/DNS órfãos no teardown).
 - `new-app.sh` etapa Logto: `INSERT` com `2>/dev/null` engole erro silencioso. Recuperação manual via `/tmp/insert-logto.sh`.
