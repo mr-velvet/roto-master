@@ -6,6 +6,8 @@
   "logto": true,
   "migrations": "migrations/",
   "env": {
-    "GCS_SERVICE_ACCOUNT": { "source": "platform", "required": true }
+    "GCS_SERVICE_ACCOUNT": { "source": "platform", "required": true },
+    "FAL_KEY": { "source": "platform", "required": true },
+    "ANTHROPIC_API_KEY": { "source": "platform", "required": true }
   }
 }
