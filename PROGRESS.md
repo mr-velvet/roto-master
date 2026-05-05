@@ -1,6 +1,6 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-04 (v1 substancialmente fechada em produção — itens 1–4 do plano implementados e deployados; **só falta o smoke test pra declarar v1 entregue**)
+Última atualização: 2026-05-04 fim do dia (v1 fechada + Fluxo C completo + Fluxo B completo + ambiente local de pé. **Não deployado em prod ainda — só commitado no main.** Próxima sessão: abrir contexto novo com PROGRESS atualizado e seguir.)
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
@@ -19,9 +19,44 @@
 
 ## Estado atual
 
-App em produção em **https://roto.did.lu** com a **v1 substancialmente fechada** (commit `10d59fc`). Login Google + multi-user via Logto + criar projeto + criar vídeo no Ateliê + upload pro GCS + editor + publicar como asset + autosave de edit_state + **detalhe do asset (modal 6.7) + vínculo asset↔vídeo dos dois lados + duplicar vídeo + convite de membros pelo UI**. Migrations 002–009 aplicadas no Postgres da plataforma (tabelas de v2 já criadas mas vazias — Fluxo D, jobs, models não consumidas ainda).
+**Em produção em https://roto.did.lu:** v1 fechada (commit `10d59fc`).
 
-**A v1 está pendente de smoke test.** Não há mais código bloqueador conhecido. Próximo passo: você navegar no app e listar o que parecer estranho pra eu corrigir em batch.
+**Em main mas NÃO deployado ainda** (commits `bef6eb7`, `9e7465a`, `5977749`):
+- **Fluxo C** completo (geração genérica): prompt → imagem (Nano Banana Pro) → vídeo (Kling 2.5 Turbo Pro i2v).
+- **Fluxo B** completo (vídeo de URL/YouTube): cola URL → editor com streaming → "extrair trecho" gera novo vídeo no GCS.
+- **UX:** botão voltar no editor, nome inline editável, loading do vídeo, thumb (1º frame), context menu no asset, "melhorar prompt" via Sonnet 4.6, sanitizar imagem via Nano Banana edit, timer de geração, upload/paste/drop de imagem inicial.
+
+**Ambiente local funcionando** com bypass de auth + túnel IAP pro Postgres da VM. Ver "ambiente local" abaixo.
+
+### Antes do próximo deploy
+
+Dockerfile precisa de yt-dlp+ffmpeg (já adicionado no commit `5977749`). Migrations 010, 011, 012 precisam rodar via deploy.sh da plataforma. Receita Anthropic em `lib/prompt-recipes.js` é editável — manter atualizada conforme modelos evoluem.
+
+### Bug aberto
+
+- **"Usar como imagem inicial" no modal de paste/drop:** botão clica mas request `/api/generate/ref-upload` não dispara. Adicionei console.log de debug — precisa o user reproduzir e me trazer o log.
+
+### Pendências de futuro
+
+- Cobrir edição/recorte de uploads/gerados (não só url) — `extract` só funciona com source_url hoje.
+- "Adapt for content policy" automático antes do gerar (se quiser virar opt-in).
+- Adicionar crédito Anthropic na chave pra o "melhorar" funcionar local (já funciona em prod).
+
+## Ambiente local (dev no Windows)
+
+Setup já feito, persiste sem reconfiguração:
+
+- **Server:** `node server.js` na pasta do projeto. Porta 5050 (5031 ocupada por outra coisa). URL: http://localhost:5050.
+- **Auth:** bypass via `DEV_USER_SUB` + `DEV_USER_EMAIL` no `.env`. `requireUser` injeta esse user, `auth.js` do front detecta `localhost` e pula Logto.
+- **Postgres:** túnel IAP do Windows → container `roto-pgproxy` (socat) na VM → Postgres real. Comando: `gcloud compute start-iap-tunnel adorable-claude 5433 --zone=us-central1-a --local-host-port=localhost:5433`. `scripts/dev.cmd` automatiza.
+- **GCS:** mesma chave que produção, copiada no `.env` local. Sobe arquivos pro mesmo bucket.
+- **yt-dlp + ffmpeg:** binários em `~/.local/bin/` (yt-dlp.exe e ffmpeg-portable/). Path via env `YTDLP_BIN` e `FFMPEG_DIR` no `.env`.
+- **fal.ai key:** `FAL_KEY` no `.env` (toolbelt pessoal). Mesma chave que VM.
+- **Anthropic:** chave do toolbelt **sem crédito** — testes locais do "melhorar prompt" falham com 400, mensagem clara aparece no UI.
+
+**Persistência VM:**
+- `roto-pgproxy` rodando com `--restart unless-stopped` — sobrevive reboot.
+- Firewall rule `allow-iap-pgproxy` (5433 do range IAP).
 
 ## O que está em produção e funcionando
 
