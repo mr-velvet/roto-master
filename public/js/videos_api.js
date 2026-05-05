@@ -50,6 +50,60 @@ export async function deleteVideo(id) {
   if (!r.ok) throw new Error('delete video: ' + r.status);
 }
 
+// === Fluxo B (URL/YouTube) ===
+
+export async function previewUrl(url) {
+  const r = await authedFetch('/api/videos/url/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'preview: ' + r.status);
+  }
+  const { info } = await r.json();
+  return info;
+}
+
+export async function createVideoFromUrl(url) {
+  const r = await authedFetch('/api/videos/url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'create from url: ' + r.status);
+  }
+  const { video } = await r.json();
+  return video;
+}
+
+export async function getStreamUrl(id) {
+  const r = await authedFetch(`/api/videos/${id}/stream-url`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'stream-url: ' + r.status);
+  }
+  const { stream_url } = await r.json();
+  return stream_url;
+}
+
+export async function extractSection(id, in_s, out_s) {
+  const r = await authedFetch(`/api/videos/${id}/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ in_s, out_s }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'extract: ' + r.status);
+  }
+  const { video } = await r.json();
+  return video;
+}
+
 export async function uploadThumb(id, blob) {
   const fd = new FormData();
   fd.append('file', blob, 'thumb.jpg');

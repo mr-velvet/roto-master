@@ -2579,12 +2579,18 @@ body[data-screen="atelie-generate"] .screen-atelie-generate { display: block; }
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
+.generate-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
 .generate-preview-label {
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--paper-4);
-  margin-bottom: 8px;
 }
 .generate-preview-img {
   width: 100%;
@@ -2796,6 +2802,63 @@ body[data-screen="atelie-generate"] .screen-atelie-generate { display: block; }
   cursor: text;
   background: var(--ink-2);
 }
+
+/* ----------------------------------------------------------------------------
+   modal: preview de URL (Fluxo B)
+   ---------------------------------------------------------------------------- */
+
+.url-preview {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: var(--ink-2);
+  border: 1px solid var(--line-2);
+  margin-bottom: 12px;
+}
+.url-preview[hidden] { display: none; }
+.url-preview-thumb-wrap {
+  width: 120px;
+  flex-shrink: 0;
+  background: var(--ink-0);
+  aspect-ratio: 16/9;
+  overflow: hidden;
+}
+.url-preview-thumb {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.url-preview-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.url-preview-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--paper);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.url-preview-foot {
+  font-size: 10px;
+  color: var(--paper-4);
+  letter-spacing: 0.06em;
+}
+.url-preview-status {
+  font-size: 11px;
+  color: var(--copper);
+  letter-spacing: 0.06em;
+  padding: 8px 0;
+}
+.url-preview-status[hidden] { display: none; }
 
 /* ----------------------------------------------------------------------------
    modal: imagem colada/arrastada

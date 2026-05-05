@@ -3,6 +3,7 @@ const multer = require('multer');
 const { requireUser } = require('../middleware/auth');
 const { isMember } = require('../middleware/membership');
 const { uploadBuffer, copyObject } = require('../lib/gcs');
+const ytdlp = require('../lib/providers/yt-dlp');
 const { asepritePath } = require('./assets');
 
 const router = Router();
@@ -13,6 +14,7 @@ const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, thumb_url, size_bytes, 
                     edit_state, share_id, published_asset_id,
                     source_aparencia_id, source_enquadramento_id, source_enquadramento_kind,
                     source_motion_prompt, source_model_key,
+                    source_url, source_segment_in_s, source_segment_out_s,
                     generation_meta,
                     created_at, updated_at`;
 
@@ -351,6 +353,140 @@ router.delete('/:id', requireUser, async (req, res) => {
     if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
     console.error('delete video:', e);
     res.status(500).json({ error: 'delete failed' });
+  }
+});
+
+// === Fluxo B (vídeo de URL) ===
+
+// Preview de URL: pega título + thumb + duração SEM baixar.
+// Usado pelo modal "criar vídeo" pra confirmar que é o vídeo certo.
+router.post('/url/preview', requireUser, async (req, res) => {
+  const url = (req.body?.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'url obrigatória' });
+  if (!ytdlp.isYouTube(url)) {
+    return res.status(400).json({ error: 'só YouTube por enquanto' });
+  }
+  try {
+    const info = await ytdlp.getInfo(url);
+    res.json({ info });
+  } catch (e) {
+    console.error('url preview:', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Cria row em videos com origin='url' apontando pra source_url externa.
+// gcs_url fica vazio — vídeo "vive" no YouTube. Apenas thumb_url é
+// preenchida (do oEmbed/yt-dlp). Usuário pode tocar via streaming URL
+// fornecida sob demanda.
+router.post('/url', requireUser, async (req, res) => {
+  const url = (req.body?.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'url obrigatória' });
+  if (!ytdlp.isYouTube(url)) {
+    return res.status(400).json({ error: 'só YouTube por enquanto' });
+  }
+  try {
+    const info = await ytdlp.getInfo(url);
+    const name = info.title?.slice(0, 200) || 'sem nome';
+    const { rows } = await req.app.locals.pool.query(
+      `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url,
+                           source_url, duration_s, thumb_url, width, height)
+       VALUES ($1, $2, $3, 'url', '', '', $4, $5, $6, $7, $8)
+       RETURNING ${VIDEO_COLS}`,
+      [req.user.sub, req.user.email || '', name, url, info.duration_s || null,
+       info.thumbnail || null, info.width || null, info.height || null]
+    );
+    res.status(201).json({ video: rows[0] });
+  } catch (e) {
+    console.error('create from url:', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Streaming URL fresca pra um vídeo origin='url'. Cliente chama isso
+// (a) ao abrir o editor, (b) quando o <video> dá 403 (URL expirou).
+router.get('/:id/stream-url', requireUser, async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { rows } = await pool.query(
+      `SELECT source_url FROM videos WHERE id = $1 AND owner_sub = $2`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'não encontrado' });
+    if (!rows[0].source_url) return res.status(400).json({ error: 'vídeo não tem source_url' });
+
+    const url = await ytdlp.getStreamUrl(rows[0].source_url);
+    res.json({ stream_url: url });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('stream-url:', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Extrai trecho [in_s, out_s] de um vídeo origin='url' e cria um vídeo
+// NOVO independente apontando pra esse trecho no GCS. Limite 20s.
+router.post('/:id/extract', requireUser, async (req, res) => {
+  const in_s = parseFloat(req.body?.in_s);
+  const out_s = parseFloat(req.body?.out_s);
+  if (!Number.isFinite(in_s) || !Number.isFinite(out_s) || in_s < 0 || out_s <= in_s) {
+    return res.status(400).json({ error: 'in_s/out_s inválidos' });
+  }
+  const dur = out_s - in_s;
+  if (dur > 20) {
+    return res.status(400).json({ error: `trecho de ${dur.toFixed(1)}s — máx 20s pra rotoscopia` });
+  }
+
+  const pool = req.app.locals.pool;
+  try {
+    const { rows } = await pool.query(
+      `SELECT name, source_url FROM videos WHERE id = $1 AND owner_sub = $2`,
+      [req.params.id, req.user.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'não encontrado' });
+    if (!rows[0].source_url) return res.status(400).json({ error: 'vídeo não tem source_url' });
+    const parent = rows[0];
+
+    // baixa só o trecho
+    const cut = await ytdlp.extractSection(parent.source_url, in_s, out_s);
+
+    // cria row nova
+    const trim = (s) => (s || '').slice(0, 60).trim();
+    const newName = `${trim(parent.name)} (${in_s.toFixed(1)}-${out_s.toFixed(1)}s)`;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: ins } = await client.query(
+        `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url,
+                             source_url, source_segment_in_s, source_segment_out_s, duration_s)
+         VALUES ($1, $2, $3, 'url', '', '', $4, $5, $6, $7)
+         RETURNING id`,
+        [req.user.sub, req.user.email || '', newName, parent.source_url, in_s, out_s, dur]
+      );
+      const newId = ins[0].id;
+
+      const dstPath = `roto-master/videos/${newId}/source.mp4`;
+      const stored = await uploadBuffer(dstPath, cut.buffer, cut.contentType);
+
+      const { rows: upd } = await client.query(
+        `UPDATE videos SET gcs_path = $1, gcs_url = $2, size_bytes = $3, updated_at = NOW()
+          WHERE id = $4
+          RETURNING ${VIDEO_COLS}`,
+        [stored.gcs_path, stored.gcs_url, cut.buffer.length, newId]
+      );
+      await client.query('COMMIT');
+      res.status(201).json({ video: upd[0] });
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
+    console.error('extract:', e.message);
+    res.status(502).json({ error: e.message });
   }
 });
 

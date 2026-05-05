@@ -23,6 +23,19 @@ export async function enhancePrompt({ prompt, kind }) {
   return enhanced;
 }
 
+export async function sanitizeImage(image_url) {
+  const r = await authedFetch('/api/generate/sanitize-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_url }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'sanitize: ' + r.status);
+  }
+  return r.json();
+}
+
 export async function uploadRef(file) {
   const fd = new FormData();
   fd.append('file', file);

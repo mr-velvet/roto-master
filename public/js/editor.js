@@ -4,7 +4,7 @@
 import { bindUI as bindPlaybackUI, bootMode, stopPlay } from './playback.js';
 import { buildUI, wireHandlers, setProgress, initRangeUI, refreshRangeUI, updateInfo, dom } from './ui.js';
 import { initFileLoader, bindFileLoader, loadFromUrl } from './file_loader.js';
-import { getVideo, uploadVideoFile, publishVideo, publishAsset, patchVideo, uploadThumb } from './videos_api.js';
+import { getVideo, uploadVideoFile, publishVideo, publishAsset, patchVideo, uploadThumb, getStreamUrl, extractSection } from './videos_api.js';
 import { listProjects } from './projects_api.js';
 import { STATE } from './state.js';
 import { vid, flipYRGBA } from './gl.js';
@@ -58,6 +58,33 @@ export function initEditor() {
   wireAutosaveListeners();
   wireBackButton();
   wireInlineRename();
+  wireExtractButton();
+  wireStreamErrorRefresh();
+}
+
+// Vídeos origin='url' usam streaming URL temporária (~6h). Se expirar
+// durante a sessão, <video> dá erro de rede; aqui pedimos uma URL fresca
+// e tentamos de novo. Transparente pro user.
+let refreshingStream = false;
+function wireStreamErrorRefresh() {
+  vid.addEventListener('error', async () => {
+    if (refreshingStream) return;
+    if (!currentVideo) return;
+    if (!currentVideo.source_url) return; // só pra streaming
+    if (currentVideo.gcs_url) return;       // já é local, sem refresh
+    const code = vid.error?.code;
+    // 2 = MEDIA_ERR_NETWORK, 4 = MEDIA_ERR_SRC_NOT_SUPPORTED
+    if (code !== 2 && code !== 4) return;
+    refreshingStream = true;
+    try {
+      const fresh = await getStreamUrl(currentVideo.id);
+      loadFromUrl(fresh);
+    } catch (e) {
+      console.warn('refresh stream falhou:', e.message);
+    } finally {
+      refreshingStream = false;
+    }
+  });
 }
 
 // Botão voltar no canto superior esquerdo do canvas.
@@ -176,12 +203,75 @@ export async function openEditor(videoId) {
   applyEditState(v.edit_state || {});
   startAutosave(v.id, v.edit_state || {});
 
+  // 3 caminhos:
+  //  a) tem gcs_url → carrega direto (caso normal: upload ou trecho extraído).
+  //  b) origin='url' SEM gcs_url → pede streaming URL ao backend (yt-dlp -g).
+  //  c) sem nada → modo "carregue um arquivo".
   if (v.gcs_url) {
     setProgress('<span class="stage">Carregando vídeo do storage…</span>', 0);
     loadFromUrl(v.gcs_url);
+  } else if (v.origin === 'url' && v.source_url) {
+    setProgress('<span class="stage">Buscando streaming URL…</span>', 0);
+    try {
+      const streamUrl = await getStreamUrl(v.id);
+      loadFromUrl(streamUrl);
+      setProgress('<span class="stage">Streaming do YouTube.</span> Marque in/out e clique em <em>extrair trecho</em> pra criar um vídeo na workbench.', 0);
+    } catch (e) {
+      setProgress('<span class="err">Falha ao obter streaming URL:</span> ' + e.message, 0);
+    }
   } else {
     setProgress('<span class="stage">Vídeo ainda sem arquivo.</span> Carregue um arquivo (botão acima ou arrastando aqui). Vai subir pro storage automaticamente.', 0);
   }
+
+  // mostra/esconde botão "extrair trecho" baseado no tipo do vídeo
+  updateExtractButton();
+}
+
+// Botão "extrair trecho" só aparece pra vídeos com source_url (origin='url').
+// Pra uploads/gerados, esconder. Validação de duração (≤20s) acontece on-click.
+function updateExtractButton() {
+  const $btn = document.getElementById('btn-extract');
+  if (!$btn) return;
+  if (currentVideo?.source_url) {
+    $btn.style.display = '';
+  } else {
+    $btn.style.display = 'none';
+  }
+}
+
+function wireExtractButton() {
+  const $btn = document.getElementById('btn-extract');
+  if (!$btn) return;
+  $btn.addEventListener('click', async () => {
+    if (!currentVideo) return;
+    // pega in/out do estado atual do editor
+    const in_s = STATE.inS;
+    const out_s = STATE.outS;
+    const dur = out_s - in_s;
+    if (dur <= 0) {
+      showToast('marque um trecho válido (in < out)');
+      return;
+    }
+    if (dur > 20) {
+      showToast(`trecho de ${dur.toFixed(1)}s — máx 20s pra rotoscopia`);
+      return;
+    }
+    $btn.disabled = true;
+    setProgress(`<span class="stage">Extraindo ${dur.toFixed(1)}s do YouTube…</span>`, 30);
+    try {
+      const newVideo = await extractSection(currentVideo.id, in_s, out_s);
+      setProgress(`<span class="ok">✓ Trecho salvo como novo vídeo.</span> Indo pra ele…`, 100);
+      showToast('trecho extraído');
+      setTimeout(() => navigateAtelie('videos'), 400);
+      // alternativa: ir direto pro editor do novo vídeo:
+      // setTimeout(() => { window.location.hash = `#/v/${newVideo.id}`; }, 400);
+    } catch (e) {
+      setProgress(`<span class="err">Falha:</span> ${e.message}`, 0);
+      showToast('falha: ' + e.message);
+    } finally {
+      $btn.disabled = false;
+    }
+  });
 }
 
 function setPublishState(isPublished) {

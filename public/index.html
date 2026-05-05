@@ -281,7 +281,13 @@
             <div class="generate-err" data-bind="gen-image-err"></div>
 
             <div class="generate-preview" data-bind="gen-image-preview" hidden>
-              <div class="generate-preview-label">imagem gerada</div>
+              <div class="generate-preview-head">
+                <div class="generate-preview-label">imagem gerada</div>
+                <button class="enhance-btn" data-action="sanitize-image" data-bind="sanitize-btn" type="button" title="remove sangue, gore e elementos que costumam violar content policy do Kling">
+                  <span class="enhance-icon">⛨</span>
+                  <span class="enhance-label" data-bind="sanitize-label">sanitizar</span>
+                </button>
+              </div>
               <img class="generate-preview-img" data-bind="gen-image-img" alt="imagem gerada" />
             </div>
           </section>
@@ -406,6 +412,9 @@
               <div id="video-publish-state" class="editor-publish-state-real" style="margin:0;"><span class="dot-warn"></span>ainda não publicado</div>
             </div>
             <button class="btn-export" id="btn-load" style="margin-top:0;">▸ carregar vídeo</button>
+            <button class="btn-export" id="btn-extract" style="margin-top:8px; display:none;" title="cria novo vídeo na workbench a partir do trecho marcado (in/out)">
+              ✂ <span id="btn-extract-label">extrair trecho como novo vídeo</span>
+            </button>
           </div>
 
           <div class="ctrl-section">
@@ -502,10 +511,10 @@
             <div class="flow-card-name">Upload de vídeo</div>
             <p>Você já tem um <code>.mp4</code>. Sobe e abre no editor.</p>
           </button>
-          <button class="flow-card is-soon" data-flow="B" disabled>
+          <button class="flow-card" data-action="pick-flow" data-flow="B">
             <div class="flow-card-letter">B</div>
             <div class="flow-card-name">Vídeo de URL</div>
-            <p>Cola um link, baixa, edita. <span class="soon">em breve</span></p>
+            <p>Cola link do YouTube, recorta trechos pra rotoscopar.</p>
           </button>
           <button class="flow-card" data-action="pick-flow" data-flow="C">
             <div class="flow-card-letter">C</div>
@@ -531,19 +540,29 @@
     <div class="modal-card">
       <div class="modal-head">
         <div class="modal-eyebrow">Ateliê / Vídeos</div>
-        <h3>Nome do vídeo</h3>
-        <p class="modal-sub">Você pode renomear depois.</p>
+        <h3 data-bind="name-video-title">Nome do vídeo</h3>
+        <p class="modal-sub" data-bind="name-video-sub">Você pode renomear depois.</p>
       </div>
       <div class="modal-body">
         <label class="field">
-          <span>nome</span>
-          <input type="text" data-bind="name-video-input" placeholder="ex: skate na praça" maxlength="200" />
+          <span data-bind="name-video-label">nome</span>
+          <input type="text" data-bind="name-video-input" placeholder="ex: skate na praça — ou cole uma URL do YouTube" maxlength="500" />
         </label>
+        <div class="url-preview" data-bind="url-preview" hidden>
+          <div class="url-preview-thumb-wrap">
+            <img class="url-preview-thumb" data-bind="url-preview-thumb" alt="thumb" />
+          </div>
+          <div class="url-preview-meta">
+            <div class="url-preview-title" data-bind="url-preview-title">—</div>
+            <div class="url-preview-foot" data-bind="url-preview-foot">—</div>
+          </div>
+        </div>
+        <div class="url-preview-status" data-bind="url-preview-status" hidden>buscando informações…</div>
         <div class="modal-err" data-bind="name-video-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
-        <button class="btn btn-primary" data-action="confirm-name-video">criar e abrir editor</button>
+        <button class="btn btn-primary" data-action="confirm-name-video" data-bind="name-video-confirm">criar e abrir editor</button>
       </div>
     </div>
   </div>

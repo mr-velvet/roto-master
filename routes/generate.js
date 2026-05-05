@@ -18,7 +18,7 @@ const { requireUser } = require('../middleware/auth');
 const { uploadBuffer, uploadFromUrl } = require('../lib/gcs');
 const fal = require('../lib/providers/fal');
 const anthropic = require('../lib/providers/anthropic');
-const { getRecipe } = require('../lib/prompt-recipes');
+const { getRecipe, SANITIZE_IMAGE_PROMPT } = require('../lib/prompt-recipes');
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -73,6 +73,31 @@ router.post('/enhance-prompt', requireUser, async (req, res) => {
     res.json({ prompt: result.text });
   } catch (e) {
     console.error('enhance-prompt:', e.message);
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// Sanitiza imagem (remove sangue/gore/etc) antes de mandar pro Kling i2v.
+// Body: { image_url }. Resp: { image_url, gcs_path, cost_actual }.
+router.post('/sanitize-image', requireUser, async (req, res) => {
+  const image_url = (req.body?.image_url || '').trim();
+  if (!image_url) return res.status(400).json({ error: 'image_url obrigatória' });
+  try {
+    const result = await fal.generateImage({
+      prompt: SANITIZE_IMAGE_PROMPT,
+      ref_image_urls: [image_url],
+    });
+    const ext = (result.content_type || '').includes('png') ? 'png' : 'jpg';
+    const dstPath = `roto-master/generations/${req.user.sub}/sanitized-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const stored = await uploadFromUrl(result.url, dstPath, result.content_type);
+    const cost = await modelCost(req.app.locals.pool, result.model, 1);
+    res.json({
+      image_url: stored.gcs_url,
+      gcs_path: stored.gcs_path,
+      cost_actual: cost?.cost ?? null,
+    });
+  } catch (e) {
+    console.error('sanitize-image:', e.message);
     res.status(502).json({ error: e.message });
   }
 });

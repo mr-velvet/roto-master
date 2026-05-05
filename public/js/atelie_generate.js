@@ -1,7 +1,7 @@
 // Ateliê → Gerar (Fluxo C): prompt → imagem → vídeo.
 // Síncrono: trava UI durante geração, mostra status, custo e erros do provider.
 
-import { listModels, generateImage, generateVideo, uploadRef, setActiveAttempt, enhancePrompt } from './generate_api.js';
+import { listModels, generateImage, generateVideo, uploadRef, setActiveAttempt, enhancePrompt, sanitizeImage } from './generate_api.js';
 import { showToast, openModal, closeModal } from './modals.js';
 import { navigateEditor } from './router.js';
 
@@ -191,23 +191,43 @@ $refsInput.addEventListener('change', async (e) => {
 });
 
 // === gerar imagem ===
+let imageTimerInterval = null;
+function startImageTimer() {
+  const start = Date.now();
+  const tick = () => {
+    const sec = Math.floor((Date.now() - start) / 1000);
+    $imgBtnLabel.textContent = `gerando há ${sec}s…`;
+    $imgStatus.textContent = `Nano Banana Pro rolando — ${sec}s decorridos. Costuma levar ~30s.`;
+  };
+  tick();
+  imageTimerInterval = setInterval(tick, 1000);
+}
+function stopImageTimer() {
+  if (imageTimerInterval) clearInterval(imageTimerInterval);
+  imageTimerInterval = null;
+}
+
 async function runGenImage(body) {
   $imgErr.textContent = '';
   $imgRetry.setAttribute('hidden', '');
   $imgBtn.disabled = true;
   $imgStatus.removeAttribute('hidden');
-  $imgStatus.textContent = 'gerando imagem... isso leva ~30s';
+  startImageTimer();
   try {
     const result = await generateImage(body);
     lastImageBody = body;
+    stopImageTimer();
     useImageAsInitial(result.image_url, { prompt: body.prompt, kind: 'generated' });
     $imgStatus.setAttribute('hidden', '');
     $imgRetry.setAttribute('hidden', '');
     showToast(`imagem pronta — $${result.cost_actual?.toFixed(2) || '?'}`);
   } catch (e) {
+    stopImageTimer();
     $imgStatus.setAttribute('hidden', '');
     $imgErr.textContent = e.message;
     $imgRetry.removeAttribute('hidden');
+    $imgBtnLabel.textContent = imageUrl ? 'gerar nova' : 'gerar imagem';
+
   } finally {
     $imgBtn.disabled = false;
   }
@@ -240,12 +260,28 @@ document.addEventListener('click', (e) => {
 });
 
 // === gerar vídeo ===
+let videoTimerInterval = null;
+function startVideoTimer() {
+  const start = Date.now();
+  const tick = () => {
+    const sec = Math.floor((Date.now() - start) / 1000);
+    $videoBtnLabel.textContent = `gerando há ${sec}s…`;
+    $videoStatus.textContent = `Kling i2v rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
+  };
+  tick();
+  videoTimerInterval = setInterval(tick, 1000);
+}
+function stopVideoTimer() {
+  if (videoTimerInterval) clearInterval(videoTimerInterval);
+  videoTimerInterval = null;
+}
+
 async function runGenVideo(body) {
   $videoErr.textContent = '';
   $videoRetry.setAttribute('hidden', '');
   $videoBtn.disabled = true;
   $videoStatus.removeAttribute('hidden');
-  $videoStatus.textContent = 'gerando vídeo... pode levar 1-2min';
+  startVideoTimer();
   try {
     const result = await generateVideo(body);
     videoId = result.video.id;
@@ -253,15 +289,19 @@ async function runGenVideo(body) {
     videoAttempts = result.video.generation_meta?.attempts || [];
     lastVideoBody = body;
 
+    stopVideoTimer();
     $videoStatus.setAttribute('hidden', '');
     $videoBtnLabel.textContent = 'gerar nova tentativa';
     renderAttempts();
     $finalize.removeAttribute('hidden');
     showToast('vídeo pronto');
   } catch (e) {
+    stopVideoTimer();
     $videoStatus.setAttribute('hidden', '');
     $videoErr.textContent = e.message;
     $videoRetry.removeAttribute('hidden');
+    $videoBtnLabel.textContent = videoAttempts.length ? 'gerar nova tentativa' : 'gerar vídeo';
+
   } finally {
     $videoBtn.disabled = false;
   }
@@ -536,8 +576,37 @@ async function pasteUploadAndUse(asInitial) {
 }
 
 document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-action="paste-as-initial"]')) pasteUploadAndUse(true);
-  if (e.target.closest('[data-action="paste-as-ref"]')) pasteUploadAndUse(false);
+  const initBtn = e.target.closest('[data-action="paste-as-initial"]');
+  const refBtn = e.target.closest('[data-action="paste-as-ref"]');
+  if (initBtn || refBtn) {
+    console.log('[paste-modal] click detected', { initial: !!initBtn, ref: !!refBtn, hasFile: !!pastedFile });
+  }
+  if (initBtn) pasteUploadAndUse(true);
+  if (refBtn) pasteUploadAndUse(false);
+});
+
+// === sanitizar imagem inicial (remove sangue/gore antes de Kling i2v) ===
+const $sanitizeBtn = document.querySelector('[data-bind="sanitize-btn"]');
+const $sanitizeLabel = document.querySelector('[data-bind="sanitize-label"]');
+$sanitizeBtn?.addEventListener('click', async () => {
+  if (!imageUrl) {
+    showToast('sem imagem inicial');
+    return;
+  }
+  $sanitizeBtn.disabled = true;
+  $sanitizeBtn.classList.add('is-loading');
+  $sanitizeLabel.textContent = 'sanitizando…';
+  try {
+    const result = await sanitizeImage(imageUrl);
+    useImageAsInitial(result.image_url, { prompt: imagePrompt, kind: imageSourceKind || 'uploaded' });
+    showToast(`imagem sanitizada${result.cost_actual ? ` — $${result.cost_actual.toFixed(2)}` : ''}`);
+  } catch (err) {
+    showToast('falha ao sanitizar: ' + err.message);
+  } finally {
+    $sanitizeBtn.disabled = false;
+    $sanitizeBtn.classList.remove('is-loading');
+    $sanitizeLabel.textContent = 'sanitizar';
+  }
 });
 
 function escapeHtml(s) {
