@@ -5,7 +5,8 @@ const { uploadBuffer } = require('../lib/gcs');
 
 const router = Router();
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+// .aseprite pode passar de 50MB; 200MB cobre.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 const ASSET_COLS = `id, project_id, video_id, name, status, gcs_path, gcs_url, version, created_at, updated_at`;
 

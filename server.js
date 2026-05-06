@@ -42,6 +42,19 @@ app.get('*', (req, res) => {
   }
 });
 
+// Error handler — captura erros do multer (LIMIT_FILE_SIZE etc.) e
+// devolve JSON com mensagem clara em vez de 500 genérico.
+app.use((err, req, res, next) => {
+  if (err && err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'arquivo muito grande (limite 200MB)' });
+    }
+    return res.status(400).json({ error: `upload: ${err.message}` });
+  }
+  console.error('unhandled error:', err);
+  res.status(500).json({ error: err.message || 'internal error' });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`roto-master running on port ${PORT}`);
 });

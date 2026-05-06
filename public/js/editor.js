@@ -58,7 +58,20 @@ export function initEditor() {
   });
   initFileLoader();
 
-  $btnPublish.addEventListener('click', () => openPublishModal());
+  $btnPublish.addEventListener('click', async () => {
+    // Feedback imediato: o botão pode demorar (build de frames se não tem,
+    // listProjects, getAsset). Sem isso parece travado por 5-10s.
+    if ($btnPublish.disabled) return;
+    const orig = $btnPublish.innerHTML;
+    $btnPublish.disabled = true;
+    $btnPublish.innerHTML = '<span class="btn-spin">◴</span> abrindo…';
+    try {
+      await openPublishModal();
+    } finally {
+      $btnPublish.disabled = false;
+      $btnPublish.innerHTML = orig;
+    }
+  });
   wirePublishModal();
   wireAutosaveListeners();
   wireBackButton();

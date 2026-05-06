@@ -7,7 +7,9 @@ const { asepritePath } = require('./assets');
 
 const router = Router();
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+// .aseprite pode passar de 50MB com vídeo longo + alta resolução; 200MB cobre.
+// Vídeo bruto (rota /upload) tem limite separado checado dentro do handler.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, thumb_url, size_bytes, duration_s, width, height,
                     edit_state, share_id, published_asset_id,
