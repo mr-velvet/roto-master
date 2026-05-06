@@ -1,6 +1,16 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-05 fim do dia (smoke test fixes + Fluxo D em prod, commit `773697d`. `FAL_KEY` adicionada ao `.env` da VM e declarada no `did.json`. `deploy.sh` da VM consertado: IS_NEW sem race + git pull automático antes do build.)
+Última atualização: 2026-05-05 noite (auth simples — Logto/owner/membros removidos, token único compartilhado via `APP_TOKEN`. Commit `7290a4d`. `FAL_KEY` e `APP_TOKEN` no `.env` da VM. `deploy.sh` da VM consertado.)
+
+## ⚠️ Auth simples (2026-05-05) — token único, sem owner
+
+Decisão crítica: ferramenta interna, time pequeno (você + 1-2 pessoas), fricção de login custou tempo desproporcional (loops de redirect Logto, tokens expirando silenciosamente, autosave 401, sessões quebradas). Removido tudo de Logto/OAuth/owner/membros. Quem tem o `APP_TOKEN` vê e mexe em tudo.
+
+**Token de prod:** vive em `/home/manu/platform/.env` da VM como `APP_TOKEN`. Pra compartilhar com alguém, mandar a string. No browser, cola no prompt que aparece — fica salvo em `localStorage` (key: `roto-master.token`). Pra resetar token salvo: botão "colar token" na tela de erro, ou `localStorage.removeItem('roto-master.token')` no devtools.
+
+**Bypass dev local:** `.env` tem `DEV_BYPASS=1`. Backend pula validação de token, frontend manda string fake. Roda sem fricção.
+
+**Schema:** colunas `owner_sub`/`owner_email` em `videos`/`projects`/`assets` ficaram (NULL-able) pra preservar dados existentes — código não lê/escreve mais nelas. Tabela `project_members` foi dropada (migration 014).
 
 ## ⚠️ Leitura obrigatória antes de continuar
 
