@@ -64,9 +64,37 @@ export async function signOut() {
 }
 export function getUser() { return currentUser; }
 
+// Lê token sempre via SDK — ele renova automaticamente quando expirou (refresh
+// token interno). Tokens Logto vivem ~1h; antes mantíamos um único access
+// token capturado no initAuth, que vencia silenciosamente e fazia tudo dar
+// 401 (autosave, renomear vídeo, etc.) sem avisar o user.
+async function getFreshToken() {
+  if (!logtoClient) throw new Error('not authenticated');
+  try {
+    const t = await logtoClient.getAccessToken();
+    if (t) accessToken = t;
+  } catch (e) { /* mantém o anterior; backend devolverá 401 e tratamos abaixo */ }
+  return accessToken;
+}
+
+let sessionExpiredHandled = false;
+function handleSessionExpired() {
+  if (sessionExpiredHandled) return;
+  sessionExpiredHandled = true;
+  // Toast curto + redireciona pro login. Se o user ignorar, a próxima
+  // request também vai dar 401 mas o signIn não loopa (já redirecionou).
+  try { console.warn('Sessão expirada — redirecionando pro login'); } catch (e) {}
+  if (logtoClient) {
+    logtoClient.signIn().catch((e) => console.warn('signIn falhou:', e));
+  }
+}
+
 export async function authedFetch(url, opts = {}) {
   if (DEV_BYPASS) return fetch(url, opts);
-  if (!accessToken) throw new Error('not authenticated');
-  const headers = { ...(opts.headers || {}), Authorization: `Bearer ${accessToken}` };
-  return fetch(url, { ...opts, headers });
+  const token = await getFreshToken();
+  if (!token) throw new Error('not authenticated');
+  const headers = { ...(opts.headers || {}), Authorization: `Bearer ${token}` };
+  const r = await fetch(url, { ...opts, headers });
+  if (r.status === 401) handleSessionExpired();
+  return r;
 }
