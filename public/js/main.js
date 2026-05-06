@@ -44,6 +44,24 @@ document.addEventListener('click', (e) => {
   navigateTrash();
 });
 
+// Versão em produção: lê /version.json (arquivo estático servido pelo
+// express.static). Cada commit que vai pra prod atualiza esse arquivo.
+// Bypass de cache via query string com timestamp.
+(async () => {
+  try {
+    const r = await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = await r.json();
+    const $v = document.querySelector('[data-bind="brand-version"]');
+    if (!$v || !v.sha) return;
+    const sha = String(v.sha).slice(0, 7);
+    $v.textContent = v.label ? `${sha} · ${v.label}` : sha;
+    $v.removeAttribute('hidden');
+  } catch (e) {
+    // silencioso — versão é cosmética
+  }
+})();
+
 function showHomeScreen() {
   setSpace('galeria', 'home');
   setBreadcrumb([{ label: 'Galeria' }]);

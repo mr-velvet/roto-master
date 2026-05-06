@@ -203,6 +203,15 @@ body[data-space="atelie"] .chrome {
 }
 .brand-name { color: var(--paper); letter-spacing: -0.01em; }
 .brand-sep { color: var(--paper-4); margin: 0 1px; }
+.brand-version {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--paper);
+  opacity: 0.35;
+  letter-spacing: 0;
+  user-select: text;
+}
 
 /* indicador "você está em" — evolução da metáfora dos dois espaços */
 .space-label {
