@@ -203,21 +203,21 @@ $btnDuplicate?.addEventListener('click', async () => {
   }
 });
 
-// despublicar
+// jogar na lixeira (soft delete; restaurável da Lixeira no header)
 $btnUnpublish?.addEventListener('click', async () => {
   if (!currentAsset) return;
   const ok = await confirmModal({
-    title: 'despublicar asset',
-    message: `Apaga o asset "${currentAsset.name}". O vídeo-fonte volta a ser rascunho no Ateliê (não é apagado). Você pode republicar depois.`,
-    confirmLabel: 'despublicar',
+    title: 'jogar na lixeira',
+    message: `Move o asset "${currentAsset.name}" pra Lixeira. O vídeo-fonte volta a ser rascunho no Ateliê. Você pode restaurar depois pela Lixeira.`,
+    confirmLabel: 'jogar na lixeira',
   });
   if (!ok) return;
   try {
     await deleteAsset(currentAsset.id);
     dirty = true;
-    showToast('asset despublicado');
+    showToast('asset jogado na lixeira');
     closeModal();
   } catch (err) {
-    showToast('falha ao despublicar: ' + err.message);
+    showToast('falha: ' + err.message);
   }
 });

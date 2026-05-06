@@ -2,7 +2,7 @@
 // Síncrono: trava UI durante geração, mostra status, custo e erros do provider.
 
 import { listModels, generateImage, generateVideo, uploadRef, setActiveAttempt, enhancePrompt, sanitizeImage } from './generate_api.js';
-import { showToast, openModal, closeModal } from './modals.js';
+import { showToast, openModal, closeModal, confirmModal } from './modals.js';
 import { navigateEditor } from './router.js';
 
 // === refs DOM ===
@@ -307,7 +307,7 @@ async function runGenVideo(body) {
   }
 }
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-action="gen-video"]')) return;
   if (!imageUrl) return;
   const motion = $motionPrompt.value.trim();
@@ -315,6 +315,19 @@ document.addEventListener('click', (e) => {
     $videoErr.textContent = 'descreva o movimento';
     return;
   }
+  // Confirmação com estimativa de custo. Geração de vídeo é cobrada na hora
+  // que o provider aceita o job — sem cancelamento real depois. Esse modal
+  // é a única chance do user evitar gasto por click acidental.
+  const vid = modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/image-to-video'];
+  const cost = vid ? parseFloat(vid.cost_per_unit) * durationS : null;
+  const costStr = cost ? `~$${cost.toFixed(2)}` : 'custo não disponível';
+  const ok = await confirmModal({
+    title: 'Gerar vídeo',
+    message: `Vai custar ${costStr} (Kling i2v · ${durationS}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
+    danger: false,
+    confirmLabel: `gerar (${costStr})`,
+  });
+  if (!ok) return;
   const body = {
     image_url: imageUrl,
     motion_prompt: motion,
@@ -513,7 +526,7 @@ function activatePasteListener() {
     if (!imgItem) return;
     e.preventDefault();
     const file = imgItem.getAsFile();
-    if (file) await openPasteModal(file);
+    if (file) await pasteAsInitialDirect(file);
   };
   document.addEventListener('paste', pasteHandler);
 }
@@ -532,7 +545,21 @@ const screenObserver = new MutationObserver(() => {
 });
 screenObserver.observe(document.body, { attributes: true, attributeFilter: ['data-screen'] });
 
-// === modal "como usar" ===
+// === paste direto como imagem inicial (sem modal) ===
+// Decisão: ctrl+v na tela de geração é atalho pra "usar como imagem inicial".
+// Se quiser usar como referência, arrastar pra área de refs.
+async function pasteAsInitialDirect(file) {
+  showToast('subindo imagem inicial…', 8000);
+  try {
+    const url = await uploadRef(file);
+    useImageAsInitial(url, { kind: 'uploaded' });
+    showToast('imagem definida como inicial');
+  } catch (err) {
+    showToast('falha ao subir imagem: ' + err.message);
+  }
+}
+
+// === modal "como usar" (mantido pra drop fora da área de refs) ===
 async function openPasteModal(file) {
   pastedFile = file;
   const previewUrl = URL.createObjectURL(file);

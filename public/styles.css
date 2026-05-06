@@ -3068,6 +3068,56 @@ body[data-screen="atelie-generate"] .screen-atelie-generate { display: block; }
 body[data-screen="atelie-text2video"] .screen-atelie-text2video { display: block; }
 body[data-screen="editor"] .screen-editor { display: flex; flex-direction: column; flex: 1; }
 body[data-screen="editor"] .stage { display: flex; flex-direction: column; }
+body[data-screen="trash"] .screen-trash { display: block; }
+
+/* lixeira ----------------------------------------------------------------- */
+.trash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 24px;
+}
+.trash-card {
+  background: var(--card-bg, rgba(255,255,255,0.02));
+  border: 1px solid var(--card-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.trash-card-mark {
+  font-family: 'Fraunces', serif;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--ink-muted, rgba(255,255,255,0.45));
+  text-align: center;
+  padding: 16px 0;
+  background: rgba(255,255,255,0.02);
+  border-radius: 6px;
+}
+.trash-card-name {
+  font-weight: 600;
+  font-size: 15px;
+  word-break: break-word;
+}
+.trash-card-meta {
+  font-size: 12px;
+  color: var(--ink-muted, rgba(255,255,255,0.55));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.trash-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.trash-card-actions .btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 10px;
+}
 
 /* ----------------------------------------------------------------------------
    atelie / texto → vídeo — fluxo D

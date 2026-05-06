@@ -2,6 +2,7 @@
 // Rotas:
 //   #/                    → galeria, home (lista de projetos)
 //   #/p/:project_id       → galeria, detalhe do projeto
+//   #/trash               → lixeira global (assets descartados)
 //   #/atelie              → ateliê, default = vídeos
 //   #/atelie/videos       → ateliê, vídeos
 //   #/atelie/generate     → ateliê, fluxo C (imagem → vídeo)
@@ -11,6 +12,7 @@
 let handlers = {
   onHome: () => {},
   onProject: () => {},
+  onTrash: () => {},
   onAtelie: () => {},
   onGenerate: () => {},
   onTextVideo: () => {},
@@ -28,6 +30,7 @@ function parseHash() {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]+)$/i))) return { route: 'project', id: m[1] };
   if ((m = h.match(/^#\/v\/([0-9a-f-]+)$/i))) return { route: 'editor', id: m[1] };
+  if (h === '#/trash') return { route: 'trash' };
   if (h === '#/atelie/generate') return { route: 'generate' };
   if (h === '#/atelie/text2video') return { route: 'text-video' };
   if (h === '#/atelie' || h === '#/atelie/videos') return { route: 'atelie', sub: 'videos' };
@@ -39,6 +42,7 @@ function dispatch() {
   const r = parseHash();
   if (r.route === 'home') handlers.onHome();
   else if (r.route === 'project') handlers.onProject(r.id);
+  else if (r.route === 'trash') handlers.onTrash();
   else if (r.route === 'atelie') handlers.onAtelie(r.sub);
   else if (r.route === 'generate') handlers.onGenerate();
   else if (r.route === 'text-video') handlers.onTextVideo();
@@ -50,6 +54,9 @@ export function navigateHome() {
 }
 export function navigateProject(id) {
   setHash(`#/p/${id}`);
+}
+export function navigateTrash() {
+  setHash('#/trash');
 }
 export function navigateAtelie(sub = 'videos') {
   setHash(`#/atelie/${sub}`);

@@ -557,6 +557,12 @@ async function doPublish() {
   $btn.innerHTML = '<span class="btn-spin">◴</span> empacotando .aseprite…';
 
   setProgress('<span class="stage">Gerando .aseprite…</span>', 50);
+
+  // Cede o thread pro browser pintar o estado "loading" do botão antes do
+  // buildAseprite síncrono pesado bloquear a UI. Sem isso o user clica e
+  // não vê nada por 5-10s, achando que o botão não respondeu.
+  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
   try {
     // STATE.frames já está top-down (linha 0 = topo visual), que é o que
     // .aseprite espera. Não precisa flipar antes.

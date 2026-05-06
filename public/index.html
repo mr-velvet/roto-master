@@ -60,6 +60,10 @@
         <div class="space-switch-thumb" aria-hidden="true"></div>
       </div>
 
+      <button class="token-copy-btn" data-action="goto-trash" type="button" title="lixeira (assets descartados)" aria-label="lixeira">
+        <span class="token-copy-icon">⌫</span>
+      </button>
+
       <button class="token-copy-btn" data-action="copy-token" type="button" title="copiar token de acesso pra área de transferência" aria-label="copiar token">
         <span class="token-copy-icon">⎘</span>
       </button>
@@ -521,6 +525,27 @@
       </div>
     </div>
 
+    <!-- LIXEIRA (global; assets descartados, restauráveis) -->
+    <section class="screen screen-trash">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">
+              <button class="link-back" data-action="goto-home">‹ Galeria</button>
+              <span class="sep">/</span>
+              Lixeira
+            </div>
+            <h1 class="page-head-title">Lixeira</h1>
+            <p class="page-head-sub">Assets descartados. Restaurar devolve o asset pro projeto e o vídeo-fonte vincula de novo. Apagar de vez é definitivo.</p>
+          </div>
+        </div>
+        <div class="trash-grid" data-bind="trash-grid"></div>
+        <div class="empty-state" data-bind="trash-empty" hidden>
+          <p>Lixeira vazia.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- EDITOR (real, não mock) -->
     <section class="screen screen-editor editor-real">
       <div class="editor-real-shell">
@@ -840,7 +865,7 @@
 
       <div class="asset-detail-foot">
         <div class="asset-detail-meta" data-bind="asset-detail-meta">v1 · — · publicado por —</div>
-        <button class="asset-detail-unpublish" data-action="asset-detail-unpublish" type="button" title="apaga o asset; vídeo volta a ser rascunho">despublicar</button>
+        <button class="asset-detail-unpublish" data-action="asset-detail-unpublish" type="button" title="move pra Lixeira; vídeo volta a ser rascunho">jogar na lixeira</button>
       </div>
     </div>
   </div>

@@ -2,7 +2,7 @@
 // Síncrono: trava UI durante geração. Reusa visuais do fluxo C (chips, cards de attempt).
 
 import { listModels, generateTextVideo, enhancePrompt, setActiveAttempt } from './generate_api.js';
-import { showToast, openModal, closeModal } from './modals.js';
+import { showToast, openModal, closeModal, confirmModal } from './modals.js';
 import { navigateEditor } from './router.js';
 
 // === paletas de chips (em inglês — vão direto pro prompt) ===
@@ -332,6 +332,21 @@ function stopTimer() {
 }
 
 async function runGenerate(body) {
+  // Confirmação com estimativa de custo. Geração t2v é cobrada na hora que
+  // o provider aceita o job — sem cancelamento real depois. Centralizado
+  // aqui pra cobrir tanto o modo livre quanto o rigoroso.
+  const m = modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/text-to-video']
+    || modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/image-to-video'];
+  const cost = m ? parseFloat(m.cost_per_unit) * (body.duration_s || durationS) : null;
+  const costStr = cost ? `~$${cost.toFixed(2)}` : 'custo não disponível';
+  const ok = await confirmModal({
+    title: 'Gerar vídeo',
+    message: `Vai custar ${costStr} (Kling t2v · ${body.duration_s || durationS}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
+    danger: false,
+    confirmLabel: `gerar (${costStr})`,
+  });
+  if (!ok) return;
+
   $err.textContent = '';
   $generateBtn.disabled = true;
   $previewBtn.disabled = true;

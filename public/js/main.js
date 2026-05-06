@@ -2,10 +2,11 @@
 
 import { initAuth, clearToken, getToken } from './auth.js';
 import { showToast } from './modals.js';
-import { bindRouter, startRouter, navigateHome, navigateAtelie } from './router.js';
+import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateTrash } from './router.js';
 import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
 import { showHome } from './gal_home.js';
 import { showProject } from './gal_project.js';
+import { showTrash } from './gal_trash.js';
 import { showAtelieVideos } from './atelie_videos.js';
 import { showAtelieGenerate } from './atelie_generate.js';
 import { showAtelieTextVideo } from './atelie_text2video.js';
@@ -37,6 +38,12 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// Botão de lixeira (header global).
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="goto-trash"]')) return;
+  navigateTrash();
+});
+
 function showHomeScreen() {
   setSpace('galeria', 'home');
   setBreadcrumb([{ label: 'Galeria' }]);
@@ -50,6 +57,15 @@ function showProjectScreen(id) {
     { label: 'Projeto' },
   ]);
   showProject(id);
+}
+
+function showTrashScreen() {
+  setSpace('galeria', 'trash');
+  setBreadcrumb([
+    { label: 'Galeria', action: () => navigateHome() },
+    { label: 'Lixeira' },
+  ]);
+  showTrash();
 }
 
 function showAtelieScreen() {
@@ -123,6 +139,7 @@ function showEditorScreen(id) {
   bindRouter({
     onHome: showHomeScreen,
     onProject: showProjectScreen,
+    onTrash: showTrashScreen,
     onAtelie: showAtelieScreen,
     onGenerate: showGenerateScreen,
     onTextVideo: showTextVideoScreen,

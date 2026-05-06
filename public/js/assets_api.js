@@ -33,10 +33,34 @@ export async function patchAsset(id, patch) {
   return asset;
 }
 
+// DELETE = jogar na lixeira (soft delete). Vídeo-fonte volta a rascunho.
 export async function deleteAsset(id) {
   const r = await authedFetch(`/api/assets/${id}`, { method: 'DELETE' });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
     throw new Error(err.error || 'delete asset: ' + r.status);
+  }
+}
+
+export async function listTrash() {
+  const r = await authedFetch('/api/assets/trash');
+  if (!r.ok) throw new Error('list trash: ' + r.status);
+  const { assets } = await r.json();
+  return assets;
+}
+
+export async function restoreAsset(id) {
+  const r = await authedFetch(`/api/assets/${id}/restore`, { method: 'POST' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'restore: ' + r.status);
+  }
+}
+
+export async function purgeAsset(id) {
+  const r = await authedFetch(`/api/assets/${id}/purge`, { method: 'DELETE' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'purge: ' + r.status);
   }
 }
