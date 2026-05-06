@@ -47,8 +47,12 @@ export async function initAuth() {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!me.ok) {
-    await logtoClient.signOut();
-    return { authenticated: false };
+    // Backend rejeitou o token. NÃO fazer signOut automático aqui — antes
+    // isso causava loop infinito: signOut → Logto → callback → token novo
+    // → /api/config rejeita de novo → signOut. O caller mostra tela de
+    // login e usuário decide reagir.
+    console.warn(`[auth] /api/config rejeitou token: ${me.status}`);
+    return { authenticated: false, error: `backend rejeitou token (${me.status}). Tente recarregar a página.` };
   }
   currentUser = await me.json();
   return { authenticated: true, user: currentUser };

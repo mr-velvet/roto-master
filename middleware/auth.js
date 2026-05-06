@@ -23,7 +23,11 @@ async function requireUser(req, res, next) {
     const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    if (!response.ok) return res.status(401).json({ error: 'Invalid token' });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      console.warn(`[auth] /oidc/me rejected: status=${response.status} body=${body.slice(0, 300)}`);
+      return res.status(401).json({ error: 'Invalid token' });
+    }
     const profile = await response.json();
     if (!profile.sub) return res.status(401).json({ error: 'Token has no subject' });
     req.user = {
