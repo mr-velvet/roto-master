@@ -77,24 +77,10 @@ async function getFreshToken() {
   return accessToken;
 }
 
-let sessionExpiredHandled = false;
-function handleSessionExpired() {
-  if (sessionExpiredHandled) return;
-  sessionExpiredHandled = true;
-  // Toast curto + redireciona pro login. Se o user ignorar, a próxima
-  // request também vai dar 401 mas o signIn não loopa (já redirecionou).
-  try { console.warn('Sessão expirada — redirecionando pro login'); } catch (e) {}
-  if (logtoClient) {
-    logtoClient.signIn().catch((e) => console.warn('signIn falhou:', e));
-  }
-}
-
 export async function authedFetch(url, opts = {}) {
   if (DEV_BYPASS) return fetch(url, opts);
   const token = await getFreshToken();
   if (!token) throw new Error('not authenticated');
   const headers = { ...(opts.headers || {}), Authorization: `Bearer ${token}` };
-  const r = await fetch(url, { ...opts, headers });
-  if (r.status === 401) handleSessionExpired();
-  return r;
+  return fetch(url, { ...opts, headers });
 }
