@@ -171,19 +171,19 @@ function buildAssetCtxMenu(event, a) {
   });
   items.push({ divider: true });
   items.push({
-    label: 'despublicar',
-    icon: '×',
+    label: 'jogar na lixeira',
+    icon: '⌫',
     danger: true,
     onClick: async () => {
       const ok = await confirmModal({
-        title: 'despublicar asset',
-        message: `Apaga o asset "${a.name}". O vídeo-fonte volta a ser rascunho no Ateliê (não é apagado).`,
-        confirmLabel: 'despublicar',
+        title: 'jogar na lixeira',
+        message: `Move "${a.name}" pra Lixeira. Vídeo-fonte volta a ser rascunho no Ateliê. Restaurável depois pela Lixeira (canto direito do header).`,
+        confirmLabel: 'jogar na lixeira',
       });
       if (!ok) return;
       try {
         await deleteAsset(a.id);
-        showToast('asset despublicado');
+        showToast('asset na lixeira');
         await refreshAssets();
       } catch (err) {
         showToast('falha: ' + err.message);
