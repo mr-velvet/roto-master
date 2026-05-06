@@ -3,11 +3,12 @@
   "port": 5031,
   "domain": "roto.did.lu",
   "database": true,
-  "logto": true,
+  "logto": false,
   "migrations": "migrations/",
   "env": {
     "GCS_SERVICE_ACCOUNT": { "source": "platform", "required": true },
     "FAL_KEY": { "source": "platform", "required": true },
-    "ANTHROPIC_API_KEY": { "source": "platform", "required": true }
+    "ANTHROPIC_API_KEY": { "source": "platform", "required": true },
+    "APP_TOKEN": { "source": "platform", "required": true }
   }
 }

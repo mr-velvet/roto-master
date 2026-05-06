@@ -1,89 +1,44 @@
-// Fluxo de auth via Logto. Espera SDK carregar, processa callback,
-// expõe usuário e helper de fetch autenticado.
-// Em dev (host = localhost), o backend está em modo bypass: pega /api/config
-// sem token e segue. signIn/signOut viram no-op.
+// Auth simples: token único compartilhado, salvo em localStorage.
+// Sem Logto, sem OAuth, sem expiração. Quem tem o token vê e mexe em tudo.
+// Decisão (2026-05-05): time pequeno interno, fricção de login causou
+// dor de cabeça desproporcional. Ver PROGRESS.md "Auth simples".
 
-const LOGTO_ENDPOINT = 'https://auth.did.lu';
-// Substituído após primeiro deploy (new-app.sh imprime o ID criado).
-const LOGTO_APP_ID = '36iz4iomybe4r1n67a7jc';
-
+const TOKEN_KEY = 'roto-master.token';
 const DEV_BYPASS = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-let logtoClient = null;
-let currentUser = null;
-let accessToken = null;
+let token = null;
 
 export async function initAuth() {
   if (DEV_BYPASS) {
-    const me = await fetch('/api/config');
-    if (!me.ok) return { authenticated: false, error: `dev bypass: /api/config retornou ${me.status}` };
-    currentUser = await me.json();
-    return { authenticated: true, user: currentUser };
+    // Em dev local o backend já bypassa via DEV_BYPASS=1; manda qualquer
+    // string só pra não dar throw em authedFetch.
+    token = 'dev-bypass';
+    return { authenticated: true };
   }
-
-  await new Promise((resolve) => {
-    if (window.LogtoAuthClient) return resolve();
-    const check = setInterval(() => {
-      if (window.LogtoAuthClient) { clearInterval(check); resolve(); }
-    }, 30);
-  });
-
-  if (LOGTO_APP_ID === '__LOGTO_APP_ID__') {
-    return { authenticated: false, error: 'Logto App ID não configurado.' };
+  token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    const v = window.prompt('Cole o token de acesso (compartilhado pelo time):');
+    if (!v || !v.trim()) return { authenticated: false, error: 'token vazio' };
+    token = v.trim();
+    localStorage.setItem(TOKEN_KEY, token);
   }
-
-  logtoClient = new window.LogtoAuthClient({
-    endpoint: LOGTO_ENDPOINT,
-    appId: LOGTO_APP_ID,
-  });
-  await logtoClient.handleCallback();
-
-  if (!(await logtoClient.isAuthenticated())) {
-    return { authenticated: false };
+  // Valida contra /api/config — se 401, limpa e pede de novo.
+  const r = await fetch('/api/config', { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) {
+    localStorage.removeItem(TOKEN_KEY);
+    token = null;
+    return { authenticated: false, error: r.status === 401 ? 'token inválido' : `erro ${r.status}` };
   }
-
-  accessToken = await logtoClient.getAccessToken();
-  const me = await fetch('/api/config', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!me.ok) {
-    // Backend rejeitou o token. NÃO fazer signOut automático aqui — antes
-    // isso causava loop infinito: signOut → Logto → callback → token novo
-    // → /api/config rejeita de novo → signOut. O caller mostra tela de
-    // login e usuário decide reagir.
-    console.warn(`[auth] /api/config rejeitou token: ${me.status}`);
-    return { authenticated: false, error: `backend rejeitou token (${me.status}). Tente recarregar a página.` };
-  }
-  currentUser = await me.json();
-  return { authenticated: true, user: currentUser };
+  return { authenticated: true };
 }
 
-export async function signIn() {
-  if (DEV_BYPASS) return;
-  return logtoClient.signIn();
-}
-export async function signOut() {
-  if (DEV_BYPASS) return;
-  return logtoClient.signOut();
-}
-export function getUser() { return currentUser; }
-
-// Lê token sempre via SDK — ele renova automaticamente quando expirou (refresh
-// token interno). Tokens Logto vivem ~1h; antes mantíamos um único access
-// token capturado no initAuth, que vencia silenciosamente e fazia tudo dar
-// 401 (autosave, renomear vídeo, etc.) sem avisar o user.
-async function getFreshToken() {
-  if (!logtoClient) throw new Error('not authenticated');
-  try {
-    const t = await logtoClient.getAccessToken();
-    if (t) accessToken = t;
-  } catch (e) { /* mantém o anterior; backend devolverá 401 e tratamos abaixo */ }
-  return accessToken;
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  token = null;
 }
 
 export async function authedFetch(url, opts = {}) {
   if (DEV_BYPASS) return fetch(url, opts);
-  const token = await getFreshToken();
   if (!token) throw new Error('not authenticated');
   const headers = { ...(opts.headers || {}), Authorization: `Bearer ${token}` };
   return fetch(url, { ...opts, headers });

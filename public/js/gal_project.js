@@ -1,11 +1,10 @@
 // Galeria · Detalhe do projeto — lista de assets do projeto.
 
-import { getProject, addMember, removeMember } from './projects_api.js';
+import { getProject } from './projects_api.js';
 import { listAssets, deleteAsset } from './assets_api.js';
 import { showToast, confirmModal } from './modals.js';
 import { openAssetDetail } from './asset_modal.js';
 import { navigateAtelie, navigateHome, navigateEditor } from './router.js';
-import { getUser } from './auth.js';
 import { showContextMenu } from './context_menu.js';
 
 const $title = document.querySelector('[data-bind="project-name"]');
@@ -13,15 +12,9 @@ const $sub = document.querySelector('[data-bind="project-sub"]');
 const $grid = document.querySelector('[data-bind="asset-grid"]');
 const $emptyCall = document.querySelector('[data-bind="empty-call"]');
 const $filterChips = document.querySelectorAll('[data-bind="asset-filter"] .chip');
-const $membersList = document.querySelector('[data-bind="members-list"]');
-const $membersAdd = document.querySelector('[data-bind="members-add"]');
-const $membersAddInput = document.querySelector('[data-bind="members-add-input"]');
-const $membersErr = document.querySelector('[data-bind="members-err"]');
 
 let currentProjectId = null;
 let currentProjectName = '';
-let currentMyRole = null;
-let currentMembers = [];
 let currentAssets = [];
 let currentFilter = 'all';
 
@@ -42,66 +35,25 @@ export async function showProject(projectId) {
   $grid.innerHTML = '';
   $emptyCall.setAttribute('hidden', '');
 
-  let data;
+  let project;
   try {
-    data = await getProject(projectId);
+    project = await getProject(projectId);
   } catch (e) {
     console.error('get project:', e);
     showToast('falha ao carregar projeto');
     navigateHome();
     return;
   }
-  if (!data) {
+  if (!project) {
     showToast('projeto não encontrado');
     navigateHome();
     return;
   }
-  const { project, members } = data;
   currentProjectName = project.name;
-  currentMyRole = project.my_role;
-  currentMembers = members;
   $title.textContent = project.name;
-  const memberSummary = members.length === 1 ? '1 membro' : `${members.length} membros`;
-  $sub.textContent = project.description || `${memberSummary}.`;
+  $sub.textContent = project.description || '';
 
-  renderMembers();
   await refreshAssets();
-}
-
-function renderMembers() {
-  const me = getUser();
-  const $addTrigger = document.querySelector('[data-bind="members-bar-add-trigger"]');
-
-  $membersList.innerHTML = '';
-  for (const m of currentMembers) {
-    const isPending = String(m.member_sub).startsWith('pending:');
-    const isMe = !isPending && me.userId && m.member_sub === me.userId;
-    const labelEmail = m.member_email || (isPending ? String(m.member_sub).slice('pending:'.length) : '—');
-    const canRemove = currentMyRole === 'owner' && !(isMe && m.role === 'owner');
-
-    const chip = document.createElement('span');
-    chip.className = 'member-chip';
-    if (m.role === 'owner') chip.classList.add('is-owner');
-    if (isPending) chip.classList.add('is-pending');
-    if (isMe) chip.classList.add('is-me');
-    chip.innerHTML = `
-      <span class="member-chip-avatar">${escapeHtml((labelEmail[0] || '?').toUpperCase())}</span>
-      <span class="member-chip-email">${escapeHtml(labelEmail)}</span>
-      ${m.role === 'owner' ? '<span class="member-chip-tag">owner</span>' : ''}
-      ${isPending ? '<span class="member-chip-tag is-pending-tag">pending</span>' : ''}
-      ${canRemove ? `<button class="member-chip-remove" data-action="remove-member" data-sub="${escapeHtml(m.member_sub)}" data-email="${escapeHtml(labelEmail)}" title="remover" type="button">×</button>` : ''}
-    `;
-    $membersList.appendChild(chip);
-  }
-
-  if (currentMyRole === 'owner') {
-    $addTrigger.removeAttribute('hidden');
-  } else {
-    $addTrigger.setAttribute('hidden', '');
-  }
-  $membersAdd.setAttribute('hidden', '');
-  $membersErr.textContent = '';
-  $membersAddInput.value = '';
 }
 
 async function refreshAssets() {
@@ -241,7 +193,6 @@ function buildAssetCtxMenu(event, a) {
   showContextMenu(event, items);
 }
 
-// filtros
 $filterChips.forEach((chip) => {
   chip.addEventListener('click', () => {
     $filterChips.forEach((c) => c.classList.remove('is-active'));
@@ -251,73 +202,9 @@ $filterChips.forEach((chip) => {
   });
 });
 
-// chamadas globais
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-action="goto-home"]')) navigateHome();
   if (e.target.closest('[data-action="goto-atelie-videos"]')) navigateAtelie('videos');
-});
-
-// abrir/cancelar input de adicionar membro
-document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-action="open-members-add"]')) {
-    $membersAdd.removeAttribute('hidden');
-    $membersErr.textContent = '';
-    $membersAddInput.value = '';
-    setTimeout(() => $membersAddInput.focus(), 50);
-  }
-  if (e.target.closest('[data-action="cancel-members-add"]')) {
-    $membersAdd.setAttribute('hidden', '');
-    $membersErr.textContent = '';
-  }
-});
-
-// adicionar membro
-document.addEventListener('click', async (e) => {
-  if (!e.target.closest('[data-action="add-member"]')) return;
-  if (!currentProjectId) return;
-  const email = $membersAddInput.value.trim().toLowerCase();
-  $membersErr.textContent = '';
-  if (!email || !email.includes('@')) {
-    $membersErr.textContent = 'email inválido';
-    return;
-  }
-  try {
-    const { member, pending } = await addMember(currentProjectId, email);
-    currentMembers = [...currentMembers, member];
-    renderMembers();
-    $membersAdd.setAttribute('hidden', '');
-    showToast(pending ? 'convite enviado — vira membro no 1º login' : 'membro adicionado');
-  } catch (err) {
-    $membersErr.textContent = err.message;
-  }
-});
-
-$membersAddInput?.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  document.querySelector('[data-action="add-member"]')?.click();
-});
-
-// remover membro
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-action="remove-member"]');
-  if (!btn || !currentProjectId) return;
-  const sub = btn.getAttribute('data-sub');
-  const email = btn.getAttribute('data-email');
-  const ok = await confirmModal({
-    title: 'remover membro',
-    message: `Remover ${email} deste projeto? Ele perde acesso aos assets daqui.`,
-    confirmLabel: 'remover',
-  });
-  if (!ok) return;
-  try {
-    await removeMember(currentProjectId, sub);
-    currentMembers = currentMembers.filter((m) => m.member_sub !== sub);
-    renderMembers();
-    showToast('membro removido');
-  } catch (err) {
-    showToast('falha ao remover: ' + err.message);
-  }
 });
 
 function escapeHtml(s) {

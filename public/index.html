@@ -14,14 +14,14 @@
 <body class="app-loading no-video" data-space="galeria" data-screen="home">
 
   <!-- ====================================================
-       LOGIN
+       TELA DE TOKEN (visível só se auth falhar)
        ==================================================== -->
   <div id="login-screen">
     <div class="login-brand"><span class="mark">◆</span>roto<span style="color:var(--paper-4)">·</span>master</div>
     <div class="login-tagline">vídeo → <em style="color:var(--copper); font-style:italic">.aseprite</em> pronto pra rotoscopar</div>
-    <div id="login-loading" class="loading-msg">verificando sessão…</div>
+    <div id="login-loading" class="loading-msg">verificando token…</div>
     <div id="login-actions" style="display:flex; flex-direction:column; gap:14px; align-items:center;">
-      <button class="btn-google" id="btn-signin">▸ entrar com Google</button>
+      <button class="btn-google" id="btn-signin">▸ colar token</button>
       <div id="login-err" class="err"></div>
     </div>
   </div>
@@ -60,12 +60,6 @@
         <div class="space-switch-thumb" aria-hidden="true"></div>
       </div>
 
-      <div class="user-pill">
-        <img class="user-pill-avatar" id="user-avatar" alt="" referrerpolicy="no-referrer" style="display:none; width:24px; height:24px; border-radius:50%;" />
-        <span class="user-pill-avatar" id="user-avatar-letter">m</span>
-        <span class="user-pill-email" id="user-email">—</span>
-        <button class="btn-logout" id="btn-logout" title="sair" style="margin-left:6px; font-size:10px; color:var(--paper-4);">sair</button>
-      </div>
     </div>
   </header>
 
@@ -117,20 +111,6 @@
             </div>
             <h1 class="page-head-title" data-bind="project-name">—</h1>
             <p class="page-head-sub" data-bind="project-sub">—</p>
-            <div class="members-bar" data-bind="members-bar">
-              <span class="members-bar-label">Membros</span>
-              <span class="members-bar-list" data-bind="members-list"></span>
-              <button class="members-bar-add" data-action="open-members-add" type="button" hidden data-bind="members-bar-add-trigger">+ adicionar</button>
-            </div>
-            <div class="members-add" data-bind="members-add" hidden>
-              <input type="email" class="members-add-input" data-bind="members-add-input" placeholder="email do convidado" maxlength="200" />
-              <button class="btn btn-ghost members-add-btn" data-action="add-member" type="button">
-                <span class="btn-icon">+</span>
-                adicionar
-              </button>
-              <button class="btn btn-ghost members-add-cancel" data-action="cancel-members-add" type="button">cancelar</button>
-              <div class="members-err" data-bind="members-err"></div>
-            </div>
           </div>
           <div class="page-head-actions">
             <div class="filter-chips" role="tablist" data-bind="asset-filter">
@@ -887,7 +867,6 @@
   <video id="vid" muted playsinline loop crossorigin="anonymous" preload="auto" style="display:none"></video>
 
   <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-  <script src="./logto-auth.js"></script>
   <script type="module" src="./js/main.js"></script>
 </body>
 </html>

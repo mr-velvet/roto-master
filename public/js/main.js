@@ -1,7 +1,7 @@
-// Bootstrap. Auth → router → screens.
+// Bootstrap. Auth (token) → router → screens.
 
-import { initAuth, signIn, signOut, getUser } from './auth.js';
-import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateEditor, currentRoute } from './router.js';
+import { initAuth, clearToken } from './auth.js';
+import { bindRouter, startRouter, navigateHome, navigateAtelie } from './router.js';
 import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
 import { showHome } from './gal_home.js';
 import { showProject } from './gal_project.js';
@@ -12,19 +12,11 @@ import { initEditor, openEditor } from './editor.js';
 
 const $loginErr = document.getElementById('login-err');
 const $btnSignin = document.getElementById('btn-signin');
-const $btnLogout = document.getElementById('btn-logout');
-const $userAvatar = document.getElementById('user-avatar');
-const $userAvatarLetter = document.getElementById('user-avatar-letter');
-const $userEmail = document.getElementById('user-email');
 
-$btnSignin.addEventListener('click', async () => {
-  $loginErr.textContent = '';
-  try { await signIn(); }
-  catch (e) { $loginErr.textContent = 'Falha no login: ' + e.message; }
-});
-
-$btnLogout.addEventListener('click', async () => {
-  try { await signOut(); } catch (e) { console.warn(e); }
+// Botão "colar token" — limpa token salvo e recarrega pra reabrir prompt.
+$btnSignin.addEventListener('click', () => {
+  clearToken();
+  window.location.reload();
 });
 
 function showHomeScreen() {
@@ -99,22 +91,10 @@ function showEditorScreen(id) {
     return;
   }
 
-  const u = getUser();
-  if (u.userPicture) {
-    $userAvatar.src = u.userPicture;
-    $userAvatar.style.display = '';
-    $userAvatarLetter.style.display = 'none';
-  } else {
-    $userAvatarLetter.textContent = (u.userEmail || u.userId || '?')[0].toUpperCase();
-  }
-  $userEmail.textContent = u.userEmail || u.userId;
-
   document.body.classList.remove('app-loading');
 
-  // boot do editor (só DOM/listeners; não carrega vídeo até openEditor)
   initEditor();
 
-  // chrome com handler de troca de espaço
   bindChrome({
     onSwitchSpace: (target) => {
       if (target === 'galeria') navigateHome();

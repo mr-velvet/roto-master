@@ -3,13 +3,10 @@ const { requireUser } = require('../middleware/auth');
 
 const router = Router();
 
+// Antes retornava userId/userEmail do Logto. Sem auth, retorna constante.
+// Frontend ainda chama isso pra validar token; se chegou aqui, token OK.
 router.get('/', requireUser, (req, res) => {
-  res.json({
-    userId: req.user.sub,
-    userEmail: req.user.email,
-    userName: req.user.name,
-    userPicture: req.user.picture,
-  });
+  res.json({ ok: true });
 });
 
 module.exports = router;

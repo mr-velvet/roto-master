@@ -83,8 +83,7 @@ function renderMeta() {
   const created = currentAsset.created_at
     ? new Date(currentAsset.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
     : '—';
-  const who = currentAsset.owner_email || currentAsset.owner_sub || '—';
-  $meta.textContent = `v${currentAsset.version} · ${created} · publicado por ${who}`;
+  $meta.textContent = `v${currentAsset.version} · ${created}`;
 }
 
 // chip status: alterna pendente↔feito no servidor, atualiza UI

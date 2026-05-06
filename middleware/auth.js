@@ -1,67 +1,25 @@
-const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || 'https://auth.did.lu';
+// Auth simples: bate `Authorization: Bearer <token>` contra APP_TOKEN do env.
+// Sem usuário, sem sessão, sem owner. Quem tem o token vê e mexe em tudo.
+// Decisão deliberada (2026-05-05): ferramenta interna, time pequeno, fricção
+// de login causou dor de cabeça desproporcional. Ver PROGRESS.md "Auth simples".
 
-// Bypass de dev: se DEV_USER_SUB e DEV_USER_EMAIL estão no env,
-// pula validação Logto e injeta esse user. Só pra dev local.
-const DEV_SUB = process.env.DEV_USER_SUB;
-const DEV_EMAIL = process.env.DEV_USER_EMAIL;
-const DEV_BYPASS = !!(DEV_SUB && DEV_EMAIL);
+const APP_TOKEN = process.env.APP_TOKEN;
+const DEV_BYPASS = process.env.DEV_BYPASS === '1';
+
+if (!APP_TOKEN && !DEV_BYPASS) {
+  console.warn('[auth] APP_TOKEN não definido — todas as requests vão dar 500');
+}
 if (DEV_BYPASS) {
-  console.log(`[auth] DEV BYPASS ATIVO — user: ${DEV_EMAIL} (${DEV_SUB})`);
+  console.log('[auth] DEV_BYPASS=1 — pulando validação de token');
 }
 
-async function requireUser(req, res, next) {
-  if (DEV_BYPASS) {
-    req.user = { sub: DEV_SUB, email: DEV_EMAIL, name: DEV_EMAIL, picture: null };
-    return next();
-  }
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-  const token = authHeader.slice(7);
-  try {
-    const response = await fetch(`${LOGTO_ENDPOINT}/oidc/me`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      console.warn(`[auth] /oidc/me rejected: status=${response.status} body=${body.slice(0, 300)}`);
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-    const profile = await response.json();
-    if (!profile.sub) return res.status(401).json({ error: 'Token has no subject' });
-    req.user = {
-      sub: profile.sub,
-      email: profile.email || null,
-      name: profile.name || null,
-      picture: profile.picture || null,
-    };
-    // resolve convites "pending:<email>" pro sub real do usuário logado
-    if (req.user.email) {
-      const pool = req.app.locals.pool;
-      if (pool) {
-        try {
-          await pool.query(
-            `UPDATE project_members
-                SET member_sub = $1
-              WHERE member_sub = $2
-                AND NOT EXISTS (
-                  SELECT 1 FROM project_members pm2
-                   WHERE pm2.project_id = project_members.project_id
-                     AND pm2.member_sub = $1
-                )`,
-            [req.user.sub, `pending:${req.user.email.toLowerCase()}`]
-          );
-        } catch (err) {
-          console.warn('resolve pending invites failed:', err.message);
-        }
-      }
-    }
-    next();
-  } catch (err) {
-    console.error('Token validation failed:', err.message);
-    return res.status(401).json({ error: 'Token validation failed' });
-  }
+function requireUser(req, res, next) {
+  if (DEV_BYPASS) return next();
+  if (!APP_TOKEN) return res.status(500).json({ error: 'APP_TOKEN não configurado no servidor' });
+  const h = req.headers.authorization;
+  if (!h || !h.startsWith('Bearer ')) return res.status(401).json({ error: 'token obrigatório' });
+  if (h.slice(7) !== APP_TOKEN) return res.status(401).json({ error: 'token inválido' });
+  next();
 }
 
 module.exports = { requireUser };

@@ -48,7 +48,7 @@ router.post('/ref-upload', requireUser, upload.single('file'), async (req, res) 
   if (!req.file) return res.status(400).json({ error: 'file obrigatório' });
   try {
     const ext = (req.file.originalname.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-    const path = `roto-master/refs/${req.user.sub}/ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const path = `roto-master/refs/shared/ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const stored = await uploadBuffer(path, req.file.buffer, req.file.mimetype || 'image/jpeg');
     res.json({ url: stored.gcs_url });
   } catch (e) {
@@ -88,7 +88,7 @@ router.post('/sanitize-image', requireUser, async (req, res) => {
       ref_image_urls: [image_url],
     });
     const ext = (result.content_type || '').includes('png') ? 'png' : 'jpg';
-    const dstPath = `roto-master/generations/${req.user.sub}/sanitized-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const dstPath = `roto-master/generations/shared/sanitized-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const stored = await uploadFromUrl(result.url, dstPath, result.content_type);
     const cost = await modelCost(req.app.locals.pool, result.model, 1);
     res.json({
@@ -111,7 +111,7 @@ router.post('/image', requireUser, async (req, res) => {
   try {
     const result = await fal.generateImage({ prompt, ref_image_urls: refs });
     // sobe pro GCS — fal links expiram
-    const dstPath = `roto-master/generations/${req.user.sub}/img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${(result.content_type || '').includes('png') ? 'png' : 'jpg'}`;
+    const dstPath = `roto-master/generations/shared/img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${(result.content_type || '').includes('png') ? 'png' : 'jpg'}`;
     const stored = await uploadFromUrl(result.url, dstPath, result.content_type);
 
     const cost = await modelCost(req.app.locals.pool, result.model, 1);
@@ -140,12 +140,8 @@ router.post('/video', requireUser, async (req, res) => {
 
   const pool = req.app.locals.pool;
 
-  // valida ownership do video se foi passado
   if (videoId) {
-    const { rows } = await pool.query(
-      `SELECT id FROM videos WHERE id = $1 AND owner_sub = $2`,
-      [videoId, req.user.sub]
-    );
+    const { rows } = await pool.query(`SELECT id FROM videos WHERE id = $1`, [videoId]);
     if (!rows.length) return res.status(404).json({ error: 'video_id não encontrado' });
   }
 
@@ -166,8 +162,8 @@ router.post('/video', requireUser, async (req, res) => {
       if (videoId) {
         // ATUALIZA video existente: anexa attempt
         const { rows } = await client.query(
-          `SELECT generation_meta FROM videos WHERE id = $1 AND owner_sub = $2 FOR UPDATE`,
-          [videoId, req.user.sub]
+          `SELECT generation_meta FROM videos WHERE id = $1 FOR UPDATE`,
+          [videoId]
         );
         const meta = rows[0].generation_meta || {};
         const attempts = Array.isArray(meta.attempts) ? meta.attempts : [];
@@ -211,10 +207,9 @@ router.post('/video', requireUser, async (req, res) => {
         const name = (image_prompt || motion_prompt).slice(0, 60).trim() || 'sem nome';
 
         const { rows: ins } = await client.query(
-          `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url, duration_s)
-           VALUES ($1, $2, $3, 'generated-generic', '', '', $4)
-           RETURNING id`,
-          [req.user.sub, req.user.email || '', name, duration_s]
+          `INSERT INTO videos (name, origin, gcs_path, gcs_url, duration_s)
+           VALUES ($1, 'generated-generic', '', '', $2) RETURNING id`,
+          [name, duration_s]
         );
         const newId = ins[0].id;
 
@@ -279,10 +274,7 @@ router.post('/text-video', requireUser, async (req, res) => {
   const pool = req.app.locals.pool;
 
   if (videoId) {
-    const { rows } = await pool.query(
-      `SELECT id FROM videos WHERE id = $1 AND owner_sub = $2`,
-      [videoId, req.user.sub]
-    );
+    const { rows } = await pool.query(`SELECT id FROM videos WHERE id = $1`, [videoId]);
     if (!rows.length) return res.status(404).json({ error: 'video_id não encontrado' });
   }
 
@@ -301,8 +293,8 @@ router.post('/text-video', requireUser, async (req, res) => {
 
       if (videoId) {
         const { rows } = await client.query(
-          `SELECT generation_meta FROM videos WHERE id = $1 AND owner_sub = $2 FOR UPDATE`,
-          [videoId, req.user.sub]
+          `SELECT generation_meta FROM videos WHERE id = $1 FOR UPDATE`,
+          [videoId]
         );
         const meta = rows[0].generation_meta || {};
         const attempts = Array.isArray(meta.attempts) ? meta.attempts : [];
@@ -343,10 +335,9 @@ router.post('/text-video', requireUser, async (req, res) => {
         const name = prompt.slice(0, 60).trim() || 'sem nome';
 
         const { rows: ins } = await client.query(
-          `INSERT INTO videos (owner_sub, owner_email, name, origin, gcs_path, gcs_url, duration_s)
-           VALUES ($1, $2, $3, 'generated-t2v', '', '', $4)
-           RETURNING id`,
-          [req.user.sub, req.user.email || '', name, duration_s]
+          `INSERT INTO videos (name, origin, gcs_path, gcs_url, duration_s)
+           VALUES ($1, 'generated-t2v', '', '', $2) RETURNING id`,
+          [name, duration_s]
         );
         const newId = ins[0].id;
 
