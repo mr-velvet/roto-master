@@ -254,6 +254,21 @@ body[data-space="atelie"] .space-label-name { color: var(--copper); }
   justify-content: flex-end;
 }
 
+.token-copy-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--paper-3);
+  cursor: pointer;
+  transition: color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.token-copy-btn:hover {
+  color: var(--paper);
+  border-color: var(--paper-4);
+}
+.token-copy-icon { font-size: 13px; line-height: 1; }
+
 .space-switch {
   position: relative;
   display: inline-flex;

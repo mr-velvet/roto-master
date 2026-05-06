@@ -1,6 +1,7 @@
 // Bootstrap. Auth (token) → router → screens.
 
-import { initAuth, clearToken } from './auth.js';
+import { initAuth, clearToken, getToken } from './auth.js';
+import { showToast } from './modals.js';
 import { bindRouter, startRouter, navigateHome, navigateAtelie } from './router.js';
 import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
 import { showHome } from './gal_home.js';
@@ -17,6 +18,23 @@ const $btnSignin = document.getElementById('btn-signin');
 $btnSignin.addEventListener('click', () => {
   clearToken();
   window.location.reload();
+});
+
+// Botão de copiar token (header global). Útil pra compartilhar o token
+// com alguém do time sem ter que abrir devtools.
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="copy-token"]')) return;
+  const t = getToken();
+  if (!t || t === 'dev-bypass') {
+    showToast('em dev local não tem token (bypass ativo)');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(t);
+    showToast('token copiado');
+  } catch (err) {
+    showToast('falha ao copiar: ' + err.message);
+  }
 });
 
 function showHomeScreen() {

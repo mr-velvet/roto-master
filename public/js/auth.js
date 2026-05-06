@@ -37,6 +37,10 @@ export function clearToken() {
   token = null;
 }
 
+export function getToken() {
+  return token;
+}
+
 export async function authedFetch(url, opts = {}) {
   if (DEV_BYPASS) return fetch(url, opts);
   if (!token) throw new Error('not authenticated');
