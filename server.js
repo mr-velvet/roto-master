@@ -33,6 +33,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/assets', require('./routes/assets').router);
 app.use('/api/models', require('./routes/models'));
 app.use('/api/generate', require('./routes/generate'));
+app.use('/api/fe', require('./routes/fe'));
 
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api/')) {
