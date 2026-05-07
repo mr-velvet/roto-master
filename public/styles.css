@@ -974,6 +974,13 @@ button.tag {
 .tag-draft {
   color: var(--paper-4);
 }
+.tag-cost {
+  color: var(--paper-3);
+  background: rgba(233, 194, 92, 0.06);
+  border: 1px solid rgba(233, 194, 92, 0.18);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
 
 /* ----------------------------------------------------------------------------
    ATELIÊ · personagens, enquadramentos, cameras
@@ -2244,6 +2251,70 @@ body:not(.app-loading) #login-loading { display: none; }
   overflow: hidden;
   cursor: default;
 }
+/* slider de duração + pill de modelo (fluxos C e D de geração) */
+.duration-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--ink-2);
+  outline: none;
+  margin: 6px 0 4px;
+  cursor: pointer;
+}
+.duration-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--copper);
+  cursor: pointer;
+  border: 2px solid var(--ink-1);
+}
+.duration-slider::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--copper);
+  cursor: pointer;
+  border: 2px solid var(--ink-1);
+}
+.duration-model-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--paper-3);
+}
+.duration-model-prefix { color: var(--paper-4); }
+.duration-model-pill {
+  font-family: inherit;
+  background: var(--ink-2);
+  border: 1px solid var(--line-2);
+  color: var(--paper-2);
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.duration-model-pill:hover {
+  border-color: var(--copper);
+  color: var(--copper);
+}
+.duration-model-pill.is-pixverse {
+  border-color: rgba(107, 142, 90, 0.5);
+  color: var(--moss, #6b8e5a);
+}
+.duration-model-pill.is-kling {
+  border-color: rgba(217, 122, 58, 0.5);
+  color: var(--copper);
+}
+.duration-model-hint {
+  font-size: 10px;
+  color: var(--paper-4);
+  font-style: italic;
+}
+
 .asset-detail-preview-video,
 .asset-detail-preview-canvas {
   position: absolute;

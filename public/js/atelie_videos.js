@@ -63,6 +63,11 @@ function render() {
       ? `<button class="tag tag-published video-card-published-link" data-action="goto-published-project" data-project-id="${v.published_project_id}" type="button" title="abrir projeto na Galeria">◆ publicado em <em>${escapeHtml(projName)}</em></button>`
       : `<span class="tag tag-draft">◇ rascunho</span>`;
 
+    // Custo: soma de todos os attempts em generation_meta.attempts[].cost.
+    // Aplica só pra vídeos gerados (origin='generated-*'). Mostra "$X.XX · N×"
+    // quando houve mais de uma tentativa, pra deixar visível que rolou descarte.
+    const costTag = renderCostTag(v);
+
     const thumbUrl = v.thumb_url;
     card.innerHTML = `
       <div class="video-card-thumb${thumbUrl ? ' has-thumb' : ''}"${thumbUrl ? ` style="background-image:url('${thumbUrl}')"` : ''}>
@@ -74,6 +79,7 @@ function render() {
         <div class="video-card-tags">
           <span class="tag ${o.cls}"><span class="tag-icon">${o.icon}</span>${o.label}</span>
           ${publishedTag}
+          ${costTag}
         </div>
       </div>
       <div class="video-card-hover-actions">
@@ -244,6 +250,26 @@ document.addEventListener('click', async (e) => {
     $confirm.disabled = false;
   }
 });
+
+// Tag de custo no card de vídeo. Soma os attempts de generation_meta.
+// Só aparece pra vídeos gerados via IA (origin generated-*) — uploads e
+// vídeos de URL não têm custo de geração.
+function renderCostTag(v) {
+  if (!v.origin || !v.origin.startsWith('generated-')) return '';
+  const meta = v.generation_meta;
+  if (!meta || !Array.isArray(meta.attempts) || !meta.attempts.length) return '';
+  let total = 0;
+  let counted = 0;
+  for (const a of meta.attempts) {
+    const c = parseFloat(a.cost);
+    if (Number.isFinite(c)) { total += c; counted++; }
+  }
+  if (!counted) return '';
+  const totalStr = `$${total.toFixed(2)}`;
+  const tries = meta.attempts.length;
+  const label = tries > 1 ? `${totalStr} · ${tries}×` : totalStr;
+  return `<span class="tag tag-cost">⛁ ${escapeHtml(label)}</span>`;
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

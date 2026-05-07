@@ -70,6 +70,8 @@ const $previewErr = document.querySelector('[data-bind="t2v-preview-err"]');
 // === estado ===
 let mode = 'free';                  // 'free' | 'structured'
 let durationS = 5;
+// 'auto' = deriva da duração; 'kling' / 'pixverse' = override.
+let modelChoice = 'auto';
 let modelsByKey = {};
 let videoId = null;
 let videoActiveIdx = 0;
@@ -109,6 +111,7 @@ export async function showAtelieTextVideo() {
 function resetAll() {
   mode = 'free';
   durationS = 5;
+  modelChoice = 'auto';
   videoId = null;
   videoActiveIdx = 0;
   videoAttempts = [];
@@ -124,7 +127,8 @@ function resetAll() {
   document.querySelectorAll('.t2v-chip-custom').forEach((i) => { i.value = ''; });
 
   setTab('free');
-  setDuration(5);
+  if ($t2vDurInput) $t2vDurInput.value = '5';
+  updateCostLabel();
   $err.textContent = '';
   $status.setAttribute('hidden', '');
   $attempts.setAttribute('hidden', '');
@@ -133,11 +137,49 @@ function resetAll() {
   $freeUndo.setAttribute('hidden', '');
 }
 
+function effectiveVideoModel() {
+  let key;
+  if (modelChoice === 'kling') key = 'kling-t2v';
+  else if (modelChoice === 'pixverse') key = 'pixverse-t2v';
+  else key = durationS < 5 ? 'pixverse-t2v' : 'kling-t2v';
+  if (key === 'pixverse-t2v') {
+    return { key, label: 'PixVerse V6', modelId: 'fal-ai/pixverse/v6/text-to-video' };
+  }
+  return { key, label: 'Kling 2.5 Turbo', modelId: 'fal-ai/kling-video/v2.5-turbo/pro/text-to-video' };
+}
+
+function clampDurationForModel(d, key) {
+  if (key === 'kling-t2v') return d <= 7 ? 5 : 10;
+  return Math.max(1, Math.min(15, Math.round(d)));
+}
+
 function updateCostLabel() {
-  const m = modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/text-to-video']
-    || modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/image-to-video']; // fallback caso seed novo ainda não esteja no cache
-  if (m) {
-    $cost.textContent = `~$${(parseFloat(m.cost_per_unit) * durationS).toFixed(2)} / ${durationS}s`;
+  const m = effectiveVideoModel();
+  const realDur = clampDurationForModel(durationS, m.key);
+  const entry = modelsByKey[m.modelId];
+  if (entry) {
+    $cost.textContent = `~$${(parseFloat(entry.cost_per_unit) * realDur).toFixed(2)} / ${realDur}s`;
+  }
+  updateModelUI();
+}
+
+function updateModelUI() {
+  const $label = document.querySelector('[data-bind="t2v-duration-label"]');
+  const $pill = document.querySelector('[data-bind="t2v-model-pill"]');
+  const $hint = document.querySelector('[data-bind="t2v-model-hint"]');
+  const m = effectiveVideoModel();
+  if ($label) $label.textContent = `${durationS}s`;
+  if ($pill) {
+    $pill.textContent = m.label;
+    $pill.classList.toggle('is-pixverse', m.key === 'pixverse-t2v');
+    $pill.classList.toggle('is-kling', m.key === 'kling-t2v');
+  }
+  if ($hint) {
+    if (modelChoice === 'auto') {
+      $hint.textContent = m.key === 'pixverse-t2v' ? 'curto (auto)' : 'qualidade (auto)';
+    } else {
+      $hint.textContent = 'manual · click pra voltar a auto';
+    }
   }
 }
 
@@ -217,18 +259,20 @@ document.addEventListener('click', (e) => {
   setTab(tab.getAttribute('data-mode'));
 });
 
-// === duração ===
-function setDuration(v) {
-  durationS = v === 10 ? 10 : 5;
-  document.querySelectorAll('[data-action="t2v-set-duration"]').forEach((b) => {
-    b.classList.toggle('is-active', b.getAttribute('data-duration') === String(durationS));
-  });
+// === duração + modelo ===
+const $t2vDurInput = document.querySelector('[data-bind="t2v-duration-input"]');
+$t2vDurInput?.addEventListener('input', () => {
+  const v = parseInt($t2vDurInput.value, 10);
+  durationS = Number.isFinite(v) ? Math.max(1, Math.min(15, v)) : 5;
   updateCostLabel();
-}
+});
+
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-action="t2v-set-duration"]');
-  if (!btn) return;
-  setDuration(parseInt(btn.getAttribute('data-duration'), 10));
+  if (!e.target.closest('[data-action="t2v-toggle-model"]')) return;
+  if (modelChoice === 'auto') modelChoice = 'kling';
+  else if (modelChoice === 'kling') modelChoice = 'pixverse';
+  else modelChoice = 'auto';
+  updateCostLabel();
 });
 
 // === builder de prompt rigoroso (espelha lib/prompt-recipes.js#buildT2VPrompt) ===
@@ -305,12 +349,15 @@ document.addEventListener('click', (e) => {
   }
   closeModal();
   const wasEdited = finalPrompt !== compiledOriginal;
+  const m = effectiveVideoModel();
+  const realDur = clampDurationForModel(durationS, m.key);
   runGenerate({
     prompt: finalPrompt,
-    duration_s: durationS,
+    duration_s: realDur,
+    model_key: m.key,
     video_id: videoId,
     mode: wasEdited ? 'structured-edited' : 'structured',
-    structured: { ...fields, duration_s: durationS },
+    structured: { ...fields, duration_s: realDur },
   });
 });
 
@@ -318,10 +365,11 @@ document.addEventListener('click', (e) => {
 let timerInterval = null;
 function startTimer() {
   const start = Date.now();
+  const m = effectiveVideoModel();
   const tick = () => {
     const sec = Math.floor((Date.now() - start) / 1000);
     $generateLabel.textContent = `gerando há ${sec}s…`;
-    $status.textContent = `Kling t2v rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
+    $status.textContent = `${m.label} rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
   };
   tick();
   timerInterval = setInterval(tick, 1000);
@@ -335,17 +383,21 @@ async function runGenerate(body) {
   // Confirmação com estimativa de custo. Geração t2v é cobrada na hora que
   // o provider aceita o job — sem cancelamento real depois. Centralizado
   // aqui pra cobrir tanto o modo livre quanto o rigoroso.
-  const m = modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/text-to-video']
-    || modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/image-to-video'];
-  const cost = m ? parseFloat(m.cost_per_unit) * (body.duration_s || durationS) : null;
+  const mDeriv = effectiveVideoModel();
+  const realDur = clampDurationForModel(body.duration_s || durationS, mDeriv.key);
+  const entry = modelsByKey[mDeriv.modelId];
+  const cost = entry ? parseFloat(entry.cost_per_unit) * realDur : null;
   const costStr = cost ? `~$${cost.toFixed(2)}` : 'custo não disponível';
   const ok = await confirmModal({
     title: 'Gerar vídeo',
-    message: `Vai custar ${costStr} (Kling t2v · ${body.duration_s || durationS}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
+    message: `Vai custar ${costStr} (${mDeriv.label} · ${realDur}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
     danger: false,
     confirmLabel: `gerar (${costStr})`,
   });
   if (!ok) return;
+  // garante body sincronizado com modelo + duração efetivos
+  body.duration_s = realDur;
+  body.model_key = mDeriv.key;
 
   $err.textContent = '';
   $generateBtn.disabled = true;

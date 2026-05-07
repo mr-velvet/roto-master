@@ -52,6 +52,9 @@ let videoId = null;         // primeiro vídeo gerado vira id da workbench
 let videoActiveIdx = 0;
 let videoAttempts = [];
 let durationS = 5;
+// 'auto' = deriva da duração (Kling >=5s, PixVerse <5s).
+// 'kling' / 'pixverse' = override manual do user.
+let modelChoice = 'auto';
 let lastImageBody = null;   // pra retry
 let lastVideoBody = null;
 let pastedFile = null;      // file do paste/drop esperando decisão no modal
@@ -76,8 +79,52 @@ export async function showAtelieGenerate() {
 function updateCostLabels() {
   const img = modelsByKey['fal-ai/nano-banana-pro'];
   if (img) $imgCost.textContent = `~$${parseFloat(img.cost_per_unit).toFixed(2)} / geração`;
-  const vid = modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/image-to-video'];
-  if (vid) $videoCost.textContent = `~$${(parseFloat(vid.cost_per_unit) * durationS).toFixed(2)} / ${durationS}s`;
+  const m = effectiveVideoModel();
+  const modelEntry = modelsByKey[m.modelId];
+  if (modelEntry) {
+    const dur = clampDurationForModel(durationS, m.key);
+    $videoCost.textContent = `~$${(parseFloat(modelEntry.cost_per_unit) * dur).toFixed(2)} / ${dur}s`;
+  }
+}
+
+// Modelo i2v efetivo a partir de modelChoice + durationS.
+// Retorna { key: 'kling-i2v'|'pixverse-i2v', label, modelId }.
+function effectiveVideoModel() {
+  let key;
+  if (modelChoice === 'kling') key = 'kling-i2v';
+  else if (modelChoice === 'pixverse') key = 'pixverse-i2v';
+  else key = durationS < 5 ? 'pixverse-i2v' : 'kling-i2v';
+  if (key === 'pixverse-i2v') {
+    return { key, label: 'PixVerse V6', modelId: 'fal-ai/pixverse/v6/image-to-video' };
+  }
+  return { key, label: 'Kling 2.5 Turbo', modelId: 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video' };
+}
+
+// Kling só aceita 5 ou 10. Se duração escolhida for outra, arredonda
+// pro mais próximo permitido só pra display de custo.
+function clampDurationForModel(d, key) {
+  if (key === 'kling-i2v') return d <= 7 ? 5 : 10;
+  return Math.max(1, Math.min(15, Math.round(d)));
+}
+
+function updateModelUI() {
+  const $label = document.querySelector('[data-bind="gen-duration-label"]');
+  const $pill = document.querySelector('[data-bind="gen-model-pill"]');
+  const $hint = document.querySelector('[data-bind="gen-model-hint"]');
+  const m = effectiveVideoModel();
+  if ($label) $label.textContent = `${durationS}s`;
+  if ($pill) {
+    $pill.textContent = m.label;
+    $pill.classList.toggle('is-pixverse', m.key === 'pixverse-i2v');
+    $pill.classList.toggle('is-kling', m.key === 'kling-i2v');
+  }
+  if ($hint) {
+    if (modelChoice === 'auto') {
+      $hint.textContent = m.key === 'pixverse-i2v' ? 'curto (auto)' : 'qualidade (auto)';
+    } else {
+      $hint.textContent = 'manual · click pra voltar a auto';
+    }
+  }
 }
 
 function resetAll() {
@@ -92,6 +139,7 @@ function resetAll() {
   videoActiveIdx = 0;
   videoAttempts = [];
   durationS = 5;
+  modelChoice = 'auto';
   lastImageBody = null;
   lastVideoBody = null;
 
@@ -112,9 +160,9 @@ function resetAll() {
   $videoStatus.setAttribute('hidden', '');
   $attempts.setAttribute('hidden', '');
   $finalize.setAttribute('hidden', '');
-  document.querySelectorAll('[data-action="gen-set-duration"]').forEach((b) => {
-    b.classList.toggle('is-active', b.getAttribute('data-duration') === '5');
-  });
+  const $dur = document.querySelector('[data-bind="gen-duration-input"]');
+  if ($dur) $dur.value = '5';
+  updateModelUI();
   updateCostLabels();
 }
 
@@ -248,14 +296,22 @@ document.addEventListener('click', (e) => {
   if (lastImageBody) runGenImage(lastImageBody);
 });
 
-// === duração ===
+// === duração + modelo ===
+const $durInput = document.querySelector('[data-bind="gen-duration-input"]');
+$durInput?.addEventListener('input', () => {
+  const v = parseInt($durInput.value, 10);
+  durationS = Number.isFinite(v) ? Math.max(1, Math.min(15, v)) : 5;
+  updateModelUI();
+  updateCostLabels();
+});
+
+// Click no pill de modelo: cycla entre auto → kling → pixverse → auto.
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-action="gen-set-duration"]');
-  if (!btn) return;
-  durationS = btn.getAttribute('data-duration') === '10' ? 10 : 5;
-  document.querySelectorAll('[data-action="gen-set-duration"]').forEach((b) => {
-    b.classList.toggle('is-active', b === btn);
-  });
+  if (!e.target.closest('[data-action="gen-toggle-model"]')) return;
+  if (modelChoice === 'auto') modelChoice = 'kling';
+  else if (modelChoice === 'kling') modelChoice = 'pixverse';
+  else modelChoice = 'auto';
+  updateModelUI();
   updateCostLabels();
 });
 
@@ -263,10 +319,11 @@ document.addEventListener('click', (e) => {
 let videoTimerInterval = null;
 function startVideoTimer() {
   const start = Date.now();
+  const m = effectiveVideoModel();
   const tick = () => {
     const sec = Math.floor((Date.now() - start) / 1000);
     $videoBtnLabel.textContent = `gerando há ${sec}s…`;
-    $videoStatus.textContent = `Kling i2v rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
+    $videoStatus.textContent = `${m.label} rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
   };
   tick();
   videoTimerInterval = setInterval(tick, 1000);
@@ -318,12 +375,14 @@ document.addEventListener('click', async (e) => {
   // Confirmação com estimativa de custo. Geração de vídeo é cobrada na hora
   // que o provider aceita o job — sem cancelamento real depois. Esse modal
   // é a única chance do user evitar gasto por click acidental.
-  const vid = modelsByKey['fal-ai/kling-video/v2.5-turbo/pro/image-to-video'];
-  const cost = vid ? parseFloat(vid.cost_per_unit) * durationS : null;
+  const m = effectiveVideoModel();
+  const realDur = clampDurationForModel(durationS, m.key);
+  const modelEntry = modelsByKey[m.modelId];
+  const cost = modelEntry ? parseFloat(modelEntry.cost_per_unit) * realDur : null;
   const costStr = cost ? `~$${cost.toFixed(2)}` : 'custo não disponível';
   const ok = await confirmModal({
     title: 'Gerar vídeo',
-    message: `Vai custar ${costStr} (Kling i2v · ${durationS}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
+    message: `Vai custar ${costStr} (${m.label} · ${realDur}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
     danger: false,
     confirmLabel: `gerar (${costStr})`,
   });
@@ -331,7 +390,8 @@ document.addEventListener('click', async (e) => {
   const body = {
     image_url: imageUrl,
     motion_prompt: motion,
-    duration_s: durationS,
+    duration_s: realDur,
+    model_key: m.key,
     image_prompt: imagePrompt,
     video_id: videoId, // null na primeira; existente nas seguintes
   };

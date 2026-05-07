@@ -130,9 +130,21 @@ router.post('/image', requireUser, async (req, res) => {
 router.post('/video', requireUser, async (req, res) => {
   const image_url = (req.body?.image_url || '').trim();
   const motion_prompt = (req.body?.motion_prompt || '').trim();
-  const duration_s = req.body?.duration_s === 10 ? 10 : 5;
   const image_prompt = (req.body?.image_prompt || '').trim();
   const videoId = req.body?.video_id || null;
+  // model_key novo: 'kling-i2v' (default) ou 'pixverse-i2v'.
+  const modelKey = req.body?.model_key === 'pixverse-i2v' ? 'pixverse-i2v' : 'kling-i2v';
+  // Duração: Kling = 5/10; PixVerse = 1-15 inteiro.
+  let duration_s;
+  if (modelKey === 'pixverse-i2v') {
+    const d = parseInt(req.body?.duration_s, 10);
+    if (!Number.isFinite(d) || d < 1 || d > 15) {
+      return res.status(400).json({ error: 'duration_s deve ser inteiro 1-15 pro PixVerse' });
+    }
+    duration_s = d;
+  } else {
+    duration_s = req.body?.duration_s === 10 ? 10 : 5;
+  }
 
   if (!image_url) return res.status(400).json({ error: 'image_url obrigatória' });
   if (!motion_prompt) return res.status(400).json({ error: 'motion_prompt obrigatório' });
@@ -146,7 +158,9 @@ router.post('/video', requireUser, async (req, res) => {
   }
 
   try {
-    const result = await fal.generateVideo({ image_url, prompt: motion_prompt, duration_s });
+    const result = await fal.generateVideo({ image_url, prompt: motion_prompt, duration_s, model_key: modelKey });
+    // duration_s real volta do provider (PixVerse pode ter clampado).
+    duration_s = result.duration_s;
     const cost = await modelCost(pool, result.model, duration_s);
     const costValue = cost?.cost ?? null;
     const generated_at = new Date().toISOString();
@@ -263,10 +277,20 @@ router.post('/video', requireUser, async (req, res) => {
 // structured: campos do modo rigoroso (guardado em meta pra histórico)
 router.post('/text-video', requireUser, async (req, res) => {
   const prompt = (req.body?.prompt || '').trim();
-  const duration_s = req.body?.duration_s === 10 ? 10 : 5;
   const videoId = req.body?.video_id || null;
   const mode = ['free', 'structured', 'structured-edited'].includes(req.body?.mode) ? req.body.mode : 'free';
   const structured = req.body?.structured && typeof req.body.structured === 'object' ? req.body.structured : null;
+  const modelKey = req.body?.model_key === 'pixverse-t2v' ? 'pixverse-t2v' : 'kling-t2v';
+  let duration_s;
+  if (modelKey === 'pixverse-t2v') {
+    const d = parseInt(req.body?.duration_s, 10);
+    if (!Number.isFinite(d) || d < 1 || d > 15) {
+      return res.status(400).json({ error: 'duration_s deve ser inteiro 1-15 pro PixVerse' });
+    }
+    duration_s = d;
+  } else {
+    duration_s = req.body?.duration_s === 10 ? 10 : 5;
+  }
 
   if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
   if (prompt.length > 4000) return res.status(400).json({ error: 'prompt muito longo' });
@@ -279,7 +303,8 @@ router.post('/text-video', requireUser, async (req, res) => {
   }
 
   try {
-    const result = await fal.generateTextVideo({ prompt, duration_s });
+    const result = await fal.generateTextVideo({ prompt, duration_s, model_key: modelKey });
+    duration_s = result.duration_s;
     const cost = await modelCost(pool, result.model, duration_s);
     const costValue = cost?.cost ?? null;
     const generated_at = new Date().toISOString();

@@ -311,10 +311,12 @@
               </label>
 
               <label class="field">
-                <span>duração</span>
-                <div class="generate-duration">
-                  <button class="chip is-active" data-action="gen-set-duration" data-duration="5" type="button">5s</button>
-                  <button class="chip" data-action="gen-set-duration" data-duration="10" type="button">10s</button>
+                <span>duração <em data-bind="gen-duration-label">5s</em></span>
+                <input class="duration-slider" type="range" min="1" max="15" step="1" value="5" data-bind="gen-duration-input" />
+                <div class="duration-model-row">
+                  <span class="duration-model-prefix">modelo:</span>
+                  <button class="duration-model-pill" data-action="gen-toggle-model" data-bind="gen-model-pill" type="button">—</button>
+                  <span class="duration-model-hint" data-bind="gen-model-hint">—</span>
                 </div>
               </label>
 
@@ -452,10 +454,12 @@
           <!-- controles comuns -->
           <div class="t2v-controls">
             <label class="field t2v-duration-field">
-              <span>duração</span>
-              <div class="generate-duration">
-                <button class="chip is-active" data-action="t2v-set-duration" data-duration="5" type="button">5s</button>
-                <button class="chip" data-action="t2v-set-duration" data-duration="10" type="button">10s</button>
+              <span>duração <em data-bind="t2v-duration-label">5s</em></span>
+              <input class="duration-slider" type="range" min="1" max="15" step="1" value="5" data-bind="t2v-duration-input" />
+              <div class="duration-model-row">
+                <span class="duration-model-prefix">modelo:</span>
+                <button class="duration-model-pill" data-action="t2v-toggle-model" data-bind="t2v-model-pill" type="button">—</button>
+                <span class="duration-model-hint" data-bind="t2v-model-hint">—</span>
               </div>
             </label>
 
