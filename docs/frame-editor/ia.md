@@ -1,6 +1,6 @@
 # Frames Editor — IA
 
-Última atualização: 2026-05-07 (criação)
+Última atualização: 2026-05-07 (criação) — 2026-05-08 (ajuste pós-implementação: provider escolhido foi Fal.ai nano-banana-pro/edit, não OpenAI Images. Detalhes em §4).
 
 Mecânica de geração por prompt no Frames Editor. Cobre as duas ações de prompt do MVP ("prompt pra todos os quadros" e "prompt pros quadros selecionados") e como elas operam sobre as células.
 
@@ -35,9 +35,11 @@ Cada célula é processada **independentemente**. Não há contexto compartilhad
 
 ## 4. Provider
 
-Padrão MVP: **OpenAI Images** (gpt-image-1 / Images 2.0), pela qualidade. A operação é image-edit (input: PNG da célula + prompt; output: PNG novo).
+**Escolha real (2026-05-08):** Fal.ai **nano-banana-pro/edit** (modelo `fal-ai/nano-banana-pro/edit`). Razão: o resto da plataforma já consome Fal pelo `lib/providers/fal.js` (mesma chave `FAL_KEY` em prod, mesmo wrapper `generateImage({ prompt, ref_image_urls })`), e nano-banana-pro/edit é image-edit nativo (input PNG + prompt → PNG novo). Reusar o que já está em prod evitou superfície nova de chave/lib.
 
-Provider é **configurável** — se algum caso ficar mais barato ou equivalente em outra ferramenta (ex: Fal.ai), trocar é mudança de configuração no servidor, não de modelo conceitual. O front nunca fala com o provider direto.
+**Decisão original do doc** (mantida como fallback): OpenAI Images (gpt-image-1) seguia equivalente conceitualmente. A troca pra Fal é configuração do servidor (`lib/fe-prompts.js` chama `fal.generateImage`) — se algum caso ficar melhor em OpenAI, trocar é trocar a função no adapter, não mexer em UI/banco/contrato.
+
+O front nunca fala com o provider direto.
 
 Detalhes de chave de API, biblioteca, parâmetros padrão, política de retry e tratamento de erro de provider ficam em rodada de implementação, não neste doc.
 
