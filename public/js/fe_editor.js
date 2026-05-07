@@ -1,15 +1,22 @@
 // Frames Editor · Editor da tirinha — canvas + matriz camadas×quadros.
 //
-// Ações primárias: prompt pra todos / pros selecionados, +camada, +quadro.
+// Layout enxuto Aseprite-like (rev. 2026-05-08):
+//   - 1 botão "prompt" contextual na discoverbar (descobertabilidade).
+//   - Tudo o mais (criar/deletar/renomear camada e quadro, prompts contextuais,
+//     limpar célula) acessado via menu de contexto custom (botão direito) na matriz.
+//   - F2 = renomear camada ativa.
 // Read-only no canvas (sem pintura — anti-padrão #1 da ui.md §5).
 // Sem histórico/undo (#2). Sem presets nomeados (#3). Sem botão "salvar" (#4).
+// Anti-padrão evitado: NUNCA usa o menu de contexto nativo do browser na área
+// do produto (preventDefault em contextmenu).
 //
-// Live updates: polling leve a cada 3s enquanto houver célula em "processando"
-// (api.md §8 deixa o mecanismo concreto pra implementação; SSE/WS fica pra depois).
+// Live updates: polling leve a cada 3s enquanto houver célula em "processando".
 
 import {
   getTirinha, patchTirinha,
-  addCamada, patchCamada, deleteCamada, addQuadro, deleteQuadro,
+  addCamada, patchCamada, deleteCamada,
+  addQuadro, deleteQuadro,
+  patchCelula,
   uploadAseprite, dispararPrompt,
   publicarComoAsset,
 } from './fe_api.js';
@@ -96,9 +103,11 @@ const $canvas = document.querySelector('[data-bind="fe-editor-canvas"]');
 const $canvasWrap = $canvas?.parentElement || null;
 const $canvasEmpty = document.querySelector('[data-bind="fe-editor-canvas-empty"]');
 const $matrix = document.querySelector('[data-bind="fe-matrix"]');
-const $btnSel = document.querySelector('[data-bind="fe-btn-prompt-selected"]');
+const $btnSel = document.querySelector('[data-bind="fe-btn-prompt-selected"]'); // hidden, mantido por compat
 const $btnAll = document.querySelector('[data-action="fe-prompt-all"]');
 const $btnConfirmPrompt = document.querySelector('[data-action="fe-confirm-prompt"]');
+const $btnPromptCtx = document.querySelector('[data-bind="fe-btn-prompt-context"]');
+const $promptCtxLabel = document.querySelector('[data-bind="fe-prompt-context-label"]');
 const $selCount = document.querySelector('[data-bind="fe-sel-count"]');
 const $selSummary = document.querySelector('[data-bind="fe-sel-summary"]');
 const $zoomLabel = document.querySelector('[data-bind="fe-zoom-label"]');
@@ -193,6 +202,8 @@ function remapId(kind, oldId, newId) {
 // pra /api/fe/prompts ainda não voltou (200-800ms no túnel IAP).
 let dispararEmCurso = false;
 
+const $cm = document.querySelector('[data-bind="fe-context-menu"]');
+
 // === Entry point ===
 export async function showFeEditor(id) {
   selecionadas.clear();
@@ -268,10 +279,11 @@ function renderMatrix() {
   $matrix.style.gridTemplateColumns = `200px repeat(${cols}, 96px)`;
   $matrix.style.gridTemplateRows = `36px repeat(${camadasOrdenadas.length}, 96px)`;
 
-  // canto superior esquerdo
+  // canto superior esquerdo — área "vazia" da matriz; botão direito abre menu global.
   const corner = document.createElement('div');
   corner.className = 'fe-matrix-corner';
   corner.textContent = '';
+  corner.addEventListener('contextmenu', (e) => abrirMenuVazio(e));
   $matrix.appendChild(corner);
 
   // headers de coluna (quadros)
@@ -286,10 +298,7 @@ function renderMatrix() {
     if (sync === 'syncing') head.classList.add('is-syncing');
     if (sync === 'error') head.classList.add('is-sync-error');
     head.addEventListener('click', (e) => selecionarColuna(q.id, e));
-    head.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      pedirDeleteQuadro(q);
-    });
+    head.addEventListener('contextmenu', (e) => abrirMenuQuadro(e, q.id));
     if (sync) {
       const dot = document.createElement('span');
       dot.className = 'fe-sync-dot';
@@ -327,11 +336,7 @@ function renderMatrix() {
       e.stopPropagation();
       iniciarRenameCamada(cam, $camNameBtn);
     });
-    $camNameBtn.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      pedirDeleteCamada(cam);
-    });
+    rowHead.addEventListener('contextmenu', (e) => abrirMenuCamada(e, cam.id));
     $matrix.appendChild(rowHead);
 
     // células dessa linha
@@ -372,6 +377,7 @@ function renderMatrix() {
         $cell.appendChild(dot);
       }
       $cell.addEventListener('click', (e) => onClickCelula(cam.id, q.id, e));
+      $cell.addEventListener('contextmenu', (e) => abrirMenuCelula(e, cam.id, q.id));
       $matrix.appendChild($cell);
     }
   }
@@ -437,29 +443,40 @@ function selecionarLinha(camId, ev) {
 
 function atualizarSelecaoUI() {
   const n = selecionadas.size;
-  $selCount.textContent = String(n);
-  $btnSel.disabled = n === 0 || dispararEmCurso;
-  // O botão secundário já comunica a contagem — só mostra summary detalhado
-  // quando há seleção, pra reforçar a hierarquia (primário sempre no comando).
-  if (n === 0) {
-    $selSummary.textContent = '';
-    $selSummary.classList.add('is-empty');
-  } else if (n === 1) {
-    $selSummary.textContent = '1 célula selecionada';
-    $selSummary.classList.remove('is-empty');
-  } else {
-    $selSummary.textContent = `${n} células selecionadas`;
-    $selSummary.classList.remove('is-empty');
+  if ($selCount) $selCount.textContent = String(n);
+  if ($btnSel) $btnSel.disabled = n === 0 || dispararEmCurso;
+  if ($selSummary) {
+    if (n === 0) {
+      $selSummary.textContent = '';
+      $selSummary.classList.add('is-empty');
+    } else if (n === 1) {
+      $selSummary.textContent = '1 célula selecionada';
+      $selSummary.classList.remove('is-empty');
+    } else {
+      $selSummary.textContent = `${n} células selecionadas`;
+      $selSummary.classList.remove('is-empty');
+    }
   }
+  // Botão "prompt" único da discoverbar: muda label conforme contexto.
+  if ($promptCtxLabel) {
+    if (n === 0) {
+      $promptCtxLabel.textContent = 'prompt pra todos os quadros';
+    } else if (n === 1) {
+      $promptCtxLabel.textContent = 'prompt nesta célula';
+    } else {
+      $promptCtxLabel.textContent = `prompt em ${n} selecionadas`;
+    }
+  }
+  if ($btnPromptCtx) $btnPromptCtx.disabled = dispararEmCurso;
 }
 
 // Liga/desliga os botoes que disparam prompt enquanto a request esta em curso.
-// Cobre o "prompt pra todos", "prompt pros selecionados" e o "aplicar prompt"
-// do modal de confirmacao — evita clique duplo em qualquer um dos tres.
+// Evita clique duplo em qualquer um dos botoes/atalhos.
 function setBotoesDispararEnabled(enabled) {
   dispararEmCurso = !enabled;
   if ($btnAll) $btnAll.disabled = !enabled;
   if ($btnConfirmPrompt) $btnConfirmPrompt.disabled = !enabled;
+  if ($btnPromptCtx) $btnPromptCtx.disabled = !enabled;
   // $btnSel respeita a seleção também: re-aplica o estado correto via
   // atualizarSelecaoUI, que já leva dispararEmCurso em conta.
   atualizarSelecaoUI();
@@ -493,8 +510,6 @@ function reverterLocalProcessando(idsRevertir) {
     cel.estado = 'idle';
     cel.estado_erro = null;
     cel.estado_atualizado_em = new Date().toISOString();
-  }
-}
 
 // === Canvas ===
 //
@@ -836,6 +851,359 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// =====================================================================
+// Menu de contexto (Aseprite-like). Custom — nunca usa o menu nativo.
+// =====================================================================
+
+function fecharMenuCtx() {
+  if ($cm) { $cm.setAttribute('hidden', ''); $cm.innerHTML = ''; }
+}
+
+function montarMenuCtx(ev, items) {
+  // items: [{ label, shortcut?, danger?, disabled?, onClick }] | { sep: true }
+  if (!$cm) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  $cm.innerHTML = '';
+  for (const it of items) {
+    if (it && it.sep) {
+      const sep = document.createElement('div');
+      sep.className = 'fe-cm-sep';
+      $cm.appendChild(sep);
+      continue;
+    }
+    if (!it) continue;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'fe-cm-item' + (it.danger ? ' fe-cm-item-danger' : '');
+    if (it.disabled) b.disabled = true;
+    const lbl = document.createElement('span');
+    lbl.textContent = it.label;
+    b.appendChild(lbl);
+    if (it.shortcut) {
+      const sc = document.createElement('span');
+      sc.className = 'fe-cm-shortcut';
+      sc.textContent = it.shortcut;
+      b.appendChild(sc);
+    }
+    b.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fecharMenuCtx();
+      try { await it.onClick?.(); }
+      catch (err) { showToast('falhou: ' + err.message); }
+    });
+    $cm.appendChild(b);
+  }
+  // Posicionamento: ajusta pra caber dentro do viewport.
+  $cm.style.left = '0px';
+  $cm.style.top = '0px';
+  $cm.removeAttribute('hidden');
+  const rect = $cm.getBoundingClientRect();
+  const margem = 8;
+  let x = ev.clientX, y = ev.clientY;
+  if (x + rect.width + margem > window.innerWidth) x = Math.max(margem, window.innerWidth - rect.width - margem);
+  if (y + rect.height + margem > window.innerHeight) y = Math.max(margem, window.innerHeight - rect.height - margem);
+  $cm.style.left = `${x}px`;
+  $cm.style.top = `${y}px`;
+}
+
+// Menu de área vazia da matriz (canto superior esquerdo).
+function abrirMenuVazio(ev) {
+  if (!tirinha) return;
+  montarMenuCtx(ev, [
+    { label: '+ camada (no topo)', onClick: () => addCamadaTopo() },
+    { label: '+ quadro (no fim)', onClick: () => addQuadroFim() },
+    { sep: true },
+    { label: 'prompt pra todos os quadros', onClick: () => abrirModalPrompt({ tipo: 'all' }) },
+  ]);
+}
+
+function abrirMenuCamada(ev, camadaId) {
+  if (!tirinha) return;
+  // Se a linha clicada não estiver totalmente selecionada, seleciona ela.
+  const todasNaSelecao = quadrosOrdenados.every((q) => selecionadas.has(keyOf(camadaId, q.id)));
+  if (!todasNaSelecao) {
+    selecionadas.clear();
+    for (const q of quadrosOrdenados) selecionadas.add(keyOf(camadaId, q.id));
+    atualizarSelecaoUI();
+    renderMatrix();
+    renderCanvas();
+  }
+  const cam = camadasOrdenadas.find((c) => c.id === camadaId);
+  if (!cam) return;
+  // Seleção atual envolve outras camadas além desta?
+  const outrasCamadasNaSel = [...selecionadas].some((k) => k.split(':')[0] !== camadaId);
+  const idsCamada = (tirinha.celulas || []).filter((c) => c.camada_id === camadaId).map((c) => c.id);
+  const idsSelecionados = [];
+  for (const k of selecionadas) {
+    const cel = celulasMap.get(k);
+    if (cel) idsSelecionados.push(cel.id);
+  }
+
+  const items = [
+    { label: '+ camada acima', onClick: () => addCamadaRelativa(camadaId, 'acima') },
+    { label: '+ camada abaixo', onClick: () => addCamadaRelativa(camadaId, 'abaixo') },
+    { sep: true },
+    { label: 'renomear', shortcut: 'F2', onClick: () => renomearCamadaPorId(camadaId) },
+    { label: cam.visivel ? 'ocultar' : 'mostrar', onClick: () => alternarVisibilidade(camadaId) },
+    { sep: true },
+    { label: 'prompt pra todos os quadros desta camada', onClick: () => abrirModalPrompt({ tipo: 'camada', ids: idsCamada, contexto: `vai aplicar em ${idsCamada.length} célula${idsCamada.length === 1 ? '' : 's'} (camada "${cam.nome}" × todos os quadros)` }) },
+  ];
+  if (outrasCamadasNaSel) {
+    items.push({ label: `prompt pros selecionados (${idsSelecionados.length})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+  }
+  items.push({ sep: true });
+  items.push({ label: 'deletar camada', danger: true, disabled: camadasOrdenadas.length <= 1, onClick: () => deletarCamadaConfirm(camadaId) });
+  montarMenuCtx(ev, items);
+}
+
+function abrirMenuQuadro(ev, quadroId) {
+  if (!tirinha) return;
+  // Seleciona a coluna inteira se não estava selecionada.
+  const todasNaSelecao = camadasOrdenadas.every((c) => selecionadas.has(keyOf(c.id, quadroId)));
+  if (!todasNaSelecao) {
+    selecionadas.clear();
+    for (const c of camadasOrdenadas) selecionadas.add(keyOf(c.id, quadroId));
+    const qIdx = quadrosOrdenados.findIndex((q) => q.id === quadroId);
+    if (qIdx >= 0) activeQuadroIdx = qIdx;
+    atualizarSelecaoUI();
+    renderMatrix();
+    renderCanvas();
+  }
+  const outrosQuadrosNaSel = [...selecionadas].some((k) => k.split(':')[1] !== quadroId);
+  const idsQuadro = (tirinha.celulas || []).filter((c) => c.quadro_id === quadroId).map((c) => c.id);
+  const q = quadrosOrdenados.find((qq) => qq.id === quadroId);
+  if (!q) return;
+  const items = [
+    { label: '+ quadro à esquerda', onClick: () => addQuadroRelativo(quadroId, 'esquerda') },
+    { label: '+ quadro à direita', onClick: () => addQuadroRelativo(quadroId, 'direita') },
+    { sep: true },
+    { label: 'prompt pra todas as camadas deste quadro', onClick: () => abrirModalPrompt({ tipo: 'quadro', ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1} × todas as camadas)` }) },
+  ];
+  if (outrosQuadrosNaSel) {
+    const n = selecionadas.size;
+    items.push({ label: `prompt pros selecionados (${n})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+  }
+  items.push({ sep: true });
+  items.push({ label: 'deletar quadro', danger: true, disabled: quadrosOrdenados.length <= 1, onClick: () => deletarQuadroConfirm(quadroId) });
+  montarMenuCtx(ev, items);
+}
+
+function abrirMenuCelula(ev, camadaId, quadroId) {
+  if (!tirinha) return;
+  const k = keyOf(camadaId, quadroId);
+  // Se a célula não está selecionada, seleciona só ela.
+  if (!selecionadas.has(k)) {
+    selecionadas.clear();
+    selecionadas.add(k);
+    activeCelKey = k;
+    const qIdx = quadrosOrdenados.findIndex((q) => q.id === quadroId);
+    if (qIdx >= 0) activeQuadroIdx = qIdx;
+    atualizarSelecaoUI();
+    renderMatrix();
+    renderCanvas();
+  }
+  const cel = celulasMap.get(k);
+  const temPng = !!(cel && cel.png_url);
+  const items = [
+    { label: 'prompt nesta célula', disabled: !cel || cel.estado === 'processando', onClick: () => abrirModalPrompt({ tipo: 'cell', ids: cel ? [cel.id] : [], contexto: `vai aplicar em 1 célula` }) },
+  ];
+  if (selecionadas.size > 1) {
+    items.push({ label: `prompt pros selecionados (${selecionadas.size})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+  }
+  if (temPng) {
+    items.push({ sep: true });
+    items.push({ label: 'limpar célula', danger: true, disabled: cel.estado === 'processando', onClick: () => limparCelulaConfirm(cel.id) });
+  }
+  montarMenuCtx(ev, items);
+}
+
+// Fecha menu ao clicar fora ou pressionar Esc.
+document.addEventListener('click', (e) => {
+  if (!$cm || $cm.hasAttribute('hidden')) return;
+  if (e.target.closest('.fe-context-menu')) return;
+  fecharMenuCtx();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $cm && !$cm.hasAttribute('hidden')) {
+    e.stopPropagation();
+    e.preventDefault();
+    fecharMenuCtx();
+  }
+}, true);
+// Anti-padrão: cancela o menu nativo do browser em qualquer área do editor.
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('.screen-fe-editor')) {
+    // Só permite o nativo dentro de campos de texto/inputs (rename inline, prompt textarea).
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    e.preventDefault();
+  }
+});
+
+// =====================================================================
+// Operações otimistas — mutam estado local e disparam request em background.
+// Em caso de falha, recarregam o estado real do servidor.
+// =====================================================================
+
+async function reloadAndRender() {
+  if (!tirinha) return;
+  const data = await getTirinha(tirinha.id);
+  if (!data) return;
+  await aplicarEstadoTirinha(data);
+}
+
+async function addCamadaTopo() {
+  // "topo" = maior `ordem` (em cima visualmente).
+  const ordemMax = camadasOrdenadas.length ? Math.max(...camadasOrdenadas.map((c) => c.ordem)) : -1;
+  try {
+    await addCamada(tirinha.id, { nome: `camada ${camadasOrdenadas.length + 1}`, ordem: ordemMax + 1 });
+    await reloadAndRender();
+  } catch (err) { showToast('falha ao adicionar camada: ' + err.message); }
+}
+
+async function addQuadroFim() {
+  try {
+    await addQuadro(tirinha.id, {});
+    const data = await getTirinha(tirinha.id);
+    activeQuadroIdx = data.quadros.length - 1;
+    await aplicarEstadoTirinha(data);
+  } catch (err) { showToast('falha ao adicionar quadro: ' + err.message); }
+}
+
+async function addCamadaRelativa(refCamadaId, posicao) {
+  // posicao: 'acima' | 'abaixo' (visual). Camada com ordem maior aparece em cima.
+  const ref = camadasOrdenadas.find((c) => c.id === refCamadaId);
+  if (!ref) return;
+  const novaOrdem = posicao === 'acima' ? ref.ordem + 1 : ref.ordem;
+  // A rota POST com `ordem` empurra os existentes >= ordem em +1, então:
+  // - "acima": insere com ordem = ref.ordem + 1 (acima da ref).
+  // - "abaixo": insere com ordem = ref.ordem (que vira ref.ordem+1, então ela sobe; nova fica embaixo).
+  try {
+    await addCamada(tirinha.id, { nome: `camada ${camadasOrdenadas.length + 1}`, ordem: novaOrdem });
+    await reloadAndRender();
+  } catch (err) { showToast('falha ao adicionar camada: ' + err.message); }
+}
+
+async function addQuadroRelativo(refQuadroId, lado) {
+  // lado: 'esquerda' | 'direita'
+  const ref = quadrosOrdenados.find((q) => q.id === refQuadroId);
+  if (!ref) return;
+  const novoIndice = lado === 'esquerda' ? ref.indice : ref.indice + 1;
+  try {
+    await addQuadro(tirinha.id, { indice: novoIndice });
+    const data = await getTirinha(tirinha.id);
+    activeQuadroIdx = novoIndice;
+    await aplicarEstadoTirinha(data);
+  } catch (err) { showToast('falha ao adicionar quadro: ' + err.message); }
+}
+
+async function alternarVisibilidade(camadaId) {
+  const cam = camadasOrdenadas.find((c) => c.id === camadaId);
+  if (!cam) return;
+  // Otimista.
+  cam.visivel = !cam.visivel;
+  renderMatrix();
+  renderCanvas();
+  try {
+    const updated = await patchCamada(camadaId, { visivel: cam.visivel });
+    cam.visivel = updated.visivel;
+  } catch (err) {
+    showToast('falha: ' + err.message);
+    cam.visivel = !cam.visivel;
+    renderMatrix();
+    renderCanvas();
+  }
+}
+
+function renomearCamadaPorId(camadaId) {
+  const cam = camadasOrdenadas.find((c) => c.id === camadaId);
+  if (!cam) return;
+  // Acha o botão de nome e dispara rename.
+  const $btn = $matrix.querySelector(`.fe-cam-name[data-cam-id="${camadaId}"]`);
+  if ($btn) iniciarRenameCamada(cam, $btn);
+}
+
+async function deletarCamadaConfirm(camadaId) {
+  const cam = camadasOrdenadas.find((c) => c.id === camadaId);
+  if (!cam) return;
+  if (camadasOrdenadas.length <= 1) {
+    showToast('a tirinha precisa ter pelo menos uma camada');
+    return;
+  }
+  const ok = await confirmModal({
+    title: 'deletar camada',
+    message: `apagar a camada "${cam.nome}" e todas as suas células? não dá pra desfazer.`,
+    confirmLabel: 'apagar',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteCamada(camadaId);
+    selecionadas.clear();
+    activeCelKey = null;
+    await reloadAndRender();
+    showToast('camada apagada');
+  } catch (err) { showToast('falha ao apagar: ' + err.message); }
+}
+
+async function deletarQuadroConfirm(quadroId) {
+  const q = quadrosOrdenados.find((qq) => qq.id === quadroId);
+  if (!q) return;
+  if (quadrosOrdenados.length <= 1) {
+    showToast('a tirinha precisa ter pelo menos um quadro');
+    return;
+  }
+  const ok = await confirmModal({
+    title: 'deletar quadro',
+    message: `apagar o quadro ${q.indice + 1} e todas as suas células? não dá pra desfazer.`,
+    confirmLabel: 'apagar',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteQuadro(quadroId);
+    selecionadas.clear();
+    activeCelKey = null;
+    if (activeQuadroIdx >= quadrosOrdenados.length - 1) activeQuadroIdx = Math.max(0, activeQuadroIdx - 1);
+    await reloadAndRender();
+    showToast('quadro apagado');
+  } catch (err) { showToast('falha ao apagar: ' + err.message); }
+}
+
+async function limparCelulaConfirm(celulaId) {
+  const ok = await confirmModal({
+    title: 'limpar célula',
+    message: `apagar o PNG desta célula (volta a ficar vazia)? não dá pra desfazer.`,
+    confirmLabel: 'limpar',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await patchCelula(celulaId, { png_url: null });
+    await reloadAndRender();
+    showToast('célula limpa');
+  } catch (err) { showToast('falha: ' + err.message); }
+}
+
+// F2 = renomear camada ativa (a que tem a célula ativa, ou a primeira da seleção).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'F2') return;
+  // Só age se o foco não está num input/textarea.
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  // Só na tela do editor (chrome.js seta data-screen no body).
+  if (document.body.getAttribute('data-screen') !== 'fe-editor') return;
+  if (!tirinha || !camadasOrdenadas.length) return;
+  let camadaId = null;
+  if (activeCelKey) camadaId = activeCelKey.split(':')[0];
+  else if (selecionadas.size) camadaId = [...selecionadas][0].split(':')[0];
+  else camadaId = camadasOrdenadas[0].id;
+  e.preventDefault();
+  renomearCamadaPorId(camadaId);
+});
+
 // === Polling de processamento ===
 function temCelulaProcessando() {
   for (const c of celulasMap.values()) if (c.estado === 'processando') return true;
@@ -978,6 +1346,7 @@ document.addEventListener('click', (e) => {
   stopPolling();
   stopPlay({ restore: false });
   stopCanvasInteraction();
+  fecharMenuCtx();
   navigateFeHome();
 });
 
@@ -1277,7 +1646,8 @@ document.addEventListener('click', (e) => {
 //
 // Cria camada nova com id provisório `tmp-X` e células vazias provisórias
 // cruzando com todos os quadros. Quando o request volta, troca os ids tmp
-// pelos reais. Se falhar, remove tudo.
+// pelos reais. Se falhar, remove tudo. O menu de contexto também aciona via
+// data-action="fe-add-camada".
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-add-camada"]')) return;
   if (!tirinha) return;
@@ -1383,37 +1753,74 @@ document.addEventListener('click', (e) => {
   });
 });
 
-// Prompt: pra todos
+// Botão "prompt" da discoverbar: contextual.
+// - sem seleção → prompt em todos os quadros
+// - com seleção → prompt nas células selecionadas
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('[data-action="fe-prompt-all"]')) return;
+  if (!e.target.closest('[data-action="fe-prompt-context"]')) return;
   if (!tirinha) return;
   if (dispararEmCurso) return; // disparo anterior ainda em voo
-  abrirModalPrompt({ tipo: 'all' });
+  if (selecionadas.size === 0) abrirModalPrompt({ tipo: 'all' });
+  else abrirModalPrompt({ tipo: 'selected' });
 });
 
-// Prompt: pros selecionados
+// Atalhos retro-compatíveis (não há botão visível com esses data-actions hoje;
+// servem caso alguma chamada externa ou itens do menu de contexto disparem).
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="fe-prompt-all"]')) return;
+  if (!tirinha || dispararEmCurso) return;
+  abrirModalPrompt({ tipo: 'all' });
+});
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-prompt-selected"]')) return;
-  if (!tirinha || !selecionadas.size) return;
-  if (dispararEmCurso) return;
+  if (!tirinha || !selecionadas.size || dispararEmCurso) return;
   abrirModalPrompt({ tipo: 'selected' });
 });
 
+// Modal de prompt — alvos resolvidos antes de abrir, salvos em `promptAlvosIds`.
+// promptModoAtual fica pra retrocompat com handlers que ainda lêem ('all'/'selected').
 let promptModoAtual = 'selected';
-function abrirModalPrompt({ tipo }) {
+let promptAlvosIds = [];
+function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
+  // tipo: 'all' | 'selected' | 'cell' | 'camada' | 'quadro'
   promptModoAtual = tipo;
+  let titulo, alvo;
+  if (tipo === 'all') {
+    promptAlvosIds = (tirinha.celulas || []).map((c) => c.id);
+    const total = camadasOrdenadas.length * quadrosOrdenados.length;
+    titulo = 'Prompt pra todos os quadros';
+    alvo = `vai aplicar em ${total} célula${total === 1 ? '' : 's'} (todas as camadas × todos os quadros)`;
+  } else if (tipo === 'selected') {
+    promptAlvosIds = [];
+    for (const k of selecionadas) {
+      const cel = celulasMap.get(k);
+      if (cel && cel.estado !== 'processando') promptAlvosIds.push(cel.id);
+    }
+    const n = promptAlvosIds.length;
+    titulo = 'Prompt pros selecionados';
+    alvo = `vai aplicar em ${n} célula${n === 1 ? '' : 's'} selecionada${n === 1 ? '' : 's'}`;
+  } else if (tipo === 'cell') {
+    promptAlvosIds = ids || [];
+    titulo = 'Prompt nesta célula';
+    alvo = contexto || `vai aplicar em 1 célula`;
+  } else if (tipo === 'camada') {
+    promptAlvosIds = ids || [];
+    titulo = 'Prompt pra camada inteira';
+    alvo = contexto || `vai aplicar em ${promptAlvosIds.length} célula${promptAlvosIds.length === 1 ? '' : 's'} desta camada`;
+  } else if (tipo === 'quadro') {
+    promptAlvosIds = ids || [];
+    titulo = 'Prompt pro quadro inteiro';
+    alvo = contexto || `vai aplicar em ${promptAlvosIds.length} célula${promptAlvosIds.length === 1 ? '' : 's'} deste quadro`;
+  } else {
+    promptAlvosIds = ids || [];
+    titulo = 'Prompt';
+    alvo = contexto || `vai aplicar em ${promptAlvosIds.length} célula${promptAlvosIds.length === 1 ? '' : 's'}`;
+  }
   const m = document.querySelector('[data-modal="fe-prompt"]');
   m.querySelector('[data-bind="fe-prompt-text"]').value = '';
   m.querySelector('[data-bind="fe-prompt-err"]').textContent = '';
-  if (tipo === 'all') {
-    const total = camadasOrdenadas.length * quadrosOrdenados.length;
-    m.querySelector('[data-bind="fe-prompt-title"]').textContent = 'Prompt pra todos os quadros';
-    m.querySelector('[data-bind="fe-prompt-target"]').textContent = `vai aplicar em ${total} célula${total === 1 ? '' : 's'} (todas as camadas × todos os quadros)`;
-  } else {
-    const n = selecionadas.size;
-    m.querySelector('[data-bind="fe-prompt-title"]').textContent = 'Prompt pros selecionados';
-    m.querySelector('[data-bind="fe-prompt-target"]').textContent = `vai aplicar em ${n} célula${n === 1 ? '' : 's'} selecionada${n === 1 ? '' : 's'}`;
-  }
+  m.querySelector('[data-bind="fe-prompt-title"]').textContent = titulo;
+  m.querySelector('[data-bind="fe-prompt-target"]').textContent = alvo;
   openModal('fe-prompt');
 }
 
@@ -1428,23 +1835,16 @@ document.addEventListener('click', async (e) => {
   $err.textContent = '';
   if (!prompt) { $err.textContent = 'escreva um prompt'; return; }
 
-  // Critério de alvos espelha o backend: pega ids das células elegíveis
-  // (em estado != processando). "all" usa todas as celulas da tirinha; o
-  // backend filtra silenciosamente as que ja estao processando — como
-  // fazemos o mesmo filtro aqui, a contagem mostrada pro user bate com a
-  // que vai voltar em `celulas_marcadas`.
-  let alvosIds;
-  if (promptModoAtual === 'all') {
-    alvosIds = [];
-    for (const cel of celulasMap.values()) {
-      if (cel.estado !== 'processando' && !isTmpId(cel.id)) alvosIds.push(cel.id);
-    }
-  } else {
-    alvosIds = [];
-    for (const k of selecionadas) {
-      const cel = celulasMap.get(k);
-      if (cel && cel.estado !== 'processando' && !isTmpId(cel.id)) alvosIds.push(cel.id);
-    }
+  // Filtra alvos resolvidos por abrirModalPrompt: ignora células em estado
+  // processando (backend filtra do mesmo jeito, então a contagem bate com
+  // celulas_marcadas) e ignora ids ainda provisórios (tmp-...).
+  const alvosIds = [];
+  const idSet = new Set(promptAlvosIds);
+  for (const cel of celulasMap.values()) {
+    if (!idSet.has(cel.id)) continue;
+    if (cel.estado === 'processando') continue;
+    if (isTmpId(cel.id)) continue;
+    alvosIds.push(cel.id);
   }
   if (!alvosIds.length) {
     $err.textContent = 'nenhuma célula alvo válida (aguarde camadas/quadros novas serem confirmadas)';

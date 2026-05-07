@@ -4024,33 +4024,21 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   line-height: 1;
 }
 
-/* actions bar */
-.fe-editor-actions {
+/* discover bar — barra fina com 1 botão "prompt" + dica do menu de contexto */
+.fe-editor-discoverbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 22px;
+  gap: 12px;
+  padding: 6px 22px;
   background: var(--fe-graphite-1);
   border-top: 1px solid var(--fe-line);
   border-bottom: 1px solid var(--fe-line);
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.fe-editor-actions-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.fe-editor-actions-right {
-  display: flex;
-  gap: 8px;
 }
 .fe-btn-prompt {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 20px;
+  padding: 6px 12px;
   background: var(--fe-cyan-soft);
   border: 1px solid var(--fe-cyan);
   color: var(--fe-cyan);
@@ -4069,23 +4057,21 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   opacity: 0.4;
   cursor: not-allowed;
 }
-/* secundário: discreto quando vazio (ghost cinza), violeta+destaque quando há seleção.
-   Hierarquia: primário (ciano cheio) > secundário ativo (violeta) > secundário sem seleção (ghost). */
-.fe-btn-prompt-secondary {
-  padding: 9px 16px;
-  background: transparent;
-  border-color: var(--fe-line-2);
-  color: var(--paper-4);
+.fe-btn-prompt-compact { padding: 5px 10px; font-size: 10.5px; }
+.fe-btn-prompt-selected-hidden { display: none !important; }
+.fe-editor-sel-summary {
+  font-family: var(--font-mono);
   font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--paper-3);
 }
-.fe-btn-prompt-secondary:not(:disabled) {
-  background: var(--fe-violet-soft);
-  border-color: var(--fe-violet);
-  color: var(--fe-violet);
-}
-.fe-btn-prompt-secondary:hover:not(:disabled) {
-  background: rgba(144, 112, 240, 0.24);
-  box-shadow: 0 0 0 1px rgba(144, 112, 240, 0.45);
+.fe-editor-hint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--paper-5);
+  margin-left: auto;
+  font-style: italic;
 }
 .fe-sel-count {
   font-family: var(--font-display);
@@ -4093,16 +4079,71 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   font-size: 14px;
   margin-left: 4px;
 }
-.fe-btn-prompt-secondary:disabled .fe-sel-count { display: none; }
-.fe-editor-sel-summary {
+/* menu de contexto — Aseprite-like, custom (anti-padrão: nunca o menu nativo do browser) */
+.fe-context-menu {
+  position: fixed;
+  z-index: 9000;
+  min-width: 220px;
+  background: var(--fe-graphite-2);
+  border: 1px solid var(--fe-cyan-2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(77, 217, 214, 0.08);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   font-family: var(--font-mono);
+  user-select: none;
+}
+.fe-context-menu[hidden] { display: none; }
+.fe-cm-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--paper-2);
+  font-family: inherit;
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: var(--paper-4);
+  cursor: pointer;
+  text-align: left;
+  text-transform: lowercase;
+  transition: background 100ms var(--ease), color 100ms var(--ease);
 }
-/* sumiço do summary quando não há seleção — o próprio botão secundário já comunica */
+.fe-cm-item:hover, .fe-cm-item:focus {
+  background: var(--fe-cyan-soft);
+  color: var(--fe-cyan);
+  outline: none;
+}
+.fe-cm-item:disabled {
+  color: var(--paper-5);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.fe-cm-item:disabled:hover { background: transparent; color: var(--paper-5); }
+.fe-cm-item-danger { color: #d97070; }
+.fe-cm-item-danger:hover, .fe-cm-item-danger:focus {
+  background: rgba(217, 112, 112, 0.10);
+  color: #ec8f8f;
+}
+.fe-cm-shortcut {
+  font-size: 10px;
+  color: var(--paper-5);
+  letter-spacing: 0.06em;
+  font-style: italic;
+}
+.fe-cm-item:hover .fe-cm-shortcut, .fe-cm-item:focus .fe-cm-shortcut {
+  color: var(--fe-cyan);
+}
+.fe-cm-sep {
+  height: 1px;
+  background: var(--fe-line);
+  margin: 3px 6px;
+}
+/* sumiço do summary quando não há seleção */
 .fe-editor-sel-summary.is-empty { display: none; }
-.fe-btn-add { font-size: 11px; }
 
 /* matriz camadas × quadros */
 .fe-matrix-wrap {
