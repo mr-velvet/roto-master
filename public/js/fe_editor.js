@@ -35,8 +35,14 @@ let activeCelKey = null; // pra saber qual quadro mostrar no canvas
 
 // Visualização
 let zoom = 4;
+let panX = 0;
+let panY = 0;
 let bgMode = 'checker'; // 'checker' | 'solid'
 let activeQuadroIdx = 0;
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 32;
+const ZOOM_FACTOR = 1.15;
 
 // Cache de imagens carregadas pelo canvas
 const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
@@ -71,11 +77,23 @@ function setSync(key, state) {
 }
 function getSync(key) { return syncState.get(key) || null; }
 
+// Interação do canvas (pan/zoom). Espaço é exclusivo de pan.
+// Toggle do play migrou pra tecla K (Espaço deixou de ser atalho).
+let panX = 0, panY = 0;
+let panActive = false;        // está arrastando?
+let panTrigger = null;        // 'middle' | 'space'
+let panStartX = 0, panStartY = 0;       // ponto inicial do mouse (clientX/Y)
+let panStartPanX = 0, panStartPanY = 0; // pan no início do drag
+let spaceDown = false;        // espaço segurado?
+let canvasResizeObs = null;
+let canvasInteractionAttached = false;
+
 // === Refs ===
 const $name = document.querySelector('[data-bind="fe-editor-name"]');
 const $nameInput = document.querySelector('[data-bind="fe-editor-name-input"]');
 const $meta = document.querySelector('[data-bind="fe-editor-meta"]');
 const $canvas = document.querySelector('[data-bind="fe-editor-canvas"]');
+const $canvasWrap = $canvas?.parentElement || null;
 const $canvasEmpty = document.querySelector('[data-bind="fe-editor-canvas-empty"]');
 const $matrix = document.querySelector('[data-bind="fe-matrix"]');
 const $btnSel = document.querySelector('[data-bind="fe-btn-prompt-selected"]');
@@ -185,6 +203,8 @@ export async function showFeEditor(id) {
   syncState.clear();
   stopPolling();
   stopPlay({ restore: false });
+  resetView();
+  attachCanvasInteraction();
   $matrix.innerHTML = '';
 
   let data;
@@ -200,13 +220,14 @@ export async function showFeEditor(id) {
     navigateFeHome();
     return;
   }
-  await aplicarEstadoTirinha(data);
+  await aplicarEstadoTirinha(data, { recenter: true });
 }
 
-async function aplicarEstadoTirinha(data) {
+async function aplicarEstadoTirinha(data, opts = {}) {
   // Guarda o estado do play pra restaurar depois (re-aplica vinda do polling não pode parar play)
   const wasPlaying = isPlaying;
   if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+
 
   tirinha = data;
   camadasOrdenadas = [...(data.camadas || [])].sort((a, b) => b.ordem - a.ordem);
@@ -220,6 +241,9 @@ async function aplicarEstadoTirinha(data) {
   $name.textContent = data.nome;
   $meta.textContent = `${data.largura}×${data.altura}px · ${camadasOrdenadas.length} camada${camadasOrdenadas.length === 1 ? '' : 's'} · ${quadrosOrdenados.length} quadro${quadrosOrdenados.length === 1 ? '' : 's'}`;
   renderMatrix();
+  // Recentralizar só na primeira carga (entrada na tirinha). Polling/refresh
+  // preservam pan/zoom escolhidos pelo user.
+  if (opts.recenter) centerCanvas();
   await renderCanvas();
   atualizarSelecaoUI();
   atualizarPlayUI();
@@ -473,30 +497,84 @@ function reverterLocalProcessando(idsRevertir) {
 }
 
 // === Canvas ===
+//
+// Modelo de coordenadas:
+//   - canvas.width/height = tamanho do contêiner em px (preenche o wrap).
+//   - panX/panY: offset em px do canto sup. esquerdo da imagem dentro do canvas.
+//   - zoom: fator de ampliação (px de canvas por px de imagem).
+//   - Transform: ctx.translate(panX, panY); ctx.scale(zoom, zoom).
+//   - drawImage(img, 0, 0, w, h) usa coords lógicas (px de imagem).
+function ajustarCanvasParaWrap() {
+  if (!$canvas || !$canvasWrap) return false;
+  const r = $canvasWrap.getBoundingClientRect();
+  const w = Math.max(1, Math.floor(r.width));
+  const h = Math.max(1, Math.floor(r.height));
+  if ($canvas.width !== w) $canvas.width = w;
+  if ($canvas.height !== h) $canvas.height = h;
+  // CSS: canvas preenche o wrap inteiro (sem escala extra do CSS).
+  $canvas.style.width = '100%';
+  $canvas.style.height = '100%';
+  return true;
+}
+
+function centerCanvas() {
+  if (!tirinha || !$canvas) return;
+  ajustarCanvasParaWrap();
+  const w = tirinha.largura;
+  const h = tirinha.altura;
+  panX = ($canvas.width - w * zoom) / 2;
+  panY = ($canvas.height - h * zoom) / 2;
+  $zoomLabel.textContent = formatZoom(zoom);
+}
+
+function resetView() {
+  zoom = 4;
+  panX = 0;
+  panY = 0;
+  if ($zoomLabel) $zoomLabel.textContent = formatZoom(zoom);
+}
+
+function formatZoom(z) {
+  if (Number.isInteger(z)) return `${z}×`;
+  return `${z.toFixed(1)}×`;
+}
+
 async function renderCanvas() {
+  if (!$canvas) return;
   if (!tirinha || !quadrosOrdenados.length) {
-    $canvas.width = $canvas.height = 0;
+    // canvas zera; mostra placeholder
+    ajustarCanvasParaWrap();
+    const ctx0 = $canvas.getContext('2d');
+    ctx0.setTransform(1, 0, 0, 1, 0, 0);
+    ctx0.clearRect(0, 0, $canvas.width, $canvas.height);
     $canvasEmpty.removeAttribute('hidden');
     return;
   }
   $canvasEmpty.setAttribute('hidden', '');
+  ajustarCanvasParaWrap();
 
   const w = tirinha.largura;
   const h = tirinha.altura;
-  $canvas.width = w * zoom;
-  $canvas.height = h * zoom;
-  $canvas.style.width = `${w * zoom}px`;
-  $canvas.style.height = `${h * zoom}px`;
+  const cw = $canvas.width;
+  const ch = $canvas.height;
 
   const ctx = $canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
 
-  // fundo
+  // limpa toda a área do canvas (em coords nativas)
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#07080b';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // aplica pan + zoom: tudo abaixo desenha em coords da imagem
+  ctx.setTransform(zoom, 0, 0, zoom, panX, panY);
+
+  // fundo (apenas área da tirinha)
   if (bgMode === 'checker') {
-    desenharXadrez(ctx, w * zoom, h * zoom);
+    desenharXadrez(ctx, w, h);
   } else {
     ctx.fillStyle = '#0b0d12';
-    ctx.fillRect(0, 0, w * zoom, h * zoom);
+    ctx.fillRect(0, 0, w, h);
   }
 
   const quadroAtivo = quadrosOrdenados[activeQuadroIdx];
@@ -510,8 +588,7 @@ async function renderCanvas() {
     if (!cel || !cel.png_url) continue;
     try {
       const img = await loadImage(cel.png_url);
-      // desenha em w*zoom
-      ctx.drawImage(img, 0, 0, w * zoom, h * zoom);
+      ctx.drawImage(img, 0, 0, w, h);
     } catch (e) {
       // imagem ainda carregando ou cors; ignora
     }
@@ -519,12 +596,13 @@ async function renderCanvas() {
 }
 
 function desenharXadrez(ctx, w, h) {
+  // w/h em px de imagem. Quadradinho de 8px lógicos.
   const sq = 8;
   for (let y = 0; y < h; y += sq) {
     for (let x = 0; x < w; x += sq) {
       const claro = ((x / sq) + (y / sq)) % 2 === 0;
       ctx.fillStyle = claro ? '#23272f' : '#181b22';
-      ctx.fillRect(x, y, sq, sq);
+      ctx.fillRect(x, y, Math.min(sq, w - x), Math.min(sq, h - y));
     }
   }
 }
@@ -899,6 +977,7 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-back"]')) return;
   stopPolling();
   stopPlay({ restore: false });
+  stopCanvasInteraction();
   navigateFeHome();
 });
 
@@ -924,7 +1003,9 @@ document.addEventListener('keydown', (e) => {
   if (document.body.getAttribute('data-screen') !== 'fe-editor') return;
   const tag = (e.target && e.target.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
-  if (e.key === ' ' || e.code === 'Space') {
+  // Toggle play em K (Espaço fica reservado pra pan do canvas — ver
+  // attachCanvasInteraction). Botão visível continua sendo o caminho principal.
+  if (e.key === 'k' || e.key === 'K') {
     e.preventDefault();
     togglePlay();
     return;
@@ -988,18 +1069,190 @@ function finalizarRenameTirinha(commit) {
     });
 }
 
-// Zoom
+// Zoom (botões -/+): preserva o ponto central do canvas.
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-action="fe-zoom-in"]')) {
-    zoom = Math.min(zoom * 2, 32);
-    $zoomLabel.textContent = `${zoom}×`;
-    renderCanvas();
+    aplicarZoomNoPonto($canvas.width / 2, $canvas.height / 2, zoom * 2);
   } else if (e.target.closest('[data-action="fe-zoom-out"]')) {
-    zoom = Math.max(zoom / 2, 1);
-    $zoomLabel.textContent = `${zoom}×`;
-    renderCanvas();
+    aplicarZoomNoPonto($canvas.width / 2, $canvas.height / 2, zoom / 2);
   }
 });
+
+// === Pan / zoom interativos ===
+
+function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+
+// Aplica zoom mantendo o ponto (cx, cy) — em coords do canvas — fixo.
+function aplicarZoomNoPonto(cx, cy, alvoZoom) {
+  if (!tirinha) return;
+  const oldZoom = zoom;
+  const newZoom = clamp(alvoZoom, ZOOM_MIN, ZOOM_MAX);
+  if (newZoom === oldZoom) return;
+  // ponto da imagem (px de imagem) sob o cursor
+  const imgX = (cx - panX) / oldZoom;
+  const imgY = (cy - panY) / oldZoom;
+  // ajusta pan pra manter o ponto fixo
+  panX = cx - imgX * newZoom;
+  panY = cy - imgY * newZoom;
+  zoom = newZoom;
+  if ($zoomLabel) $zoomLabel.textContent = formatZoom(zoom);
+  renderCanvas();
+}
+
+function onWheel(ev) {
+  if (!tirinha) return;
+  ev.preventDefault();
+  const rect = $canvas.getBoundingClientRect();
+  const cx = ev.clientX - rect.left;
+  const cy = ev.clientY - rect.top;
+  // deltaY < 0 → aproxima (zoom in); > 0 → afasta (zoom out)
+  const factor = ev.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+  aplicarZoomNoPonto(cx, cy, zoom * factor);
+}
+
+function comecarPan(ev, trigger) {
+  panActive = true;
+  panTrigger = trigger;
+  panStartX = ev.clientX;
+  panStartY = ev.clientY;
+  panStartPanX = panX;
+  panStartPanY = panY;
+  atualizarCursor();
+}
+
+function atualizarPan(ev) {
+  if (!panActive) return;
+  const dx = ev.clientX - panStartX;
+  const dy = ev.clientY - panStartY;
+  panX = panStartPanX + dx;
+  panY = panStartPanY + dy;
+  renderCanvas();
+}
+
+function terminarPan() {
+  if (!panActive) return;
+  panActive = false;
+  panTrigger = null;
+  atualizarCursor();
+}
+
+function atualizarCursor() {
+  if (!$canvas) return;
+  if (panActive) $canvas.style.cursor = 'grabbing';
+  else if (spaceDown) $canvas.style.cursor = 'grab';
+  else $canvas.style.cursor = '';
+}
+
+function focoEmCampoTexto() {
+  const a = document.activeElement;
+  if (!a) return false;
+  const tag = a.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (a.isContentEditable) return true;
+  return false;
+}
+
+function onMouseDown(ev) {
+  if (!tirinha) return;
+  // Botão do meio sempre arrasta.
+  if (ev.button === 1) {
+    ev.preventDefault();
+    comecarPan(ev, 'middle');
+    return;
+  }
+  // Espaço + botão esquerdo arrasta.
+  if (ev.button === 0 && spaceDown) {
+    ev.preventDefault();
+    comecarPan(ev, 'space');
+  }
+}
+
+function onMouseMove(ev) {
+  if (panActive) atualizarPan(ev);
+}
+
+function onMouseUp(ev) {
+  if (!panActive) return;
+  // Solta na liberação do botão correspondente.
+  if (panTrigger === 'middle' && ev.button === 1) terminarPan();
+  else if (panTrigger === 'space' && ev.button === 0) terminarPan();
+}
+
+function onMouseLeaveDoc() {
+  // Se o cursor sai da janela, encerra o drag (evita ficar preso).
+  if (panActive) terminarPan();
+}
+
+function onContextMenu(ev) {
+  // Suprime o menu de contexto durante drag pra não interromper interação.
+  if (panActive) ev.preventDefault();
+}
+
+function onKeyDown(ev) {
+  if (ev.code !== 'Space') return;
+  if (focoEmCampoTexto()) return;
+  // só responde se a tela do editor está visível
+  if (document.body.dataset.space !== 'frame-editor') return;
+  if (document.body.dataset.screen !== 'fe-editor') return;
+  if (ev.repeat) { ev.preventDefault(); return; }
+  spaceDown = true;
+  ev.preventDefault();
+  atualizarCursor();
+}
+
+function onKeyUp(ev) {
+  if (ev.code !== 'Space') return;
+  spaceDown = false;
+  // se o drag por espaço estava ativo, interrompe (mouseup pode chegar antes ou depois).
+  if (panActive && panTrigger === 'space') terminarPan();
+  else atualizarCursor();
+}
+
+function onBlurWindow() {
+  // Perda de foco = solta espaço e drag (evita estado preso).
+  spaceDown = false;
+  if (panActive) terminarPan();
+  else atualizarCursor();
+}
+
+function attachCanvasInteraction() {
+  if (canvasInteractionAttached || !$canvas) return;
+  $canvas.addEventListener('wheel', onWheel, { passive: false });
+  $canvas.addEventListener('mousedown', onMouseDown);
+  $canvas.addEventListener('contextmenu', onContextMenu);
+  // mousemove/up no document pra não perder o drag se sair do canvas
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+  document.addEventListener('mouseleave', onMouseLeaveDoc);
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlurWindow);
+  // Resize do contêiner: re-render preservando pan/zoom.
+  if (typeof ResizeObserver !== 'undefined' && $canvasWrap) {
+    canvasResizeObs = new ResizeObserver(() => { renderCanvas(); });
+    canvasResizeObs.observe($canvasWrap);
+  }
+  canvasInteractionAttached = true;
+}
+
+export function stopCanvasInteraction() {
+  if (!canvasInteractionAttached) return;
+  $canvas.removeEventListener('wheel', onWheel);
+  $canvas.removeEventListener('mousedown', onMouseDown);
+  $canvas.removeEventListener('contextmenu', onContextMenu);
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('mouseup', onMouseUp);
+  document.removeEventListener('mouseleave', onMouseLeaveDoc);
+  document.removeEventListener('keydown', onKeyDown);
+  document.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('blur', onBlurWindow);
+  if (canvasResizeObs) { canvasResizeObs.disconnect(); canvasResizeObs = null; }
+  canvasInteractionAttached = false;
+  spaceDown = false;
+  panActive = false;
+  panTrigger = null;
+  if ($canvas) $canvas.style.cursor = '';
+}
 
 // BG toggle
 document.addEventListener('click', (e) => {

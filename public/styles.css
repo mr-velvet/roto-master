@@ -3901,27 +3901,38 @@ body[data-space="frame-editor"] .modal-card,
   position: relative;
   flex: 1;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 8px;
+  display: block;
+  /* sem scroll do navegador: pan/zoom acontece dentro do canvas */
+  overflow: hidden;
+  padding: 0;
   width: 100%;
   max-width: 100%;
 }
 .fe-editor-canvas {
   background: var(--fe-graphite-2);
   border: 1px solid var(--fe-line-2);
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  /* O canvas sempre preenche o wrap; o pan/zoom é interno (transform no ctx).
+     Sem image-rendering aqui — não há escala CSS, e o nearest-neighbor é
+     aplicado via imageSmoothingEnabled=false no contexto 2D. */
   display: block;
+  width: 100%;
+  height: 100%;
   box-shadow: 0 0 0 1px rgba(77, 217, 214, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* cursor é controlado por JS (default / grab quando espaço / grabbing no drag) */
 }
+/* feedback visual de pan/zoom (controlados via JS) */
+body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
 .fe-editor-canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--paper-4);
   text-align: center;
+  pointer-events: none;
 }
 .fe-editor-canvas-controls {
   display: flex;
