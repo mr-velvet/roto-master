@@ -1,6 +1,6 @@
 # Frames Editor — progresso de implementação
 
-Última atualização: 2026-05-08.
+Última atualização: 2026-05-08 (segunda atualização) — task #9 (integração com Assets) também entregue. Todas as 9 tasks fechadas. Falta apenas o smoke test do user com banco/túnel ativo.
 
 Doc específico da implementação do **Frames Editor** (a 3ª área macro). Para o quadro geral do projeto e outras áreas, ver `PROGRESS.md` da raiz.
 
@@ -10,7 +10,7 @@ Os docs conceituais estão em `docs/frame-editor/` (visao, modelo-de-dados, stor
 
 ## Estado em uma frase
 
-Back e front do MVP entregues em uma sessão (2026-05-08), 8 das 9 tasks fechadas. **Falta** a integração com Assets ("Editar como tirinha" e "Publicar como novo asset") e o smoke test do user com banco real.
+**MVP completo entregue** em uma sessão (2026-05-08), 9 de 9 tasks fechadas. Falta o smoke test do user com banco real. Em prod no próximo deploy.
 
 ## Mapa do código
 
@@ -54,24 +54,34 @@ Cada uma dessas é cicatriz que pode confundir leitor que vai só pelos docs con
 | 6 | Endpoint de prompt + IA assíncrona | ✅ | `8869452` (doc `c4076cc`) |
 | 7 | Live updates | ✅ | resolvido via polling, sem código extra |
 | 8 | UI Tela 1 + Tela 2 | ✅ | `f3adca1` |
-| 9 | Integração com Assets | 🔄 em curso | — |
+| 9 | Integração com Assets | ✅ commit `543dbf3` (migration 018) |
 
-## O que falta (próximas rodadas)
+## Integração com Assets — entregue (task #9, commit `543dbf3`)
 
-### Imediato
+Duas pontes únicas, sem vínculo vivo (princípio §4.4 do `integracao-com-assets.md`):
 
-- **Integração com Assets (task #9, em curso agora):**
-  - **"Editar como tirinha"** no card do asset: cria `fe_tirinha` a partir do `.aseprite` do asset (que vive em `assets.gcs_url`). Caminho técnico: front baixa o `.aseprite`, parseia local com `aseprite_io.js`, sobe PNGs via `/api/fe/upload-png`, finaliza com `POST /api/fe/tirinhas` variante `asset` carregando `origem_meta = { asset_id, tipo_aseprite: "final" }`.
-  - **"Publicar como novo asset"** no editor: gera `.aseprite`, cria asset novo na área Assets sem `video_id` (decisão estrutural — `assets.video_id` precisa virar nullable, `UNIQUE(video_id)` precisa virar `UNIQUE(video_id) WHERE video_id IS NOT NULL`). Migration nova. Endpoint `POST /api/fe/tirinhas/:id/publicar-asset`.
+**1. Asset → Frames Editor** (botão "editar como tirinha" no modal do asset):
+- Front baixa `.aseprite` do asset, parseia com `aseprite_io.js`, sobe PNGs via `/api/fe/upload-png`, finaliza com `POST /api/fe/tirinhas` variante `asset`. `origem_meta` carrega `{ asset_id, tipo_aseprite: 'final' }` como cicatriz informativa.
+- Lógica extraída pra `public/js/fe_import.js` (compartilhada com upload manual da Tela 1).
+- Tirinha resultante é cópia consciente — mudanças nela não afetam o asset.
 
-### Smoke test
+**2. Frames Editor → Asset** (botão "publicar como asset" habilitado na Tela 2):
+- Modal custom com seletor de projeto + nome do asset.
+- `POST /api/fe/tirinhas/:id/publicar-asset` orquestra: gera `.aseprite` no front, sobe via `uploadAseprite`, depois cria asset na área Assets via cópia interna do arquivo no GCS (`copyObject` server-side, sem baixar/resubir).
+- Migration 018 relaxa `assets.video_id` pra nullable (asset publicado do Frames Editor não veio de um vídeo). `UNIQUE` parcial existente já é compatível com NULL no Postgres. JOINs em `routes/assets.js` viraram LEFT JOIN.
+- Asset criado nasce com `status='done'`, `version=1`, `gcs_url` apontando pro `.aseprite` copiado.
+- Sem vínculo: publicar mesma tirinha duas vezes cria dois assets distintos.
 
-- User abre túnel IAP (`scripts/dev.cmd`), aplica migrations 016+017, sobe `node server.js`, navega `http://localhost:5050/#/fe`. Validar:
+### Smoke test (último item pendente)
+
+- User abre túnel IAP (`scripts/dev.cmd`), aplica migrations 016+017+018, sobe `node server.js`, navega `http://localhost:5050/#/fe`. Validar:
   - Criar tirinha vazia → editor abre.
   - Criar via upload `.aseprite` → célula a célula sobe → editor mostra os quadros.
   - Adicionar/remover camadas e quadros.
   - Disparar prompt em todos os quadros / em selecionados → células ficam `processando` → polling traz resultados.
   - Download `.aseprite` → arquivo gerado abre no Aseprite desktop sem erro.
+  - **Editar como tirinha** num asset existente da Galeria → tirinha aparece no Frames Editor com os quadros do asset.
+  - **Publicar como asset** na tirinha → asset aparece na Galeria, no projeto escolhido, com o `.aseprite` da tirinha.
 
 ### Adiadas conscientemente (não confundir com pendentes)
 
