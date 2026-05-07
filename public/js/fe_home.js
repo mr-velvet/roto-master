@@ -3,6 +3,7 @@
 import {
   listTirinhas, deleteTirinha, patchTirinha,
   createTirinhaVazia, createTirinhaUpload, uploadPng,
+  uploadAseprite,
 } from './fe_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
 import { navigateFeEditor } from './router.js';
@@ -24,7 +25,7 @@ async function refresh() {
     tirinhas = await listTirinhas();
   } catch (e) {
     console.error('list tirinhas:', e);
-    showToast('falha ao listar tirinhas: ' + e.message);
+    showToast('falha ao listar tirinhas');
     return;
   }
   render();
@@ -82,7 +83,7 @@ function render() {
         showToast('tirinha apagada');
         await refresh();
       } catch (err) {
-        showToast('falha ao apagar: ' + err.message);
+        showToast('falha ao apagar — tente de novo');
       }
     });
     $grid.appendChild(card);
@@ -111,7 +112,7 @@ function iniciarRename(card, t) {
         await patchTirinha(t.id, { nome: novoNome });
         t.nome = novoNome;
       } catch (err) {
-        showToast('falha ao renomear: ' + err.message);
+        showToast('falha ao renomear — tente de novo');
       }
     }
     render();
@@ -268,12 +269,19 @@ document.addEventListener('click', async (e) => {
         quadros: estrutura.quadros.map((q, i) => ({ indice: i })),
         celulas: celulasUploaded,
       });
+      // Sobe o .aseprite original também (vira last_aseprite_url da tirinha).
+      // Não bloqueia o fluxo se falhar — tirinha já foi criada.
+      try {
+        await uploadAseprite({ tirinhaId: data.id, blob: pendingFile, filename: pendingFile.name });
+      } catch (e) {
+        console.warn('upload do .aseprite original falhou (segue):', e);
+      }
       closeModal();
       showToast(`tirinha criada (${total} células)`);
       navigateFeEditor(data.id);
     } catch (err) {
       console.error('upload tirinha:', err);
-      $err.textContent = err.message;
+      $err.textContent = mensagemAmigavel(err);
       $progress.setAttribute('hidden', '');
     } finally {
       $btn.disabled = false;
@@ -315,4 +323,17 @@ function formatDate(iso) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Erros do backend chegam tipo "upload-png 400: tirinha_id obrigatório".
+// Mensagem técnica não pode aparecer pra usuário — converte pra algo legível.
+function mensagemAmigavel(err) {
+  const raw = String(err?.message || err || '');
+  if (/PNG/i.test(raw) && /400/.test(raw)) return 'arquivo .aseprite inválido';
+  if (/parse|aseprite/i.test(raw) && /falha/i.test(raw)) return 'não consegui ler o arquivo .aseprite';
+  if (/network|fetch|failed/i.test(raw)) return 'falha de rede — tente de novo';
+  if (/upload/i.test(raw)) return 'falha ao subir o arquivo';
+  if (/500/.test(raw)) return 'erro no servidor — tente de novo';
+  if (/409/.test(raw) || /already/i.test(raw)) return 'já existe';
+  return 'algo deu errado — tente de novo';
 }

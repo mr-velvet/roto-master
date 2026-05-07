@@ -35,6 +35,12 @@ const CELULA_COLS = `id, tirinha_id, camada_id, quadro_id, png_url, largura, alt
 function gcsPathParaPng(tirinhaId, celulaId) {
   const dia = new Date().toISOString().slice(0, 10);
   const hash = crypto.randomBytes(3).toString('hex');
+  if (!tirinhaId) {
+    // Sem tirinha ainda (caminho do upload de .aseprite, que cria a tirinha
+    // depois que todas as células subiram). Path provisório — se o flow não
+    // completar, fica órfão (varredura GCS está fora do MVP).
+    return `frame-editor/_tmp/${dia}-${hash}.png`;
+  }
   return `frame-editor/tirinhas/${tirinhaId}/celulas/${celulaId || '_pending'}/${dia}-${hash}.png`;
 }
 
@@ -591,9 +597,10 @@ router.get('/proxy-png', requireUser, async (req, res) => {
 });
 
 router.post('/upload-png', requireUser, upload.single('file'), async (req, res) => {
-  const tirinhaId = (req.body?.tirinha_id || '').trim();
+  // tirinha_id é opcional: durante upload de .aseprite, células sobem antes da
+  // tirinha existir (gcsPathParaPng cai no path provisório _tmp).
+  const tirinhaId = (req.body?.tirinha_id || '').trim() || null;
   const celulaId = (req.body?.celula_id || '').trim() || null;
-  if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
   if (!req.file) return res.status(400).json({ error: 'file obrigatório (multipart)' });
 
   // Validação leve do conteúdo: PNG começa com 89 50 4E 47 0D 0A 1A 0A.

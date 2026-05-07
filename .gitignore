@@ -6,6 +6,7 @@ node_modules/
 package-lock.json
 backup*/
 temp-*/
+.claude/
 
 # dev local
 .env

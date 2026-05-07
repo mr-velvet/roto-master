@@ -125,7 +125,7 @@ async function optimistic({ flightKey, label, applyFn, networkFn, finalizeFn, ro
         }
       }, 2500);
     }
-    showToast(`falha ao ${label || 'salvar'}: ${err.message || err}`);
+    showToast(`falha ao ${label || 'salvar'} — tente de novo`);
     renderMatrix();
     await renderCanvas().catch(() => {});
   }
@@ -185,7 +185,7 @@ export async function showFeEditor(id) {
   try {
     data = await getTirinha(id);
   } catch (e) {
-    showToast('falha ao carregar tirinha: ' + e.message);
+    showToast('falha ao carregar tirinha');
     navigateFeHome();
     return;
   }
@@ -935,7 +935,7 @@ function finalizarRenameTirinha(commit) {
       $name.classList.remove('is-syncing');
       $name.classList.add('is-sync-error');
       setTimeout(() => $name.classList.remove('is-sync-error'), 2500);
-      showToast('falha ao renomear: ' + err.message);
+      showToast('falha ao renomear — tente de novo');
     });
 }
 
@@ -1181,7 +1181,7 @@ document.addEventListener('click', async (e) => {
     showToast('download iniciado');
   } catch (err) {
     console.error('download:', err);
-    showToast('falha no download: ' + err.message);
+    showToast('falha no download — tente de novo');
   }
 });
 
@@ -1216,7 +1216,7 @@ document.addEventListener('click', async (e) => {
     }
     openModal('fe-publish-asset');
   } catch (err) {
-    showToast('falha ao listar projetos: ' + err.message);
+    showToast('falha ao listar projetos');
   }
 });
 
