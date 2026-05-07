@@ -9,16 +9,21 @@
 
 import {
   getTirinha, patchTirinha,
-  addCamada, patchCamada, addQuadro,
+  addCamada, patchCamada, deleteCamada, addQuadro, deleteQuadro,
   uploadAseprite, dispararPrompt,
   publicarComoAsset,
 } from './fe_api.js';
 import { listProjects } from './projects_api.js';
-import { openModal, closeModal, showToast } from './modals.js';
+import { openModal, closeModal, showToast, confirmModal } from './modals.js';
 import { navigateFeHome } from './router.js';
 import { buildAsepriteDoFrameEditor } from './aseprite_io.js';
 
 // === Estado local da tirinha em edição ===
+//
+// Otimismo: operações da Tela 2 mutam o estado local imediato e disparam
+// request em background. Se falhar, revertem via snapshot e mostram toast.
+// Polling continua ativo pra reconciliar células `processando`, mas pula
+// entidades marcadas como `inFlight` pra não brigar com operações pendentes.
 let tirinha = null;          // { id, nome, largura, altura, camadas, quadros, celulas }
 let celulasMap = new Map();  // chave "camadaId:quadroId" → celula
 let camadasOrdenadas = [];   // por ordem desc (visual: maior em cima)
@@ -39,6 +44,27 @@ const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
 // Polling
 let pollTimer = null;
 
+// === Otimismo: tracking de operações pendentes ===
+// Set de "kind:id" (ex: "camada:abc-123", "quadro:xxx", "tirinha:nome",
+// "celula:k") marcados como in-flight. Polling ignora reconciliação dessas
+// entidades enquanto pendentes (impede que uma resposta antiga sobreponha
+// uma operação otimista mais recente que ainda não voltou).
+const inFlight = new Set();
+
+// Counter pra IDs provisórios em adições otimistas.
+let tmpCounter = 0;
+function nextTmpId() { return `tmp-${++tmpCounter}`; }
+function isTmpId(id) { return typeof id === 'string' && id.startsWith('tmp-'); }
+
+// Estado do indicador "salvando/erro" por chave (para mostrar dots/ borders).
+// kind = 'camada' | 'quadro' | 'tirinha' | 'celula' (chave varia)
+const syncState = new Map(); // key → 'syncing' | 'error'
+function setSync(key, state) {
+  if (state) syncState.set(key, state);
+  else syncState.delete(key);
+}
+function getSync(key) { return syncState.get(key) || null; }
+
 // === Refs ===
 const $name = document.querySelector('[data-bind="fe-editor-name"]');
 const $nameInput = document.querySelector('[data-bind="fe-editor-name-input"]');
@@ -53,12 +79,95 @@ const $zoomLabel = document.querySelector('[data-bind="fe-zoom-label"]');
 const $bgLabel = document.querySelector('[data-bind="fe-bg-label"]');
 const $frameInfo = document.querySelector('[data-bind="fe-frame-info"]');
 
+// === Helper otimista ===
+// applyFn: muta estado local imediato. Recebe um obj `ctx` mutável que
+//   apply pode preencher (ex: ctx.tmpId pra rollback usar).
+// networkFn(ctx): roda o request. Se sucede, aplica `finalizeFn(result, ctx)`.
+// rollbackFn(ctx): reverte estado se network falhar.
+// flightKey: string única tipo "camada:abc" pra marcar como in-flight.
+async function optimistic({ flightKey, label, applyFn, networkFn, finalizeFn, rollbackFn }) {
+  const ctx = {};
+  applyFn(ctx);
+  if (flightKey) {
+    inFlight.add(flightKey);
+    setSync(flightKey, 'syncing');
+  }
+  // Re-render pra mostrar estado já + indicador "salvando".
+  renderMatrix();
+  try {
+    const result = await networkFn(ctx);
+    if (finalizeFn) finalizeFn(result, ctx);
+    if (flightKey) {
+      setSync(flightKey, null);
+      inFlight.delete(flightKey);
+    }
+    renderMatrix();
+  } catch (err) {
+    console.error(`optimistic ${label || flightKey} falhou:`, err);
+    if (rollbackFn) rollbackFn(ctx);
+    if (flightKey) {
+      // Mostra erro brevemente, depois limpa.
+      setSync(flightKey, 'error');
+      inFlight.delete(flightKey);
+      setTimeout(() => {
+        if (getSync(flightKey) === 'error') {
+          setSync(flightKey, null);
+          renderMatrix();
+        }
+      }, 2500);
+    }
+    showToast(`falha ao ${label || 'salvar'}: ${err.message || err}`);
+    renderMatrix();
+    await renderCanvas().catch(() => {});
+  }
+}
+
+// Helper: substitui id provisório por id real em todas as estruturas locais.
+function remapId(kind, oldId, newId) {
+  if (oldId === newId) return;
+  if (kind === 'camada') {
+    for (const c of camadasOrdenadas) if (c.id === oldId) c.id = newId;
+    if (tirinha?.camadas) for (const c of tirinha.camadas) if (c.id === oldId) c.id = newId;
+    // Remapeia células que apontam pra essa camada.
+    const novoMap = new Map();
+    for (const [k, cel] of celulasMap) {
+      if (cel.camada_id === oldId) cel.camada_id = newId;
+      novoMap.set(keyOf(cel.camada_id, cel.quadro_id), cel);
+    }
+    celulasMap = novoMap;
+    if (tirinha?.celulas) for (const cel of tirinha.celulas) if (cel.camada_id === oldId) cel.camada_id = newId;
+  } else if (kind === 'quadro') {
+    for (const q of quadrosOrdenados) if (q.id === oldId) q.id = newId;
+    if (tirinha?.quadros) for (const q of tirinha.quadros) if (q.id === oldId) q.id = newId;
+    const novoMap = new Map();
+    for (const [k, cel] of celulasMap) {
+      if (cel.quadro_id === oldId) cel.quadro_id = newId;
+      novoMap.set(keyOf(cel.camada_id, cel.quadro_id), cel);
+    }
+    celulasMap = novoMap;
+    if (tirinha?.celulas) for (const cel of tirinha.celulas) if (cel.quadro_id === oldId) cel.quadro_id = newId;
+  }
+  // Atualiza activeCelKey/seleção se estiverem apontando pro id antigo.
+  const fixKey = (k) => {
+    const [c, q] = k.split(':');
+    const nc = (kind === 'camada' && c === oldId) ? newId : c;
+    const nq = (kind === 'quadro' && q === oldId) ? newId : q;
+    return keyOf(nc, nq);
+  };
+  if (activeCelKey) activeCelKey = fixKey(activeCelKey);
+  const novaSel = new Set();
+  for (const k of selecionadas) novaSel.add(fixKey(k));
+  selecionadas = novaSel;
+}
+
 // === Entry point ===
 export async function showFeEditor(id) {
   selecionadas.clear();
   activeCelKey = null;
   activeQuadroIdx = 0;
   imgCache.clear();
+  inFlight.clear();
+  syncState.clear();
   stopPolling();
   $matrix.innerHTML = '';
 
@@ -119,7 +228,20 @@ function renderMatrix() {
     head.type = 'button';
     head.textContent = String(q.indice + 1);
     if (qi === activeQuadroIdx) head.classList.add('is-active');
+    const sync = getSync(`quadro:${q.id}`);
+    if (sync === 'syncing') head.classList.add('is-syncing');
+    if (sync === 'error') head.classList.add('is-sync-error');
     head.addEventListener('click', (e) => selecionarColuna(q.id, e));
+    head.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      pedirDeleteQuadro(q);
+    });
+    if (sync) {
+      const dot = document.createElement('span');
+      dot.className = 'fe-sync-dot';
+      if (sync === 'error') dot.dataset.state = 'error';
+      head.appendChild(dot);
+    }
     $matrix.appendChild(head);
   }
 
@@ -128,26 +250,33 @@ function renderMatrix() {
     // header de linha
     const rowHead = document.createElement('div');
     rowHead.className = 'fe-matrix-row-head';
+    const camSync = getSync(`camada:${cam.id}`);
+    if (camSync === 'syncing') rowHead.classList.add('is-syncing');
+    if (camSync === 'error') rowHead.classList.add('is-sync-error');
     rowHead.innerHTML = `
       <button class="fe-cam-vis" data-cam-id="${cam.id}" type="button" title="alternar visibilidade">${cam.visivel ? '◉' : '○'}</button>
-      <button class="fe-cam-name" data-cam-id="${cam.id}" type="button" title="clique pra selecionar linha · duplo-clique pra renomear">${escapeHtml(cam.nome)}</button>
+      <button class="fe-cam-name" data-cam-id="${cam.id}" type="button" title="clique pra selecionar linha · duplo-clique pra renomear · botão direito pra apagar">${escapeHtml(cam.nome)}</button>
     `;
-    rowHead.querySelector('.fe-cam-vis').addEventListener('click', async (e) => {
+    if (camSync) {
+      const dot = document.createElement('span');
+      dot.className = 'fe-sync-dot';
+      if (camSync === 'error') dot.dataset.state = 'error';
+      rowHead.appendChild(dot);
+    }
+    rowHead.querySelector('.fe-cam-vis').addEventListener('click', (e) => {
       e.stopPropagation();
-      try {
-        const updated = await patchCamada(cam.id, { visivel: !cam.visivel });
-        cam.visivel = updated.visivel;
-        renderMatrix();
-        await renderCanvas();
-      } catch (err) {
-        showToast('falha ao alternar visibilidade: ' + err.message);
-      }
+      toggleVisibilidadeCamada(cam);
     });
     const $camNameBtn = rowHead.querySelector('.fe-cam-name');
     $camNameBtn.addEventListener('click', (e) => selecionarLinha(cam.id, e));
     $camNameBtn.addEventListener('dblclick', (e) => {
       e.stopPropagation();
       iniciarRenameCamada(cam, $camNameBtn);
+    });
+    $camNameBtn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      pedirDeleteCamada(cam);
     });
     $matrix.appendChild(rowHead);
 
@@ -177,6 +306,16 @@ function renderMatrix() {
         overlay.className = 'fe-cell-processing';
         overlay.textContent = '…';
         $cell.appendChild(overlay);
+      }
+      // Sync state da célula (raro, mas o slot existe).
+      const celSync = cel ? getSync(`celula:${cel.id || k}`) : null;
+      if (celSync === 'syncing') $cell.classList.add('is-syncing');
+      if (celSync === 'error') $cell.classList.add('is-sync-error');
+      if (celSync) {
+        const dot = document.createElement('span');
+        dot.className = 'fe-sync-dot';
+        if (celSync === 'error') dot.dataset.state = 'error';
+        $cell.appendChild(dot);
       }
       $cell.addEventListener('click', (e) => onClickCelula(cam.id, q.id, e));
       $matrix.appendChild($cell);
@@ -323,7 +462,7 @@ function loadImage(url) {
   });
 }
 
-// === Rename de camada ===
+// === Rename de camada (otimista) ===
 function iniciarRenameCamada(cam, $btn) {
   const original = cam.nome;
   const $input = document.createElement('input');
@@ -335,25 +474,190 @@ function iniciarRenameCamada(cam, $btn) {
   $input.focus();
   $input.select();
   let settled = false;
-  const finalize = async (commit) => {
+  const finalize = (commit) => {
     if (settled) return;
     settled = true;
     const novo = $input.value.trim();
     if (commit && novo && novo !== original) {
-      try {
-        const updated = await patchCamada(cam.id, { nome: novo });
-        cam.nome = updated.nome;
-      } catch (err) {
-        showToast('falha ao renomear camada: ' + err.message);
+      // Otimista: aplica nome novo agora, request em background.
+      // Não esperamos o request — UI já mostra novo nome.
+      // ID provisório? Não — rename de camada existente, ID é real.
+      // Mas pulamos se for tmp- (camada ainda não confirmada no servidor): nesse
+      // caso, esperamos a confirmação da criação primeiro pra evitar PATCHar id
+      // inexistente. Para simplificar: se camada ainda é tmp, só muta local
+      // (será gravado quando der createCamada — que envia o nome inicial; renomes
+      // posteriores enquanto pendente serão perdidos. Vivível pro MVP.)
+      if (isTmpId(cam.id)) {
+        cam.nome = novo;
+        renderMatrix();
+        return;
       }
+      optimistic({
+        flightKey: `camada:${cam.id}`,
+        label: 'renomear camada',
+        applyFn: () => { cam.nome = novo; },
+        networkFn: () => patchCamada(cam.id, { nome: novo }),
+        finalizeFn: (updated) => { if (updated?.nome) cam.nome = updated.nome; },
+        rollbackFn: () => { cam.nome = original; },
+      });
+    } else {
+      renderMatrix();
     }
-    renderMatrix();
   };
   $input.addEventListener('blur', () => finalize(true));
   $input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') finalize(true);
     if (e.key === 'Escape') finalize(false);
   });
+}
+
+// === Toggle visibilidade da camada (otimista) ===
+function toggleVisibilidadeCamada(cam) {
+  if (isTmpId(cam.id)) {
+    // Aguarda criação concluir; toggle local + re-render mas sem network.
+    cam.visivel = !cam.visivel;
+    renderMatrix();
+    renderCanvas();
+    return;
+  }
+  const original = cam.visivel;
+  optimistic({
+    flightKey: `camada:${cam.id}`,
+    label: 'alternar visibilidade',
+    applyFn: () => { cam.visivel = !original; },
+    networkFn: () => patchCamada(cam.id, { visivel: !original }),
+    finalizeFn: (updated) => { if (typeof updated?.visivel === 'boolean') cam.visivel = updated.visivel; },
+    rollbackFn: () => { cam.visivel = original; },
+  });
+  renderCanvas();
+}
+
+// === Delete de camada (otimista, com confirm) ===
+async function pedirDeleteCamada(cam) {
+  if (camadasOrdenadas.length <= 1) {
+    showToast('a tirinha precisa de ao menos 1 camada');
+    return;
+  }
+  const ok = await confirmModal({
+    title: 'apagar camada',
+    message: `apagar "${cam.nome}" e todas as suas células?`,
+    danger: true,
+    confirmLabel: 'apagar',
+  });
+  if (!ok) return;
+  if (isTmpId(cam.id)) {
+    showToast('aguarde a camada ser criada antes de apagar');
+    return;
+  }
+  // Snapshot pra rollback.
+  const snap = {
+    cam: { ...cam },
+    celulas: [],
+  };
+  for (const [k, cel] of celulasMap) {
+    if (cel.camada_id === cam.id) snap.celulas.push({ key: k, cel });
+  }
+  optimistic({
+    flightKey: `camada:${cam.id}`,
+    label: 'apagar camada',
+    applyFn: () => {
+      camadasOrdenadas = camadasOrdenadas.filter((c) => c.id !== cam.id);
+      if (tirinha?.camadas) tirinha.camadas = tirinha.camadas.filter((c) => c.id !== cam.id);
+      for (const { key } of snap.celulas) celulasMap.delete(key);
+      if (tirinha?.celulas) tirinha.celulas = tirinha.celulas.filter((c) => c.camada_id !== cam.id);
+      // Limpa seleção/active que apontavam pra essa camada.
+      const novaSel = new Set();
+      for (const k of selecionadas) if (k.split(':')[0] !== cam.id) novaSel.add(k);
+      selecionadas = novaSel;
+      if (activeCelKey && activeCelKey.split(':')[0] === cam.id) activeCelKey = null;
+      atualizarSelecaoUI();
+    },
+    networkFn: () => deleteCamada(cam.id),
+    rollbackFn: () => {
+      // Restaura camada e células.
+      camadasOrdenadas.push(snap.cam);
+      camadasOrdenadas.sort((a, b) => b.ordem - a.ordem);
+      if (tirinha) tirinha.camadas = [...(tirinha.camadas || []), snap.cam];
+      for (const { key, cel } of snap.celulas) celulasMap.set(key, cel);
+      if (tirinha) tirinha.celulas = [...(tirinha.celulas || []), ...snap.celulas.map((s) => s.cel)];
+    },
+  });
+  renderCanvas();
+}
+
+// === Delete de quadro (otimista, com confirm) ===
+async function pedirDeleteQuadro(q) {
+  if (quadrosOrdenados.length <= 1) {
+    showToast('a tirinha precisa de ao menos 1 quadro');
+    return;
+  }
+  const ok = await confirmModal({
+    title: 'apagar quadro',
+    message: `apagar quadro ${q.indice + 1} e todas as suas células?`,
+    danger: true,
+    confirmLabel: 'apagar',
+  });
+  if (!ok) return;
+  if (isTmpId(q.id)) {
+    showToast('aguarde o quadro ser criado antes de apagar');
+    return;
+  }
+  const snap = {
+    q: { ...q },
+    celulas: [],
+    indicesAjustados: [], // quadros que terão indice reajustado pra refletir reindex do servidor
+  };
+  for (const [k, cel] of celulasMap) {
+    if (cel.quadro_id === q.id) snap.celulas.push({ key: k, cel });
+  }
+  // Captura snapshot dos indices originais (rollback restaura).
+  const snapIndices = quadrosOrdenados.map((qq) => ({ id: qq.id, indice: qq.indice }));
+  optimistic({
+    flightKey: `quadro:${q.id}`,
+    label: 'apagar quadro',
+    applyFn: () => {
+      quadrosOrdenados = quadrosOrdenados.filter((qq) => qq.id !== q.id);
+      // Reindexa locais (espelha o que o servidor faz).
+      quadrosOrdenados.sort((a, b) => a.indice - b.indice);
+      quadrosOrdenados.forEach((qq, i) => { qq.indice = i; });
+      if (tirinha?.quadros) {
+        tirinha.quadros = tirinha.quadros.filter((qq) => qq.id !== q.id);
+        for (const qq of tirinha.quadros) {
+          const found = quadrosOrdenados.find((x) => x.id === qq.id);
+          if (found) qq.indice = found.indice;
+        }
+      }
+      for (const { key } of snap.celulas) celulasMap.delete(key);
+      if (tirinha?.celulas) tirinha.celulas = tirinha.celulas.filter((c) => c.quadro_id !== q.id);
+      const novaSel = new Set();
+      for (const k of selecionadas) if (k.split(':')[1] !== q.id) novaSel.add(k);
+      selecionadas = novaSel;
+      if (activeCelKey && activeCelKey.split(':')[1] === q.id) activeCelKey = null;
+      if (activeQuadroIdx >= quadrosOrdenados.length) activeQuadroIdx = quadrosOrdenados.length - 1;
+      atualizarSelecaoUI();
+    },
+    networkFn: () => deleteQuadro(q.id),
+    rollbackFn: () => {
+      // Restaura quadro e indices originais.
+      quadrosOrdenados.push(snap.q);
+      // Restaura indices conforme snapshot.
+      for (const qq of quadrosOrdenados) {
+        const orig = snapIndices.find((x) => x.id === qq.id);
+        if (orig) qq.indice = orig.indice;
+      }
+      quadrosOrdenados.sort((a, b) => a.indice - b.indice);
+      if (tirinha) {
+        tirinha.quadros = [...(tirinha.quadros || []), snap.q];
+        for (const qq of tirinha.quadros) {
+          const orig = snapIndices.find((x) => x.id === qq.id);
+          if (orig) qq.indice = orig.indice;
+        }
+      }
+      for (const { key, cel } of snap.celulas) celulasMap.set(key, cel);
+      if (tirinha) tirinha.celulas = [...(tirinha.celulas || []), ...snap.celulas.map((s) => s.cel)];
+    },
+  });
+  renderCanvas();
 }
 
 // === Helpers ===
@@ -373,9 +677,22 @@ function agendarPollingSeNecessario() {
   pollTimer = setTimeout(async () => {
     pollTimer = null;
     if (!tirinha) return;
+    // Conflito polling × otimismo: se há operação otimista pendente, adiar o
+    // poll. Caso contrário, o reload via aplicarEstadoTirinha sobrescreveria
+    // a mutação local que ainda nem chegou no banco.
+    if (inFlight.size > 0) {
+      agendarPollingSeNecessario();
+      return;
+    }
     try {
       const data = await getTirinha(tirinha.id);
       if (!data || data.id !== tirinha.id) return;
+      // Re-checa: pode ter chegado uma operação otimista entre a chamada e
+      // a resposta. Se chegou, descarta esse snapshot e tenta de novo depois.
+      if (inFlight.size > 0) {
+        agendarPollingSeNecessario();
+        return;
+      }
       // mantém zoom/seleção/activeQuadro
       await aplicarEstadoTirinha(data);
     } catch (e) {
@@ -411,20 +728,33 @@ $nameInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') finalizarRenameTirinha(true);
   if (e.key === 'Escape') finalizarRenameTirinha(false);
 });
-async function finalizarRenameTirinha(commit) {
+function finalizarRenameTirinha(commit) {
   if ($nameInput.hasAttribute('hidden')) return;
   const novo = $nameInput.value.trim();
   $nameInput.setAttribute('hidden', '');
   $name.removeAttribute('hidden');
-  if (commit && novo && tirinha && novo !== tirinha.nome) {
-    try {
-      const data = await patchTirinha(tirinha.id, { nome: novo });
-      tirinha.nome = data.tirinha.nome;
-      $name.textContent = tirinha.nome;
-    } catch (err) {
+  if (!commit || !novo || !tirinha || novo === tirinha.nome) return;
+  // Otimista: nome novo na UI imediato; request em background.
+  const original = tirinha.nome;
+  tirinha.nome = novo;
+  $name.textContent = novo;
+  $name.classList.add('is-syncing');
+  patchTirinha(tirinha.id, { nome: novo })
+    .then((data) => {
+      if (data?.tirinha?.nome) {
+        tirinha.nome = data.tirinha.nome;
+        $name.textContent = tirinha.nome;
+      }
+      $name.classList.remove('is-syncing');
+    })
+    .catch((err) => {
+      tirinha.nome = original;
+      $name.textContent = original;
+      $name.classList.remove('is-syncing');
+      $name.classList.add('is-sync-error');
+      setTimeout(() => $name.classList.remove('is-sync-error'), 2500);
       showToast('falha ao renomear: ' + err.message);
-    }
-  }
+    });
 }
 
 // Zoom
@@ -457,31 +787,114 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// + Camada
-document.addEventListener('click', async (e) => {
+// + Camada (otimista)
+//
+// Cria camada nova com id provisório `tmp-X` e células vazias provisórias
+// cruzando com todos os quadros. Quando o request volta, troca os ids tmp
+// pelos reais. Se falhar, remove tudo.
+document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-add-camada"]')) return;
   if (!tirinha) return;
-  try {
-    await addCamada(tirinha.id, { nome: `camada ${camadasOrdenadas.length + 1}` });
-    const data = await getTirinha(tirinha.id);
-    await aplicarEstadoTirinha(data);
-  } catch (err) {
-    showToast('falha ao adicionar camada: ' + err.message);
+  const nomeNovo = `camada ${camadasOrdenadas.length + 1}`;
+  const novaOrdem = (camadasOrdenadas.length
+    ? Math.max(...camadasOrdenadas.map((c) => c.ordem)) + 1
+    : 0);
+  const tmpCamId = nextTmpId();
+  const novaCam = { id: tmpCamId, tirinha_id: tirinha.id, nome: nomeNovo, ordem: novaOrdem, visivel: true };
+  // Células provisórias pra cada quadro existente.
+  const novasCels = [];
+  for (const q of quadrosOrdenados) {
+    const c = { id: nextTmpId(), tirinha_id: tirinha.id, camada_id: tmpCamId, quadro_id: q.id, png_url: null, largura: null, altura: null, estado: 'idle' };
+    novasCels.push(c);
   }
+  optimistic({
+    flightKey: `camada:${tmpCamId}`,
+    label: 'adicionar camada',
+    applyFn: () => {
+      camadasOrdenadas.push(novaCam);
+      camadasOrdenadas.sort((a, b) => b.ordem - a.ordem);
+      if (tirinha.camadas) tirinha.camadas.push(novaCam);
+      for (const c of novasCels) {
+        celulasMap.set(keyOf(c.camada_id, c.quadro_id), c);
+        if (tirinha.celulas) tirinha.celulas.push(c);
+      }
+    },
+    networkFn: () => addCamada(tirinha.id, { nome: nomeNovo, ordem: novaOrdem }),
+    finalizeFn: (camadaReal) => {
+      if (!camadaReal?.id) return;
+      remapId('camada', tmpCamId, camadaReal.id);
+      // Atualiza a in-flight key (era tmp, agora real). Não precisa renomear:
+      // o flightKey original do optimistic já foi limpo por sucesso.
+      // Atualiza ordem se servidor devolveu valor diferente.
+      const cam = camadasOrdenadas.find((c) => c.id === camadaReal.id);
+      if (cam) {
+        cam.ordem = camadaReal.ordem;
+        cam.visivel = camadaReal.visivel;
+        cam.nome = camadaReal.nome;
+      }
+      camadasOrdenadas.sort((a, b) => b.ordem - a.ordem);
+      // OBSERVAÇÃO: as células provisórias dessa camada ficam com id tmp-
+      // até o próximo getTirinha() (depois de polling ou reload). Isso é
+      // aceitável — não há operação por-célula com id ainda exposta na UI
+      // exceto a inclusão delas no payload do prompt (que usa cel.id) — e
+      // ali já filtramos `cel.estado !== 'processando'` mas não filtramos
+      // ids tmp. Garantia: ao disparar prompt, ignoramos cels tmp- pra não
+      // mandar ids inválidos pro servidor (vê handler do prompt).
+    },
+    rollbackFn: () => {
+      camadasOrdenadas = camadasOrdenadas.filter((c) => c.id !== tmpCamId);
+      if (tirinha.camadas) tirinha.camadas = tirinha.camadas.filter((c) => c.id !== tmpCamId);
+      for (const c of novasCels) celulasMap.delete(keyOf(c.camada_id, c.quadro_id));
+      if (tirinha.celulas) tirinha.celulas = tirinha.celulas.filter((c) => c.camada_id !== tmpCamId);
+    },
+  });
 });
 
-// + Quadro
-document.addEventListener('click', async (e) => {
+// + Quadro (otimista)
+document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-add-quadro"]')) return;
   if (!tirinha) return;
-  try {
-    await addQuadro(tirinha.id, {});
-    const data = await getTirinha(tirinha.id);
-    activeQuadroIdx = data.quadros.length - 1;
-    await aplicarEstadoTirinha(data);
-  } catch (err) {
-    showToast('falha ao adicionar quadro: ' + err.message);
+  const novoIndice = (quadrosOrdenados.length
+    ? Math.max(...quadrosOrdenados.map((q) => q.indice)) + 1
+    : 0);
+  const tmpQId = nextTmpId();
+  const novoQ = { id: tmpQId, tirinha_id: tirinha.id, indice: novoIndice, duracao_ms: null };
+  const novasCels = [];
+  for (const cam of camadasOrdenadas) {
+    const c = { id: nextTmpId(), tirinha_id: tirinha.id, camada_id: cam.id, quadro_id: tmpQId, png_url: null, largura: null, altura: null, estado: 'idle' };
+    novasCels.push(c);
   }
+  optimistic({
+    flightKey: `quadro:${tmpQId}`,
+    label: 'adicionar quadro',
+    applyFn: () => {
+      quadrosOrdenados.push(novoQ);
+      quadrosOrdenados.sort((a, b) => a.indice - b.indice);
+      if (tirinha.quadros) tirinha.quadros.push(novoQ);
+      for (const c of novasCels) {
+        celulasMap.set(keyOf(c.camada_id, c.quadro_id), c);
+        if (tirinha.celulas) tirinha.celulas.push(c);
+      }
+      activeQuadroIdx = quadrosOrdenados.findIndex((q) => q.id === tmpQId);
+    },
+    networkFn: () => addQuadro(tirinha.id, {}),
+    finalizeFn: (quadroReal) => {
+      if (!quadroReal?.id) return;
+      remapId('quadro', tmpQId, quadroReal.id);
+      const q = quadrosOrdenados.find((qq) => qq.id === quadroReal.id);
+      if (q) { q.indice = quadroReal.indice; q.duracao_ms = quadroReal.duracao_ms; }
+      quadrosOrdenados.sort((a, b) => a.indice - b.indice);
+      activeQuadroIdx = quadrosOrdenados.findIndex((qq) => qq.id === quadroReal.id);
+    },
+    rollbackFn: () => {
+      quadrosOrdenados = quadrosOrdenados.filter((q) => q.id !== tmpQId);
+      if (tirinha.quadros) tirinha.quadros = tirinha.quadros.filter((q) => q.id !== tmpQId);
+      for (const c of novasCels) celulasMap.delete(keyOf(c.camada_id, c.quadro_id));
+      if (tirinha.celulas) tirinha.celulas = tirinha.celulas.filter((c) => c.quadro_id !== tmpQId);
+      if (activeQuadroIdx >= quadrosOrdenados.length) activeQuadroIdx = quadrosOrdenados.length - 1;
+      if (activeQuadroIdx < 0) activeQuadroIdx = 0;
+    },
+  });
 });
 
 // Prompt: pra todos
@@ -528,15 +941,18 @@ document.addEventListener('click', async (e) => {
 
   let alvosIds;
   if (promptModoAtual === 'all') {
-    alvosIds = (tirinha.celulas || []).map((c) => c.id);
+    alvosIds = (tirinha.celulas || []).map((c) => c.id).filter((id) => !isTmpId(id));
   } else {
     alvosIds = [];
     for (const k of selecionadas) {
       const cel = celulasMap.get(k);
-      if (cel && cel.estado !== 'processando') alvosIds.push(cel.id);
+      if (cel && cel.estado !== 'processando' && !isTmpId(cel.id)) alvosIds.push(cel.id);
     }
   }
-  if (!alvosIds.length) { $err.textContent = 'nenhuma célula alvo válida'; return; }
+  if (!alvosIds.length) {
+    $err.textContent = 'nenhuma célula alvo válida (aguarde camadas/quadros novas serem confirmadas)';
+    return;
+  }
 
   try {
     await dispararPrompt({ tirinhaId: tirinha.id, prompt, celulasIds: alvosIds });
