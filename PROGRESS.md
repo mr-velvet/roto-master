@@ -1,6 +1,74 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-07 noite (terceira atualização) — **detalhamento técnico do Frames Editor pousou em pasta própria (`docs/frame-editor/`).** A discussão técnica que ficara pra outro contexto na atualização anterior aconteceu nesta sessão pra **uma das três áreas — o Frames Editor** — e fechou em 8 docs conceituais (visão + 7 docs técnicos), totalmente desacoplados do resto. Decisões estruturais novas em relação à v7: (a) Frames Editor **tem entidade própria no banco** (não é stateless — regressão corrigida em conversa); a versão 1 do `frame-editor.md` que dizia o contrário foi reescrita; (b) **cache de IA não existe** — resultado de IA é PNG normal no GCS, fim; (c) **pixel não vive no banco** — banco guarda referência ao PNG, edição "por cima" cria camadas novas, não rescreve pixels; (d) **varredura/limpeza GCS sai do MVP** — fica pra rodada própria quando virar problema real; (e) **`.aseprite` exportado é on-demand**, mantém só o último por tirinha, sem geração proativa. Outras três áreas (Assets, Frames Creator, atualização do `arquitetura-tecnica.md` raiz) não foram tocadas nesta rodada — continuam como estavam.
+Última atualização: 2026-05-08 — **Frames Editor implementado em uma sessão (back + front), pendente smoke test do user com banco/túnel ativo.** Em paralelo: PixVerse V6 entrou como segundo provider de vídeo (commit `6fcb1dc`). Frames Editor pousou em ~10 commits, dois agentes em worktree (parser/writer e UI) rodando em paralelo enquanto a main fazia migration + back. Status concreto na seção "Estado da implementação do Frames Editor (2026-05-08)" abaixo. **Falta:** smoke test com user usando, integração Frames Editor ↔ Assets (task #9 — "Editar como tirinha" no card do asset, "Publicar como novo asset" no editor).
+
+## Estado da implementação do Frames Editor (2026-05-08)
+
+### Entregue end-to-end
+
+**Banco** — `migrations/017_frame_editor.sql` (commit `d4d4888`) com 4 tabelas `fe_*`: `fe_tirinha`, `fe_camada`, `fe_quadro`, `fe_celula`. Conforme `docs/frame-editor/modelo-de-dados.md` (alinhado em commit `671612b` pra refletir 3 ajustes feitos no schema vs. doc original: `fe_tirinha.largura/altura NOT NULL`, `fe_tirinha.last_aseprite_url`, `fe_celula.estado/estado_erro/estado_atualizado_em`). Sem `owner_*`. Sem FK pra `videos`/`assets`/`projects` (desacoplamento estrutural).
+
+**Backend** — `routes/fe.js` plugado em `/api/fe/*` (commit `a96d5e1`):
+- Tirinhas: GET/POST/PATCH/DELETE. POST tem 3 variantes (`vazia`/`upload`/`asset`); variantes `upload`/`asset` aceitam `{camadas, quadros, celulas}` enviadas pelo front (que já parseou o `.aseprite`) e criam C×Q células em transação.
+- Camadas: POST cria células vazias cruzando todos os quadros existentes. PATCH com reordenação consciente da `UNIQUE(tirinha_id, ordem)` (slot temporário negativo pra evitar conflito).
+- Quadros: POST com reindexação. DELETE cascade + reindexa subsequentes.
+- Células: PATCH pra trocar/limpar `png_url`.
+- Upload: `POST /upload-png` (multipart, valida magic bytes do PNG, extrai largura/altura do IHDR) e `POST /upload-aseprite` (atualiza `last_aseprite_url` da tirinha).
+
+**IA assíncrona** — `lib/fe-prompts.js` + endpoint `POST /api/fe/prompts` (commit `8869452`):
+- Provider real escolhido: **Fal.ai `nano-banana-pro/edit`** (reusa `lib/providers/fal.js` que o resto da plataforma já usa; mesma `FAL_KEY`). `docs/frame-editor/ia.md` §4 atualizado em `c4076cc` pra refletir.
+- Marca células alvo como `processando` em transação, devolve 202 imediato com `job_id` + `celulas_marcadas`. Fire-and-forget pro lote.
+- Concorrência limitada (`CONCURRENCY=3`). Erro per-célula não aborta o lote (volta a `idle` com `estado_erro` preenchido). Sem retry, sem cancelamento, sem cache (alinhado com `ia.md` §7-9).
+- Coerência entre quadros vizinhos não é tratada arquiteturalmente — responsabilidade do user.
+
+**Parser/writer `.aseprite` genérico** — `public/js/aseprite_io.js` (commit `0742331`, mergeado em `dbad9cc`):
+- Módulo ES novo, separado do `aseprite.js` antigo (que tem layout fixo `ref`/`draw` e continua sendo consumido pelo editor de rotoscopia em prod). Não regrediu nada.
+- `parseAsepriteParaFrameEditor(arrayBuffer)` → `{largura, altura, camadas, quadros, celulas}` (composita os cels de cada interseção num único PNG RGBA do tamanho do canvas).
+- `buildAsepriteDoFrameEditor(estrutura)` → `Uint8Array` (RGBA, cels comprimidos zlib via `pako`). Células vazias → nenhum cel chunk emitido.
+- Round-trip funciona; perde tags/slices/paths/tween/groups/tilemaps (fidelidade parcial assumida em `aseprite-io.md` §5).
+- Função `_test()` exportada com 3 cenários de round-trip.
+
+**UI das duas telas** — Tela 1 (`#/fe`) e Tela 2 (`#/fe/t/:id`), commit `f3adca1`:
+- `public/js/fe_api.js` cliente das rotas. `public/js/fe_home.js` Tela 1 (grid de cards + modal "nova tirinha" com 3 origens — vazia, upload `.aseprite` com parsing local + upload célula a célula, importar de asset desabilitado/em breve). `public/js/fe_editor.js` Tela 2 (canvas read-only com zoom 4× default e controles +/-, matriz camadas×quadros, seleção célula/coluna/linha/múltipla via shift+click e ctrl+click, botões prompt-pra-todos e prompt-pros-selecionados, +camada/+quadro, download `.aseprite` que gera local + sobe via `/upload-aseprite`, polling 3s enquanto há célula `processando`).
+- **Identidade visual própria**: ciano-elétrico (`#4dd9d6`) sobre grafite-frio (`#07080b`–`#232a3a`) com violeta (`#9070f0`) como cor de estado processando. Variáveis escopadas em `[data-space="frame-editor"]` em `public/styles.css`. Distinto do cobre+ink das outras duas áreas.
+- Alternador ternário no header (Galeria | Ateliê | Frames Editor); `chrome.js` ajustado pra slidar a thumb pra 0/33/66%.
+- Anti-padrões respeitados (ui.md §5): sem pintura no canvas, sem undo, sem presets nomeados de IA tipo "estilizar/limpar", sem botão "salvar", sem filtros "minhas tirinhas", só modais custom.
+
+### Cobertura de tasks
+
+| # | Task | Status |
+|---|---|---|
+| 1 | Commit + push das mudanças pendentes | ✅ |
+| 2 | Migration `fe_*` | ✅ commit `d4d4888` |
+| 3 | Estender parser/writer `.aseprite` | ✅ commit `0742331` (agente paralelo) |
+| 4 | CRUD backend `/api/fe/*` | ✅ commit `a96d5e1` |
+| 5 | Upload PNG + GCS path | ✅ commit `a96d5e1` |
+| 6 | Endpoint de prompt + IA assíncrona | ✅ commit `8869452` |
+| 7 | Live updates | ✅ via polling de 3s; SSE fica pra rodada própria quando virar problema |
+| 8 | UI Tela 1 + Tela 2 | ✅ commit `f3adca1` (agente paralelo) |
+| 9 | Integração com Assets ("Editar como tirinha" / "Publicar como novo asset") | ⏸ pendente |
+
+### Decisões pendentes / não-fechadas
+
+- **Smoke test com user** — eu validei localmente que o servidor sobe, serve os JS novos, e que `/api/fe/tirinhas` chega no handler (devolveu 500 esperado porque túnel IAP pro Postgres da VM não estava aberto na hora do teste). Falta o user abrir o túnel via `scripts/dev.cmd` e exercitar a UI ponta-a-ponta.
+- **Migration 016** (PixVerse) e **017** (frame-editor) entram automaticamente no próximo `deploy.sh roto-master` via `STEP 3`. Em local, aplicar manualmente quando o user abrir o túnel.
+- **Integração Frames Editor ↔ Assets (task #9)** — duas pontes documentadas em `docs/frame-editor/integracao-com-assets.md`: (a) botão "Editar como tirinha" no card do asset (área Assets ganha capacidade de expor `.aseprite` original-da-quebra e/ou final por asset; modal de escolha quando há os dois); (b) `POST /api/fe/tirinhas/:id/publicar-asset` que cria asset novo na área Assets a partir do `.aseprite` da tirinha — sem vínculo vivo (princípio §4.4 do doc). Asset no schema atual tem 1:1 com `video_id`; a publicação a partir do Frames Editor precisa ou (i) criar um vídeo placeholder, ou (ii) relaxar a constraint pra aceitar asset sem vídeo. Decisão de produto pendente.
+- **`docs/visao-da-ferramenta.md` raiz** continua desatualizado em relação à v7 e a esta rodada de implementação. Fica pra rodada própria.
+- **`docs/arquitetura-tecnica.md` raiz** continua desatualizado. Mesma rodada que o anterior.
+
+### Arquivos novos/modificados nesta rodada (lista direta)
+
+**Banco:** `migrations/016_pixverse_models.sql`, `migrations/017_frame_editor.sql`.
+
+**Backend:** `routes/fe.js` (novo, ~620 linhas), `lib/fe-prompts.js` (novo, ~110 linhas), `lib/providers/fal.js` (PixVerse), `routes/generate.js` (PixVerse), `server.js` (mount `/api/fe`).
+
+**Frontend:** `public/js/aseprite_io.js` (novo, ~530 linhas), `public/js/fe_api.js` (novo, ~170 linhas), `public/js/fe_home.js` (novo, ~320 linhas), `public/js/fe_editor.js` (novo, ~640 linhas), `public/js/router.js`, `public/js/chrome.js`, `public/js/main.js`, `public/index.html`, `public/styles.css`.
+
+**Docs:** `docs/visao-da-ferramenta.md` (patch v7), `docs/frame-editor/visao.md` (novo), `docs/frame-editor/modelo-de-dados.md` (novo + ajuste pós-migration), `docs/frame-editor/storage.md` (novo), `docs/frame-editor/aseprite-io.md` (novo), `docs/frame-editor/ia.md` (novo + ajuste pós-implementação), `docs/frame-editor/api.md` (novo), `docs/frame-editor/ui.md` (novo), `docs/frame-editor/integracao-com-assets.md` (novo).
+
+---
+
+## Última atualização anterior: 2026-05-07 noite (terceira atualização) — **detalhamento técnico do Frames Editor pousou em pasta própria (`docs/frame-editor/`).** A discussão técnica que ficara pra outro contexto na atualização anterior aconteceu nesta sessão pra **uma das três áreas — o Frames Editor** — e fechou em 8 docs conceituais (visão + 7 docs técnicos), totalmente desacoplados do resto. Decisões estruturais novas em relação à v7: (a) Frames Editor **tem entidade própria no banco** (não é stateless — regressão corrigida em conversa); a versão 1 do `frame-editor.md` que dizia o contrário foi reescrita; (b) **cache de IA não existe** — resultado de IA é PNG normal no GCS, fim; (c) **pixel não vive no banco** — banco guarda referência ao PNG, edição "por cima" cria camadas novas, não rescreve pixels; (d) **varredura/limpeza GCS sai do MVP** — fica pra rodada própria quando virar problema real; (e) **`.aseprite` exportado é on-demand**, mantém só o último por tirinha, sem geração proativa. Outras três áreas (Assets, Frames Creator, atualização do `arquitetura-tecnica.md` raiz) não foram tocadas nesta rodada — continuam como estavam.
 
 Última atualização anterior: 2026-05-07 noite (segunda atualização) — **discussão conceitual pousou no patch v7 da visão.** A ferramenta passa a ser organizada em **três áreas macro irmãs**: **Assets** (entrega), **Frames Creator** (renomeação do Ateliê — produção a partir de vídeo, com **tirinha** elevada a entidade nomeada), **Frames Editor** (área macro nova, isolada, comunica com o resto só via arquivo `.aseprite`). Decisão estrutural fechada: **nada na plataforma é do usuário** — tudo coletivo, banco como única fonte da verdade. Ciclo com artista é **não-linear** (`.aseprite` vai e volta entre Aseprite desktop, Frames Editor, e re-edição do vídeo, em qualquer ordem). Dois modos de exportação do `.aseprite`: como referência (modelo atual) ou como arte final. Documentos atualizados/criados nesta sessão: `docs/visao-da-ferramenta.md` (patch v7), `docs/frame-editor.md` (novo, escopo macro mínimo). **Discussão técnica** (modelo de dados pra tirinha, padrão GCS pra quadros, varredura/limpeza, isolamento real do Frames Editor) **fica pra próxima conversa em outro contexto** com estes docs como entrada. Núcleo da v1 em produção continua válido e correto — esta rodada é extensão, não pivot.
 
