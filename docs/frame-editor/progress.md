@@ -1,6 +1,6 @@
 # Frames Editor — progresso de implementação
 
-Última atualização: 2026-05-08 (segunda atualização) — task #9 (integração com Assets) também entregue. Todas as 9 tasks fechadas. Falta apenas o smoke test do user com banco/túnel ativo.
+Última atualização: 2026-05-08 (terceira atualização) — **smoke test passou + deploy em prod**. Frames Editor está no ar em `https://roto.did.lu/#/fe`. Bug encontrado e corrigido durante o smoke (resize do PNG da IA pro tamanho da tirinha).
 
 Doc específico da implementação do **Frames Editor** (a 3ª área macro). Para o quadro geral do projeto e outras áreas, ver `PROGRESS.md` da raiz.
 
@@ -10,7 +10,29 @@ Os docs conceituais estão em `docs/frame-editor/` (visao, modelo-de-dados, stor
 
 ## Estado em uma frase
 
-**MVP completo entregue** em uma sessão (2026-05-08), 9 de 9 tasks fechadas. Falta o smoke test do user com banco real. Em prod no próximo deploy.
+**MVP completo + smoke test + deploy em prod** entregues em uma sessão (2026-05-08). 9 de 9 tasks fechadas. Em produção em `https://roto.did.lu/#/fe`.
+
+## Smoke test (2026-05-08)
+
+Eu mesmo rodei (túnel IAP + migrations + server local + curl). Validados:
+
+1. **CRUD de tirinha/camada/quadro**: criar tirinha vazia 64×64 (1 camada + 1 quadro + 1 célula auto-criados), POST camada (cardinalidade C×Q corrige pra 2×2=4 células), POST quadro (idem), GET, DELETE com cascade. ✅
+2. **Upload PNG**: multipart, valida magic bytes, sobe pro path versionado em `frame-editor/tirinhas/<id>/celulas/<id|_pending>/<yyyy-mm-dd>-<hash6>.png`, devolve URL `st.did.lu`. ✅
+3. **PATCH célula com png_url**: grava largura/altura, atualiza updated_at da tirinha. ✅
+4. **Prompt assíncrono via Fal**: 202 imediato com `job_id`, célula vai pra `processando`, processamento real chamou Fal nano-banana-pro/edit, voltou com PNG novo. ✅
+5. **Publicar como asset**: tirinha → asset novo na Galeria com `video_id=null`, `status=done`, `.aseprite` copiado server-side via `copyObject` (sem rebaixar). ✅
+
+### Bug encontrado e corrigido (commit `002750f`)
+
+**Sintoma**: PNG do Fal vinha 1024×1024 RGB (909KB), mas a tirinha era 64×64. Célula ficava com `largura=NULL, altura=NULL`, png imenso fora de escala.
+
+**Fix**: `lib/png-resize.js` novo (encoder/decoder PNG sem deps externas, suporta RGB e RGBA 8bpp, todos os filtros do spec, resize nearest-neighbor pra preservar bordas duras de pixel art). `lib/fe-prompts.js` agora baixa o resultado da IA, redimensiona pro tamanho da tirinha (LEFT JOIN com fe_tirinha pra pegar dimensões), grava largura/altura corretas no banco. Verificado: 1024×1024 RGB → 64×64 RGBA → 6.9KB no GCS.
+
+## Deploy em prod (2026-05-08)
+
+`did.ps1 deploy roto-master` rodou. Resultado: container saudável em ~6s. Migrations 016/017/018 aplicadas (já estavam aplicadas no banco da VM via smoke test local — banco compartilhado). UI nova servida (`fe_api.js`, `fe_home.js`, `fe_editor.js`, `fe_import.js`, `aseprite_io.js` todos 200 em prod).
+
+URL: `https://roto.did.lu/#/fe`.
 
 ## Mapa do código
 
