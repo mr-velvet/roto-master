@@ -39,6 +39,12 @@ const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
 // Polling
 let pollTimer = null;
 
+// Play (timeline)
+const PLAY_DEFAULT_MS = 100;
+let isPlaying = false;
+let playTimer = null;
+let playSavedQuadroIdx = 0;
+
 // === Refs ===
 const $name = document.querySelector('[data-bind="fe-editor-name"]');
 const $nameInput = document.querySelector('[data-bind="fe-editor-name-input"]');
@@ -52,6 +58,9 @@ const $selSummary = document.querySelector('[data-bind="fe-sel-summary"]');
 const $zoomLabel = document.querySelector('[data-bind="fe-zoom-label"]');
 const $bgLabel = document.querySelector('[data-bind="fe-bg-label"]');
 const $frameInfo = document.querySelector('[data-bind="fe-frame-info"]');
+const $playBtn = document.querySelector('[data-bind="fe-play-btn"]');
+const $playIcon = document.querySelector('[data-bind="fe-play-icon"]');
+const $playLabel = document.querySelector('[data-bind="fe-play-label"]');
 
 // === Entry point ===
 export async function showFeEditor(id) {
@@ -60,6 +69,7 @@ export async function showFeEditor(id) {
   activeQuadroIdx = 0;
   imgCache.clear();
   stopPolling();
+  stopPlay({ restore: false });
   $matrix.innerHTML = '';
 
   let data;
@@ -79,6 +89,10 @@ export async function showFeEditor(id) {
 }
 
 async function aplicarEstadoTirinha(data) {
+  // Guarda o estado do play pra restaurar depois (re-aplica vinda do polling não pode parar play)
+  const wasPlaying = isPlaying;
+  if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+
   tirinha = data;
   camadasOrdenadas = [...(data.camadas || [])].sort((a, b) => b.ordem - a.ordem);
   quadrosOrdenados = [...(data.quadros || [])].sort((a, b) => a.indice - b.indice);
@@ -93,7 +107,17 @@ async function aplicarEstadoTirinha(data) {
   renderMatrix();
   await renderCanvas();
   atualizarSelecaoUI();
+  atualizarPlayUI();
   agendarPollingSeNecessario();
+
+  // Se estava tocando, retoma do quadro atual (não interrompe)
+  if (wasPlaying && quadrosOrdenados.length) {
+    isPlaying = true;
+    atualizarPlayUI();
+    atualizarColHeadAtivo();
+    const q = quadrosOrdenados[activeQuadroIdx];
+    playTimer = setTimeout(tickPlay, duracaoDoQuadro(q));
+  }
 }
 
 // === Render matriz ===
@@ -193,6 +217,7 @@ function renderMatrix() {
 
 // === Seleção ===
 function onClickCelula(camId, quadroId, ev) {
+  if (isPlaying) stopPlay({ restore: false });
   const k = keyOf(camId, quadroId);
   if (ev.shiftKey) {
     selecionadas.add(k);
@@ -212,6 +237,7 @@ function onClickCelula(camId, quadroId, ev) {
 }
 
 function selecionarColuna(quadroId, ev) {
+  if (isPlaying) stopPlay({ restore: false });
   const append = ev.shiftKey || ev.ctrlKey || ev.metaKey;
   if (!append) selecionadas.clear();
   for (const cam of camadasOrdenadas) {
@@ -226,6 +252,7 @@ function selecionarColuna(quadroId, ev) {
 }
 
 function selecionarLinha(camId, ev) {
+  if (isPlaying) stopPlay({ restore: false });
   const append = ev.shiftKey || ev.ctrlKey || ev.metaKey;
   if (!append) selecionadas.clear();
   for (const q of quadrosOrdenados) {
@@ -388,13 +415,152 @@ function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
 }
 
+// === Play (timeline) ===
+// Toca quadro-a-quadro estilo Aseprite. Loop infinito. Não persiste nada.
+// Compósito de cada quadro = camadas visíveis em ordem ASC (já feito por renderCanvas).
+function duracaoDoQuadro(q) {
+  const d = q && typeof q.duracao_ms === 'number' ? q.duracao_ms : null;
+  if (d && d > 0) return d;
+  return PLAY_DEFAULT_MS;
+}
+
+async function precarregarQuadrosVisiveis() {
+  // Pré-carrega todos os PNGs visíveis pra o play não engasgar no primeiro ciclo.
+  const urls = new Set();
+  for (const cam of camadasOrdenadas) {
+    if (!cam.visivel) continue;
+    for (const q of quadrosOrdenados) {
+      const cel = celulasMap.get(keyOf(cam.id, q.id));
+      if (cel && cel.png_url) urls.add(cel.png_url);
+    }
+  }
+  await Promise.all([...urls].map((u) => loadImage(u).catch(() => null)));
+}
+
+function atualizarPlayUI() {
+  if (!$playBtn) return;
+  if (isPlaying) {
+    $playBtn.classList.add('is-playing');
+    if ($playIcon) $playIcon.textContent = '⏸';
+    if ($playLabel) $playLabel.textContent = 'pause';
+    $playBtn.title = 'pausar (espaço)';
+  } else {
+    $playBtn.classList.remove('is-playing');
+    if ($playIcon) $playIcon.textContent = '▶';
+    if ($playLabel) $playLabel.textContent = 'play';
+    $playBtn.title = 'tocar animação quadro a quadro (espaço)';
+  }
+}
+
+function atualizarColHeadAtivo() {
+  // Sem rebuild da matriz inteira — só troca a classe is-active dos col-heads.
+  const heads = $matrix.querySelectorAll('.fe-matrix-col-head');
+  heads.forEach((h, i) => h.classList.toggle('is-active', i === activeQuadroIdx));
+}
+
+async function startPlay() {
+  if (isPlaying) return;
+  if (!quadrosOrdenados.length) return;
+  isPlaying = true;
+  playSavedQuadroIdx = activeQuadroIdx;
+  atualizarPlayUI();
+  await precarregarQuadrosVisiveis();
+  if (!isPlaying) return; // pausou enquanto carregava
+  if (playTimer) return;  // já agendado por outra origem (re-aplica estado)
+  // primeiro tick imediato pra dar feedback
+  tickPlay();
+}
+
+function tickPlay() {
+  if (!isPlaying) return;
+  if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+  const total = quadrosOrdenados.length;
+  if (!total) { stopPlay({ restore: true }); return; }
+  // avança pro próximo quadro (com wrap)
+  activeQuadroIdx = (activeQuadroIdx + 1) % total;
+  // info textual + col-head ativo, sem rebuild
+  if ($frameInfo) $frameInfo.textContent = `quadro ${activeQuadroIdx + 1} / ${total}`;
+  atualizarColHeadAtivo();
+  // re-render só do canvas
+  renderCanvas();
+  const q = quadrosOrdenados[activeQuadroIdx];
+  const ms = duracaoDoQuadro(q);
+  playTimer = setTimeout(tickPlay, ms);
+}
+
+function stopPlay({ restore = true } = {}) {
+  if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+  if (!isPlaying) {
+    atualizarPlayUI();
+    return;
+  }
+  isPlaying = false;
+  atualizarPlayUI();
+  if (restore && quadrosOrdenados.length) {
+    if (playSavedQuadroIdx >= quadrosOrdenados.length) playSavedQuadroIdx = quadrosOrdenados.length - 1;
+    if (playSavedQuadroIdx < 0) playSavedQuadroIdx = 0;
+    activeQuadroIdx = playSavedQuadroIdx;
+    if ($frameInfo) $frameInfo.textContent = `quadro ${activeQuadroIdx + 1} / ${quadrosOrdenados.length}`;
+    atualizarColHeadAtivo();
+    renderCanvas();
+  }
+}
+
+function togglePlay() {
+  if (isPlaying) stopPlay({ restore: true }); else startPlay();
+}
+
 // === Handlers globais ===
 
 // Voltar
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-back"]')) return;
   stopPolling();
+  stopPlay({ restore: false });
   navigateFeHome();
+});
+
+// Sair da tela (header alternador, etc.) também pausa o play.
+window.addEventListener('hashchange', () => {
+  const h = window.location.hash || '';
+  if (!/^#\/fe\/t\//.test(h) && isPlaying) {
+    stopPlay({ restore: false });
+  }
+});
+
+// Play / Pause (botão)
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="fe-toggle-play"]')) return;
+  if (!tirinha) return;
+  togglePlay();
+});
+
+// Atalhos de teclado: espaço (play/pause), ← / → (navegar quadros).
+// Só ativa se a tela do editor está visível e o foco não está num campo de texto.
+document.addEventListener('keydown', (e) => {
+  if (!tirinha) return;
+  if (document.body.getAttribute('data-screen') !== 'fe-editor') return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+  if (e.key === ' ' || e.code === 'Space') {
+    e.preventDefault();
+    togglePlay();
+    return;
+  }
+  if (isPlaying) return; // setas só navegam quando pausado
+  if (e.key === 'ArrowLeft') {
+    if (activeQuadroIdx > 0) {
+      activeQuadroIdx--;
+      renderMatrix();
+      renderCanvas();
+    }
+  } else if (e.key === 'ArrowRight') {
+    if (activeQuadroIdx < quadrosOrdenados.length - 1) {
+      activeQuadroIdx++;
+      renderMatrix();
+      renderCanvas();
+    }
+  }
 });
 
 // Rename inline da tirinha
@@ -451,8 +617,10 @@ document.addEventListener('click', (e) => {
 // Navegação de quadros
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-action="fe-prev-quadro"]')) {
+    if (isPlaying) stopPlay({ restore: false });
     if (activeQuadroIdx > 0) { activeQuadroIdx--; renderMatrix(); renderCanvas(); }
   } else if (e.target.closest('[data-action="fe-next-quadro"]')) {
+    if (isPlaying) stopPlay({ restore: false });
     if (activeQuadroIdx < quadrosOrdenados.length - 1) { activeQuadroIdx++; renderMatrix(); renderCanvas(); }
   }
 });

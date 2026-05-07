@@ -3979,6 +3979,34 @@ body[data-space="frame-editor"] .modal-card,
   min-width: 100px;
   text-align: center;
 }
+.fe-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--fe-graphite-2);
+  border: 1px solid var(--fe-cyan-2);
+  color: var(--fe-cyan);
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  cursor: pointer;
+  transition: all 140ms var(--ease);
+}
+.fe-play-btn:hover {
+  border-color: var(--fe-cyan);
+  background: var(--fe-cyan-soft);
+}
+.fe-play-btn.is-playing {
+  background: var(--fe-cyan-soft);
+  border-color: var(--fe-cyan);
+  box-shadow: 0 0 0 1px var(--fe-cyan-soft), 0 0 12px var(--fe-cyan-glow);
+}
+.fe-play-icon {
+  font-size: 11px;
+  line-height: 1;
+}
 
 /* actions bar */
 .fe-editor-actions {
