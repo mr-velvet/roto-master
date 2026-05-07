@@ -1,6 +1,26 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-05 noite (auth simples — Logto/owner/membros removidos, token único compartilhado via `APP_TOKEN`. Commit `7290a4d`. `FAL_KEY` e `APP_TOKEN` no `.env` da VM. `deploy.sh` da VM consertado.)
+Última atualização: 2026-05-07 (commit `a2d9f4f` — upload de trabalho final + preview animado da rotoscopia, desacoplamento asset↔vídeo fase 1, fix da lixeira via confirmModal stacking. Deploy via `did.ps1 deploy roto-master` do `~/ved/devops-workflow-2026`.)
+
+## Estado atual em produção (2026-05-07)
+
+**Em https://roto.did.lu** — `version.json: rotoscopy-preview`.
+
+Fluxo de produção fechado: pessoa publica asset → baixa o `.aseprite` esqueleto (camada `ref` preenchida com vídeo, camada `draw` vazia) → rotoscopa no Aseprite desktop → sobe via `↥ subir trabalho final` no card ou modal → asset vira "feito" → card e modal mostram a rotoscopia animada (parser `.aseprite` em JS + canvas + timing real dos frames). Sem dependência de thumb-jpeg pré-gerada. Vídeo de referência continua mostrado em hover pra assets pendentes.
+
+**Desacoplamento asset↔vídeo (fase 1, sem migration):** `DELETE /api/assets/:id` não toca mais em `videos.published_asset_id`. `GET /api/videos` JOIN com `a.deleted_at IS NULL` — vídeo só mostra "publicado em X" se tem asset ATIVO. `POST /api/videos/:id/publish` permite publicar de novo se único asset foi pra lixeira. Mensagens não mentem mais sobre "vídeo voltar a ser rascunho". Decisão pendente do user: drop de `UNIQUE(video_id) WHERE deleted_at IS NULL` (fase 2) e drop da coluna `videos.published_asset_id` (fase 3) — ambos requerem migration; ficaram pra próxima sessão.
+
+**Fix sistêmico do `confirmModal`:** virou modal stacking (z-index 700, classe `modal-stacked`) que sobrepõe sem fechar o modal por baixo. Antes, qualquer handler de "deletar/jogar na lixeira" dentro de outro modal explodia silenciosamente porque `currentAsset` virava null antes do `await deleteAsset()` rodar. Aplica-se automaticamente aos `confirmModal` em `atelie_text2video.js`, `atelie_generate.js`, `gal_trash.js` — eles ganharam o conserto de graça.
+
+**Parser `.aseprite` em JS:** `public/js/aseprite_parser.js` (~200 linhas, lê RGBA 32bpp, cels comprimidos zlib + raw, layers, durações). Heurística `pickRotoscopyLayer` escolhe a camada de índice mais alto com pixels não-transparentes (a "draw" no nosso writer). `public/js/rotoscopy_preview.js` orquestra fetch + parse + canvas com cache em memória + lazy loading via `IntersectionObserver` no card. Pode ser reusado pra qualquer manipulação futura de `.aseprite` (split, merge, troca de camada de referência, etc).
+
+**Outros fixes da sessão:**
+- Botão "Galeria"/"Ateliê" do header sempre vai pra raiz daquele espaço (antes early-return em `chrome.js:20` bloqueava se já estava no espaço, mesmo numa subseção).
+- Vídeo no hover do card e modal de detalhe (substitui dependência de `thumb_url`).
+
+---
+
+Última atualização anterior: 2026-05-05 noite (auth simples — Logto/owner/membros removidos, token único compartilhado via `APP_TOKEN`. Commit `7290a4d`. `FAL_KEY` e `APP_TOKEN` no `.env` da VM. `deploy.sh` da VM consertado.)
 
 ## ⚠️ Auth simples (2026-05-05) — token único, sem owner
 
