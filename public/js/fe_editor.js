@@ -79,6 +79,8 @@ const $canvas = document.querySelector('[data-bind="fe-editor-canvas"]');
 const $canvasEmpty = document.querySelector('[data-bind="fe-editor-canvas-empty"]');
 const $matrix = document.querySelector('[data-bind="fe-matrix"]');
 const $btnSel = document.querySelector('[data-bind="fe-btn-prompt-selected"]');
+const $btnAll = document.querySelector('[data-action="fe-prompt-all"]');
+const $btnConfirmPrompt = document.querySelector('[data-action="fe-confirm-prompt"]');
 const $selCount = document.querySelector('[data-bind="fe-sel-count"]');
 const $selSummary = document.querySelector('[data-bind="fe-sel-summary"]');
 const $zoomLabel = document.querySelector('[data-bind="fe-zoom-label"]');
@@ -168,6 +170,10 @@ function remapId(kind, oldId, newId) {
   for (const k of selecionadas) novaSel.add(fixKey(k));
   selecionadas = novaSel;
 }
+
+// Estado do disparo em curso. Usado pra evitar clique duplo enquanto a request
+// pra /api/fe/prompts ainda não voltou (200-800ms no túnel IAP).
+let dispararEmCurso = false;
 
 // === Entry point ===
 export async function showFeEditor(id) {
@@ -408,7 +414,7 @@ function selecionarLinha(camId, ev) {
 function atualizarSelecaoUI() {
   const n = selecionadas.size;
   $selCount.textContent = String(n);
-  $btnSel.disabled = n === 0;
+  $btnSel.disabled = n === 0 || dispararEmCurso;
   // O botão secundário já comunica a contagem — só mostra summary detalhado
   // quando há seleção, pra reforçar a hierarquia (primário sempre no comando).
   if (n === 0) {
@@ -420,6 +426,49 @@ function atualizarSelecaoUI() {
   } else {
     $selSummary.textContent = `${n} células selecionadas`;
     $selSummary.classList.remove('is-empty');
+  }
+}
+
+// Liga/desliga os botoes que disparam prompt enquanto a request esta em curso.
+// Cobre o "prompt pra todos", "prompt pros selecionados" e o "aplicar prompt"
+// do modal de confirmacao — evita clique duplo em qualquer um dos tres.
+function setBotoesDispararEnabled(enabled) {
+  dispararEmCurso = !enabled;
+  if ($btnAll) $btnAll.disabled = !enabled;
+  if ($btnConfirmPrompt) $btnConfirmPrompt.disabled = !enabled;
+  // $btnSel respeita a seleção também: re-aplica o estado correto via
+  // atualizarSelecaoUI, que já leva dispararEmCurso em conta.
+  atualizarSelecaoUI();
+}
+
+// Marca célula localmente como processando, antes do 202 chegar. Devolve a
+// lista de ids que efetivamente mudaram de estado (ja eram idle), pra que o
+// caller saiba exatamente o que reverter em caso de falha.
+function marcarLocalProcessando(idsAlvo) {
+  const idsSet = new Set(idsAlvo);
+  const idsMarcados = [];
+  for (const cel of celulasMap.values()) {
+    if (!idsSet.has(cel.id)) continue;
+    if (cel.estado === 'processando') continue;
+    cel.estado = 'processando';
+    cel.estado_erro = null;
+    cel.estado_atualizado_em = new Date().toISOString();
+    idsMarcados.push(cel.id);
+  }
+  return idsMarcados;
+}
+
+// Reverte célula que tinha sido marcada otimisticamente como processando.
+// Usado quando o disparo falha (rede, 500 etc.) — devolve o estado pra idle
+// pra que o user possa tentar de novo sem precisar recarregar a pagina.
+function reverterLocalProcessando(idsRevertir) {
+  const idsSet = new Set(idsRevertir);
+  for (const cel of celulasMap.values()) {
+    if (!idsSet.has(cel.id)) continue;
+    if (cel.estado !== 'processando') continue;
+    cel.estado = 'idle';
+    cel.estado_erro = null;
+    cel.estado_atualizado_em = new Date().toISOString();
   }
 }
 
@@ -1085,6 +1134,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-prompt-all"]')) return;
   if (!tirinha) return;
+  if (dispararEmCurso) return; // disparo anterior ainda em voo
   abrirModalPrompt({ tipo: 'all' });
 });
 
@@ -1092,6 +1142,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-prompt-selected"]')) return;
   if (!tirinha || !selecionadas.size) return;
+  if (dispararEmCurso) return;
   abrirModalPrompt({ tipo: 'selected' });
 });
 
@@ -1116,6 +1167,7 @@ function abrirModalPrompt({ tipo }) {
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-action="fe-confirm-prompt"]')) return;
   if (!tirinha) return;
+  if (dispararEmCurso) return; // belt-and-suspenders: botão já fica disabled.
   const m = document.querySelector('[data-modal="fe-prompt"]');
   const $err = m.querySelector('[data-bind="fe-prompt-err"]');
   const $text = m.querySelector('[data-bind="fe-prompt-text"]');
@@ -1123,9 +1175,17 @@ document.addEventListener('click', async (e) => {
   $err.textContent = '';
   if (!prompt) { $err.textContent = 'escreva um prompt'; return; }
 
+  // Critério de alvos espelha o backend: pega ids das células elegíveis
+  // (em estado != processando). "all" usa todas as celulas da tirinha; o
+  // backend filtra silenciosamente as que ja estao processando — como
+  // fazemos o mesmo filtro aqui, a contagem mostrada pro user bate com a
+  // que vai voltar em `celulas_marcadas`.
   let alvosIds;
   if (promptModoAtual === 'all') {
-    alvosIds = (tirinha.celulas || []).map((c) => c.id).filter((id) => !isTmpId(id));
+    alvosIds = [];
+    for (const cel of celulasMap.values()) {
+      if (cel.estado !== 'processando' && !isTmpId(cel.id)) alvosIds.push(cel.id);
+    }
   } else {
     alvosIds = [];
     for (const k of selecionadas) {
@@ -1138,19 +1198,30 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  // === Feedback otimista, ANTES de await ===
+  // 1. Marca localmente, 2. re-render pinta processando, 3. fecha modal,
+  // 4. toast imediato. Tudo no mesmo tick — user vê reação no clique.
+  const idsMarcadosLocal = marcarLocalProcessando(alvosIds);
+  setBotoesDispararEnabled(false);
+  renderMatrix();
+  closeModal();
+  showToast(`prompt enviado em ${idsMarcadosLocal.length} célula${idsMarcadosLocal.length === 1 ? '' : 's'}…`);
+
   try {
     await dispararPrompt({ tirinhaId: tirinha.id, prompt, celulasIds: alvosIds });
-    closeModal();
-    showToast(`prompt disparado em ${alvosIds.length} célula${alvosIds.length === 1 ? '' : 's'}`);
-    // marca localmente como processando enquanto não vem update
-    const idsSet = new Set(alvosIds);
-    for (const cel of celulasMap.values()) {
-      if (idsSet.has(cel.id)) cel.estado = 'processando';
-    }
-    renderMatrix();
+    // Sucesso: backend marcou de verdade. Diferenca entre `idsMarcadosLocal`
+    // e `celulas_marcadas` (resposta) e' tolerada — polling de 3s reconcilia
+    // o estado real (ex: race em que outra sessao marcou alguma alem da nossa).
     agendarPollingSeNecessario();
   } catch (err) {
-    $err.textContent = err.message;
+    // Falha: reverte localmente e avisa o user. Copy neutro (sem mensagem
+    // tecnica do err.message — regra global).
+    console.warn('disparar prompt falhou:', err);
+    reverterLocalProcessando(idsMarcadosLocal);
+    renderMatrix();
+    showToast('falha ao enviar prompt — tente de novo');
+  } finally {
+    setBotoesDispararEnabled(true);
   }
 });
 
