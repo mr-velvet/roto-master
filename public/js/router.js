@@ -8,6 +8,8 @@
 //   #/atelie/generate     → ateliê, fluxo C (imagem → vídeo)
 //   #/atelie/text2video   → ateliê, fluxo D (texto → vídeo)
 //   #/v/:video_id         → editor
+//   #/fe                  → frames editor, lista de tirinhas
+//   #/fe/t/:tirinha_id    → frames editor, editor da tirinha
 
 let handlers = {
   onHome: () => {},
@@ -17,6 +19,8 @@ let handlers = {
   onGenerate: () => {},
   onTextVideo: () => {},
   onEditor: () => {},
+  onFeHome: () => {},
+  onFeEditor: () => {},
 };
 
 export function bindRouter(deps) {
@@ -30,6 +34,8 @@ function parseHash() {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]+)$/i))) return { route: 'project', id: m[1] };
   if ((m = h.match(/^#\/v\/([0-9a-f-]+)$/i))) return { route: 'editor', id: m[1] };
+  if ((m = h.match(/^#\/fe\/t\/([0-9a-f-]+)$/i))) return { route: 'fe-editor', id: m[1] };
+  if (h === '#/fe' || h === '#/fe/') return { route: 'fe-home' };
   if (h === '#/trash') return { route: 'trash' };
   if (h === '#/atelie/generate') return { route: 'generate' };
   if (h === '#/atelie/text2video') return { route: 'text-video' };
@@ -47,6 +53,8 @@ function dispatch() {
   else if (r.route === 'generate') handlers.onGenerate();
   else if (r.route === 'text-video') handlers.onTextVideo();
   else if (r.route === 'editor') handlers.onEditor(r.id);
+  else if (r.route === 'fe-home') handlers.onFeHome();
+  else if (r.route === 'fe-editor') handlers.onFeEditor(r.id);
 }
 
 export function navigateHome() {
@@ -69,6 +77,12 @@ export function navigateTextVideo() {
 }
 export function navigateEditor(id) {
   setHash(`#/v/${id}`);
+}
+export function navigateFeHome() {
+  setHash('#/fe');
+}
+export function navigateFeEditor(id) {
+  setHash(`#/fe/t/${id}`);
 }
 
 function setHash(target) {
