@@ -288,17 +288,19 @@ body[data-space="atelie"] .space-label-name { color: var(--copper); }
 .space-switch-btn {
   position: relative;
   z-index: 2;
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 14px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 7px 16px;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--paper-3);
   transition: color 200ms var(--ease);
+  white-space: nowrap;
 }
 .space-switch-btn .space-switch-icon {
   font-size: 11px;
   opacity: 0.7;
+  margin-right: 2px;
 }
 .space-switch-btn.is-active {
   color: var(--paper);
@@ -3452,13 +3454,16 @@ body[data-space="frame-editor"] .space-switch-btn[data-space="frame-editor"].is-
   color: var(--fe-cyan);
 }
 body[data-space="frame-editor"] .space-switch-thumb {
-  background: linear-gradient(180deg, rgba(77, 217, 214, 0.18), rgba(77, 217, 214, 0.06));
-  border-color: var(--fe-cyan-soft);
+  /* mais sutil que copper/galeria pra ciano não destoar — contorno + leve glow */
+  background: linear-gradient(180deg, rgba(77, 217, 214, 0.10), rgba(77, 217, 214, 0.03));
+  border-color: rgba(77, 217, 214, 0.45);
 }
 
-/* alternador ternário — thumb com 3 posições */
-.space-switch-3 {
-  /* mantém visual base mas ajusta thumb pra 3 posições */
+/* alternador ternário — thumb com 3 posições + larguras iguais */
+.space-switch-3 .space-switch-btn {
+  /* iguala largura dos 3 botões pra "FRAMES EDITOR" não inflar a faixa do meio */
+  flex: 1 1 0;
+  min-width: 132px;
 }
 .space-switch-3 .space-switch-thumb {
   width: calc(33.333% - 2px);
@@ -4006,7 +4011,7 @@ body[data-space="frame-editor"] .modal-card,
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 11px 20px;
   background: var(--fe-cyan-soft);
   border: 1px solid var(--fe-cyan);
   color: var(--fe-cyan);
@@ -4025,7 +4030,16 @@ body[data-space="frame-editor"] .modal-card,
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* secundário: discreto quando vazio (ghost cinza), violeta+destaque quando há seleção.
+   Hierarquia: primário (ciano cheio) > secundário ativo (violeta) > secundário sem seleção (ghost). */
 .fe-btn-prompt-secondary {
+  padding: 9px 16px;
+  background: transparent;
+  border-color: var(--fe-line-2);
+  color: var(--paper-4);
+  font-size: 10.5px;
+}
+.fe-btn-prompt-secondary:not(:disabled) {
   background: var(--fe-violet-soft);
   border-color: var(--fe-violet);
   color: var(--fe-violet);
@@ -4040,12 +4054,15 @@ body[data-space="frame-editor"] .modal-card,
   font-size: 14px;
   margin-left: 4px;
 }
+.fe-btn-prompt-secondary:disabled .fe-sel-count { display: none; }
 .fe-editor-sel-summary {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--paper-4);
 }
+/* sumiço do summary quando não há seleção — o próprio botão secundário já comunica */
+.fe-editor-sel-summary.is-empty { display: none; }
 .fe-btn-add { font-size: 11px; }
 
 /* matriz camadas × quadros */
