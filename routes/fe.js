@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { requireUser } = require('../middleware/auth');
 const { uploadBuffer, PUBLIC_URL_PREFIX } = require('../lib/gcs');
+const { processarLote } = require('../lib/fe-prompts');
 
 const router = Router();
 
@@ -649,6 +650,79 @@ router.patch('/celulas/:id', requireUser, async (req, res) => {
     if (tratarErroId(e, res)) return;
     console.error('patch celula:', e);
     res.status(500).json({ error: 'patch failed' });
+  }
+});
+
+// ============================================================
+// Prompt (IA) — assíncrono desde o MVP (ia.md §1)
+// ============================================================
+
+// POST /api/fe/prompts — dispara prompt sobre uma ou mais células.
+// Body: { tirinha_id, prompt, celulas_ids: [uuid, ...] }
+// Resp: { job_id, celulas_marcadas } (HTTP 202)
+//
+// Comportamento:
+//   1. Em transação, marca células como `processando` (rejeitando as que já
+//      estão `processando` — ia.md §5: "rejeitar duplicata silenciosamente").
+//   2. Devolve 202 imediatamente.
+//   3. Processa em background via lib/fe-prompts.processarLote.
+//
+// Sem retry, sem cancelamento, sem cache (ia.md §7-9). Coerência entre
+// quadros vizinhos é responsabilidade do user e do modelo, não da arquitetura.
+router.post('/prompts', requireUser, async (req, res) => {
+  const tirinhaId = (req.body?.tirinha_id || '').trim();
+  const prompt = (req.body?.prompt || '').trim();
+  const celulasIds = Array.isArray(req.body?.celulas_ids) ? req.body.celulas_ids : [];
+
+  if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
+  if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
+  if (prompt.length > 4000) return res.status(400).json({ error: 'prompt muito longo (máx 4000)' });
+  if (!celulasIds.length) return res.status(400).json({ error: 'celulas_ids obrigatório' });
+  if (celulasIds.length > 500) return res.status(400).json({ error: 'lote muito grande (máx 500)' });
+
+  const pool = req.app.locals.pool;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Marca como processando só as que estão idle e pertencem à tirinha pedida.
+    // O `RETURNING id` traz a lista efetivamente marcada (filtra ids inválidos
+    // ou já processando — silencioso, conforme ia.md §5).
+    const { rows: marcadas } = await client.query(
+      `UPDATE fe_celula
+          SET estado = 'processando',
+              estado_erro = NULL,
+              estado_atualizado_em = NOW()
+        WHERE id = ANY($1::uuid[])
+          AND tirinha_id = $2
+          AND estado = 'idle'
+        RETURNING id`,
+      [celulasIds, tirinhaId]
+    );
+
+    await client.query('COMMIT');
+
+    const idsMarcados = marcadas.map((r) => r.id);
+    const jobId = crypto.randomUUID();
+
+    // Fire-and-forget: dispara o processamento sem esperar.
+    if (idsMarcados.length > 0) {
+      processarLote(pool, idsMarcados, prompt).catch((e) => {
+        console.error('fe-prompts lote', jobId, 'falhou:', e);
+      });
+    }
+
+    res.status(202).json({
+      job_id: jobId,
+      celulas_marcadas: idsMarcados,
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (tratarErroId(e, res)) return;
+    console.error('post prompts:', e);
+    res.status(500).json({ error: 'falha ao disparar prompt' });
+  } finally {
+    client.release();
   }
 });
 
