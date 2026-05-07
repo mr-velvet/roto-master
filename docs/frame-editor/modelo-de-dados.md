@@ -1,6 +1,6 @@
 # Frames Editor — modelo de dados
 
-Última atualização: 2026-05-07 (criação)
+Última atualização: 2026-05-07 (criação) — 2026-05-08 (ajuste pós-migration: explicita `largura`/`altura` em `fe_tirinha`, adiciona `last_aseprite_url`, formaliza colunas de estado em `fe_celula`).
 
 Detalha as entidades do Frames Editor no banco. Escopo MVP. Decisões de UI, IA, API e storage físico ficam em docs irmãos.
 
@@ -26,6 +26,9 @@ Uma linha por tirinha viva no Frames Editor.
 |---|---|---|
 | `id` | UUID, PK | |
 | `nome` | text | Editável pelo user. Default na criação: derivado da origem (nome do arquivo no upload, nome do asset no import, "Tirinha sem título" no caso de criar vazia). |
+| `largura` | int, NOT NULL | Largura do canvas em pixels. Definida na criação (vazia → user escolhe; upload/asset → vem do `.aseprite`). Não muda depois no MVP. |
+| `altura` | int, NOT NULL | Altura do canvas em pixels. Mesma regra. |
+| `last_aseprite_url` | text, nullable | URL do último `.aseprite` exportado dessa tirinha (forma curta `st.did.lu/...`). Atualizado a cada exportação. NULL = nunca foi exportada. Suporta o "baixar último" em `storage.md` §4.2. |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | Atualizado a cada edição relevante (camada/quadro/célula muda). |
 | `origem` | text | Enum textual: `vazia`, `upload`, `asset`. Snapshot da origem na criação. Não muda depois. |
@@ -76,6 +79,9 @@ Uma linha por interseção camada × quadro. **É aqui que vive a referência à
 | `png_url` | text, nullable | URL pública do PNG. NULL = célula vazia (transparente, ainda não preenchida). |
 | `largura` | int, nullable | Pixels. NULL quando célula vazia. |
 | `altura` | int, nullable | Pixels. NULL quando célula vazia. |
+| `estado` | text, NOT NULL DEFAULT `'idle'` | `idle` ou `processando` (CHECK constraint). Suporta `ia.md` §5 — operação de IA visível ao banco, não só à UI local. |
+| `estado_erro` | text, nullable | Mensagem do último erro de processamento (`ia.md` §8). NULL quando estado limpo. |
+| `estado_atualizado_em` | timestamptz, nullable | Quando o estado mudou. Útil pra detectar processamentos travados em rodada própria de monitoração. |
 | `updated_at` | timestamptz | Toca a cada substituição de PNG. |
 
 UNIQUE constraint **obrigatória**: `(camada_id, quadro_id)` — uma célula por interseção.
