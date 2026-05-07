@@ -16,8 +16,10 @@ export function bindChrome(handlers) {
   onSwitchSpace = handlers.onSwitchSpace;
   $switchBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
+      // Click no botão sempre vai pra raiz daquele espaço — mesmo se você já
+      // está nele. Sem isso, estar em /trash ou /p/:id não te deixa voltar pra
+      // raiz da Galeria sem dar uma volta pelo Ateliê.
       const target = btn.getAttribute('data-space');
-      if ($body.getAttribute('data-space') === target) return;
       onSwitchSpace?.(target);
     });
   });

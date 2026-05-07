@@ -27,7 +27,7 @@ router.get('/', requireUser, async (req, res) => {
               a.project_id AS published_project_id,
               p.name AS published_project_name
          FROM videos v
-         LEFT JOIN assets a   ON a.id = v.published_asset_id
+         LEFT JOIN assets a   ON a.id = v.published_asset_id AND a.deleted_at IS NULL
          LEFT JOIN projects p ON p.id = a.project_id
         ORDER BY v.updated_at DESC`
     );
@@ -55,9 +55,17 @@ router.post('/', requireUser, async (req, res) => {
 });
 
 router.get('/:id', requireUser, async (req, res) => {
+  const cols = VIDEO_COLS.replace(/\s+/g, ' ').split(',').map((c) => `v.${c.trim()}`).join(', ');
   try {
     const { rows } = await req.app.locals.pool.query(
-      `SELECT ${VIDEO_COLS} FROM videos WHERE id = $1`,
+      `SELECT ${cols},
+              a.id AS published_asset_id_active,
+              a.project_id AS published_project_id,
+              p.name AS published_project_name
+         FROM videos v
+         LEFT JOIN assets a   ON a.id = v.published_asset_id AND a.deleted_at IS NULL
+         LEFT JOIN projects p ON p.id = a.project_id
+        WHERE v.id = $1`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'não encontrado' });
@@ -149,7 +157,11 @@ router.post('/:id/publish', requireUser, upload.single('file'), async (req, res)
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `SELECT id, name, published_asset_id FROM videos WHERE id = $1 FOR UPDATE`,
+      `SELECT v.id, v.name, v.published_asset_id,
+              a.id AS active_asset_id
+         FROM videos v
+         LEFT JOIN assets a ON a.id = v.published_asset_id AND a.deleted_at IS NULL
+        WHERE v.id = $1 FOR UPDATE OF v`,
       [req.params.id]
     );
     if (!rows.length) {
@@ -157,9 +169,11 @@ router.post('/:id/publish', requireUser, upload.single('file'), async (req, res)
       return res.status(404).json({ error: 'vídeo não encontrado' });
     }
     const video = rows[0];
-    if (video.published_asset_id) {
+    // Bloqueia só se há asset ATIVO. Se o último asset foi pra lixeira,
+    // vídeo é tratável como rascunho — pode publicar de novo, criando asset novo.
+    if (video.active_asset_id) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'vídeo já publicado; use republicar', published_asset_id: video.published_asset_id });
+      return res.status(409).json({ error: 'vídeo já publicado; use republicar', published_asset_id: video.active_asset_id });
     }
 
     const assetName = assetNameOverride || video.name;

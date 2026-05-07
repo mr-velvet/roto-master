@@ -1248,6 +1248,8 @@ button.tag {
   display: grid; place-items: center;
 }
 .modal[hidden] { display: none; }
+/* confirmModal sobrepõe modal principal — z-index maior pra empilhar visualmente */
+.modal.modal-stacked { z-index: 700; }
 .modal-backdrop {
   position: absolute;
   inset: 0;
@@ -2080,7 +2082,7 @@ body:not(.app-loading) #login-loading { display: none; }
   letter-spacing: -0.02em;
 }
 
-/* preview com thumb real (foto/frame do vídeo) */
+/* preview com thumb real (foto/frame do vídeo) — legado */
 .asset-card-preview.has-thumb {
   background-size: cover;
   background-position: center;
@@ -2092,6 +2094,40 @@ body:not(.app-loading) #login-loading { display: none; }
   background: linear-gradient(180deg, rgba(5,5,6,0) 60%, rgba(5,5,6,0.5));
   pointer-events: none;
 }
+
+/* preview com vídeo de origem — toca no hover do card */
+.asset-card-preview.has-video { background: var(--ink-0); }
+.asset-card-preview-video {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  background: var(--ink-0);
+  pointer-events: none;
+}
+.asset-card-preview.has-video::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5,5,6,0) 60%, rgba(5,5,6,0.5));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* preview com rotoscopia animada (asset feito) */
+.asset-card-preview.has-rotoscopy { background: var(--ink-0); }
+.asset-card-preview-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: var(--ink-0);
+  pointer-events: none;
+}
+
+.asset-card-preview .asset-card-status,
+.asset-card-preview .asset-card-hover-actions { z-index: 2; }
 .video-card-thumb.has-thumb {
   background-size: cover;
   background-position: center;
@@ -2206,7 +2242,18 @@ body:not(.app-loading) #login-loading { display: none; }
   border: 1px solid var(--line);
   display: grid; place-items: center;
   overflow: hidden;
+  cursor: default;
 }
+.asset-detail-preview-video,
+.asset-detail-preview-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: var(--ink-0);
+}
+.asset-detail-preview-canvas { image-rendering: pixelated; }
+.asset-detail-preview .asset-detail-status-chip { z-index: 2; }
 .asset-detail-preview-mark {
   font-family: var(--font-display);
   font-style: italic;

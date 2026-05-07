@@ -64,3 +64,19 @@ export async function purgeAsset(id) {
     throw new Error(err.error || 'purge: ' + r.status);
   }
 }
+
+// Upload do trabalho final (.aseprite rotoscopado). Sobrescreve no GCS, marca done.
+export async function uploadFinal(id, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await authedFetch(`/api/assets/${id}/upload-final`, {
+    method: 'POST',
+    body: fd,
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'upload-final: ' + r.status);
+  }
+  const { asset } = await r.json();
+  return asset;
+}

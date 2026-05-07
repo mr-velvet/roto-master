@@ -836,7 +836,9 @@
         </div>
       </div>
 
-      <div class="asset-detail-preview">
+      <div class="asset-detail-preview" data-bind="asset-detail-preview-wrap">
+        <canvas class="asset-detail-preview-canvas" data-bind="asset-detail-preview-canvas" hidden></canvas>
+        <video class="asset-detail-preview-video" data-bind="asset-detail-preview-video" muted playsinline loop preload="metadata" hidden></video>
         <div class="asset-detail-preview-mark" data-bind="asset-detail-preview">A</div>
         <button class="asset-detail-status-chip" data-bind="asset-detail-status-chip" type="button" title="clique pra alternar status">pendente</button>
       </div>
@@ -850,7 +852,11 @@
       </div>
 
       <div class="asset-detail-actions">
-        <button class="btn btn-publish" data-action="asset-detail-download" type="button">
+        <button class="btn btn-publish" data-action="asset-detail-upload-final" type="button" title="sobe o .aseprite finalizado, marca asset como feito">
+          <span class="btn-icon">↥</span>
+          subir trabalho final
+        </button>
+        <button class="btn btn-ghost" data-action="asset-detail-download" type="button" title="baixar o .aseprite atual">
           <span class="btn-icon">↓</span>
           baixar <code>.aseprite</code>
         </button>

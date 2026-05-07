@@ -53,13 +53,14 @@ function render() {
       'generated-from-character': { label: 'personagem', cls: 'tag-origin-character', icon: '☻' },
     };
     const o = originMap[origin] || { label: origin, cls: '', icon: '·' };
-    const isPublished = !!v.published_asset_id;
+    // "publicado" = tem asset ATIVO em algum projeto. Backend já filtra
+    // assets na lixeira no LEFT JOIN — published_project_id só vem se há
+    // asset ativo. Vídeo independente do ciclo de vida do asset.
+    const isPublished = !!v.published_project_id;
     const dur = v.duration_s ? `${v.duration_s.toFixed(1)}s` : '';
     const projName = v.published_project_name || '';
     const publishedTag = isPublished
-      ? (projName
-          ? `<button class="tag tag-published video-card-published-link" data-action="goto-published-project" data-project-id="${v.published_project_id}" type="button" title="abrir projeto na Galeria">◆ publicado em <em>${escapeHtml(projName)}</em></button>`
-          : `<span class="tag tag-published">◆ publicado</span>`)
+      ? `<button class="tag tag-published video-card-published-link" data-action="goto-published-project" data-project-id="${v.published_project_id}" type="button" title="abrir projeto na Galeria">◆ publicado em <em>${escapeHtml(projName)}</em></button>`
       : `<span class="tag tag-draft">◇ rascunho</span>`;
 
     const thumbUrl = v.thumb_url;

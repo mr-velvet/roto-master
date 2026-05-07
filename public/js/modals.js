@@ -56,7 +56,13 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Helper: confirm modal
+// confirmModal é um modal SECUNDÁRIO que sobrepõe o activeModal sem fechá-lo.
+// Razão: handlers em modais (ex: "jogar na lixeira" no detalhe do asset) chamavam
+// await confirmModal(...) e quando o openModal fechava o modal principal, o
+// onClose do principal zerava o estado (currentAsset = null), e o handler
+// explodia silenciosamente ao tentar usar esse estado depois do confirm. Em vez
+// de exigir que cada handler salve estado antes do confirm, o confirm agora
+// não toca no activeModal — empilha por cima com z-index maior.
 export function confirmModal({ title, message, danger = true, confirmLabel = 'apagar' }) {
   return new Promise((resolve) => {
     const m = getModal('confirm');
@@ -65,13 +71,46 @@ export function confirmModal({ title, message, danger = true, confirmLabel = 'ap
     const btnYes = m.querySelector('[data-action="confirm-yes"]');
     btnYes.textContent = confirmLabel;
     btnYes.className = danger ? 'btn btn-danger' : 'btn btn-primary';
-    const handler = () => {
-      btnYes.removeEventListener('click', handler);
-      closeModal();
-      resolve(true);
+
+    let settled = false;
+    const cleanup = () => {
+      m.setAttribute('hidden', '');
+      m.classList.remove('modal-stacked');
+      btnYes.removeEventListener('click', onYes);
+      m.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey, true);
     };
-    btnYes.addEventListener('click', handler, { once: true });
-    openModal('confirm', { onClose: () => resolve(false) });
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(val);
+    };
+    const onYes = (e) => { e.stopPropagation(); finish(true); };
+    const onBackdrop = (e) => {
+      if (e.target.closest('[data-action="modal-close"]')) {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        finish(false);
+      }
+    };
+
+    btnYes.addEventListener('click', onYes);
+    m.addEventListener('click', onBackdrop);
+    // captura: precede o ESC handler global de closeModal pra ele não fechar
+    // o modal principal por baixo.
+    document.addEventListener('keydown', onKey, true);
+
+    m.classList.add('modal-stacked');
+    m.removeAttribute('hidden');
+    setTimeout(() => btnYes.focus(), 50);
   });
 }
 

@@ -241,7 +241,9 @@ export async function openEditor(videoId) {
   }
   currentVideo = v;
   $videoNameDisplay.textContent = v.name;
-  setPublishState(!!v.published_asset_id);
+  // "publicado" = tem asset ATIVO (não na lixeira). published_asset_id_active
+  // vem do backend filtrado por deleted_at IS NULL.
+  setPublishState(!!v.published_asset_id_active);
 
   stopPlay();
   stopAutosave();
@@ -475,12 +477,15 @@ async function openPublishModal() {
     return;
   }
 
-  // Se vídeo já tem asset, busca pra ter project_id+name atuais e
-  // pré-preencher o modal. Se mudar qualquer um, vira "publicar como novo".
+  // Se vídeo tem asset ATIVO (não na lixeira), busca pra pré-preencher o modal.
+  // Se mudar nome ou projeto, vira "publicar como novo". Asset na lixeira é
+  // ignorado: vídeo é tratado como rascunho fresco — uma publicação nova cria
+  // um asset novo sem mexer no que está na lixeira.
   currentAssetForRepublish = null;
-  if (currentVideo.published_asset_id) {
+  const activeAssetId = currentVideo.published_asset_id_active;
+  if (activeAssetId) {
     try {
-      const existing = await getAsset(currentVideo.published_asset_id);
+      const existing = await getAsset(activeAssetId);
       if (existing) {
         currentAssetForRepublish = {
           id: existing.id,
