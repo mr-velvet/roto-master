@@ -243,12 +243,17 @@ function atualizarSelecaoUI() {
   const n = selecionadas.size;
   $selCount.textContent = String(n);
   $btnSel.disabled = n === 0;
+  // O botão secundário já comunica a contagem — só mostra summary detalhado
+  // quando há seleção, pra reforçar a hierarquia (primário sempre no comando).
   if (n === 0) {
-    $selSummary.textContent = 'nenhuma seleção';
+    $selSummary.textContent = '';
+    $selSummary.classList.add('is-empty');
   } else if (n === 1) {
     $selSummary.textContent = '1 célula selecionada';
+    $selSummary.classList.remove('is-empty');
   } else {
     $selSummary.textContent = `${n} células selecionadas`;
+    $selSummary.classList.remove('is-empty');
   }
 }
 
