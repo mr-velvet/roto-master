@@ -1,0 +1,170 @@
+// Cliente da API do Frames Editor. Endpoints sob /api/fe/.
+// Espelha docs/frame-editor/api.md.
+
+import { authedFetch } from './auth.js';
+
+async function jsonOrThrow(r, ctx) {
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `${ctx}: ${r.status}`);
+  }
+  return r.json();
+}
+
+// === Tirinhas ===
+
+export async function listTirinhas() {
+  const r = await authedFetch('/api/fe/tirinhas');
+  const data = await jsonOrThrow(r, 'list tirinhas');
+  return data.tirinhas || [];
+}
+
+export async function getTirinha(id) {
+  const r = await authedFetch(`/api/fe/tirinhas/${id}`);
+  if (r.status === 404) return null;
+  return jsonOrThrow(r, 'get tirinha');
+}
+
+// Cria tirinha vazia. Servidor monta 1 camada + 1 quadro + 1 célula vazia.
+export async function createTirinhaVazia({ nome, largura, altura }) {
+  const r = await authedFetch('/api/fe/tirinhas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origem: 'vazia', nome, largura, altura }),
+  });
+  return jsonOrThrow(r, 'create tirinha (vazia)');
+}
+
+// Cria tirinha de upload (após front parsear .aseprite e subir os PNGs).
+// Recebe a estrutura final com URLs já resolvidas.
+export async function createTirinhaUpload({ nome, origem_meta, largura, altura, camadas, quadros, celulas }) {
+  const r = await authedFetch('/api/fe/tirinhas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      origem: 'upload',
+      nome,
+      origem_meta,
+      largura,
+      altura,
+      camadas,
+      quadros,
+      celulas,
+    }),
+  });
+  return jsonOrThrow(r, 'create tirinha (upload)');
+}
+
+export async function patchTirinha(id, patch) {
+  const r = await authedFetch(`/api/fe/tirinhas/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return jsonOrThrow(r, 'patch tirinha');
+}
+
+export async function deleteTirinha(id) {
+  const r = await authedFetch(`/api/fe/tirinhas/${id}`, { method: 'DELETE' });
+  return jsonOrThrow(r, 'delete tirinha');
+}
+
+// === Camadas ===
+
+export async function addCamada(tirinhaId, { nome, ordem, visivel } = {}) {
+  const r = await authedFetch(`/api/fe/tirinhas/${tirinhaId}/camadas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nome, ordem, visivel }),
+  });
+  const data = await jsonOrThrow(r, 'add camada');
+  return data.camada;
+}
+
+export async function patchCamada(id, patch) {
+  const r = await authedFetch(`/api/fe/camadas/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const data = await jsonOrThrow(r, 'patch camada');
+  return data.camada;
+}
+
+export async function deleteCamada(id) {
+  const r = await authedFetch(`/api/fe/camadas/${id}`, { method: 'DELETE' });
+  return jsonOrThrow(r, 'delete camada');
+}
+
+// === Quadros ===
+
+export async function addQuadro(tirinhaId, { indice } = {}) {
+  const r = await authedFetch(`/api/fe/tirinhas/${tirinhaId}/quadros`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ indice }),
+  });
+  const data = await jsonOrThrow(r, 'add quadro');
+  return data.quadro;
+}
+
+export async function deleteQuadro(id) {
+  const r = await authedFetch(`/api/fe/quadros/${id}`, { method: 'DELETE' });
+  return jsonOrThrow(r, 'delete quadro');
+}
+
+// === Células ===
+
+// Sobe PNG (multipart). Recebe Blob/File ou Uint8Array (será envelopado em Blob).
+export async function uploadPng({ tirinhaId, celulaId, blob, filename = 'cel.png' }) {
+  const fd = new FormData();
+  const fileBlob = blob instanceof Blob ? blob : new Blob([blob], { type: 'image/png' });
+  fd.append('file', fileBlob, filename);
+  if (tirinhaId) fd.append('tirinha_id', tirinhaId);
+  if (celulaId) fd.append('celula_id', celulaId);
+  const r = await authedFetch('/api/fe/upload-png', { method: 'POST', body: fd });
+  return jsonOrThrow(r, 'upload-png');
+}
+
+export async function patchCelula(id, { png_url, largura, altura }) {
+  const body = { png_url };
+  if (png_url) {
+    if (Number.isFinite(largura)) body.largura = largura;
+    if (Number.isFinite(altura)) body.altura = altura;
+  }
+  const r = await authedFetch(`/api/fe/celulas/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await jsonOrThrow(r, 'patch celula');
+  return data.celula;
+}
+
+// === Aseprite (export) ===
+
+export async function uploadAseprite({ tirinhaId, blob, filename = 'tirinha.aseprite' }) {
+  const fd = new FormData();
+  const fileBlob = blob instanceof Blob ? blob : new Blob([blob], { type: 'application/octet-stream' });
+  fd.append('file', fileBlob, filename);
+  fd.append('tirinha_id', tirinhaId);
+  const r = await authedFetch('/api/fe/upload-aseprite', { method: 'POST', body: fd });
+  return jsonOrThrow(r, 'upload-aseprite');
+}
+
+// === Prompts (IA) ===
+//
+// Endpoint pode ainda não existir na worktree atual (está sendo escrito em
+// paralelo). Front trata 404 como "back ainda não tem o endpoint" e mostra
+// mensagem amigável.
+export async function dispararPrompt({ tirinhaId, prompt, celulasIds }) {
+  const r = await authedFetch('/api/fe/prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tirinha_id: tirinhaId, prompt, celulas_ids: celulasIds }),
+  });
+  if (r.status === 404) {
+    throw new Error('endpoint de prompt ainda não disponível no servidor');
+  }
+  return jsonOrThrow(r, 'disparar prompt');
+}

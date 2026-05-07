@@ -1,7 +1,7 @@
-// Chrome global: alternador Galeria/Ateliê + breadcrumb + transição animada.
+// Chrome global: alternador Galeria/Ateliê/Frames Editor + breadcrumb + transição animada.
 // Atributos no <body>:
-//   data-space = "galeria" | "atelie"
-//   data-screen = "home" | "project" | "atelie" | "editor"
+//   data-space = "galeria" | "atelie" | "frame-editor"
+//   data-screen = "home" | "project" | "atelie" | "editor" | "fe-home" | "fe-editor" | ...
 
 const $body = document.body;
 const $spaceName = document.querySelector('[data-bind="space-name"]');
@@ -25,12 +25,12 @@ export function bindChrome(handlers) {
   });
 }
 
-// chama com space="galeria"|"atelie" e screen="home"|"project"|"atelie"|"editor"
+// chama com space="galeria"|"atelie"|"frame-editor" e screen=string
 export function setSpace(space, screen) {
   const prevSpace = $body.getAttribute('data-space');
   $body.setAttribute('data-space', space);
   $body.setAttribute('data-screen', screen);
-  $spaceName.textContent = space === 'galeria' ? 'Galeria' : 'Ateliê';
+  $spaceName.textContent = nomeDoEspaco(space);
 
   $switchBtns.forEach((btn) => {
     const isActive = btn.getAttribute('data-space') === space;
@@ -42,6 +42,13 @@ export function setSpace(space, screen) {
   if (prevSpace && prevSpace !== space) {
     playTransition(space);
   }
+}
+
+function nomeDoEspaco(space) {
+  if (space === 'galeria') return 'Galeria';
+  if (space === 'atelie') return 'Ateliê';
+  if (space === 'frame-editor') return 'Frames Editor';
+  return space;
 }
 
 export function setBreadcrumb(items) {
@@ -68,7 +75,7 @@ export function setBreadcrumb(items) {
 }
 
 function playTransition(targetSpace) {
-  $transitionLabel.textContent = targetSpace === 'galeria' ? 'Galeria' : 'Ateliê';
+  $transitionLabel.textContent = nomeDoEspaco(targetSpace);
   $transition.classList.add('is-on');
   $transition.setAttribute('data-target', targetSpace);
   setTimeout(() => $transition.classList.remove('is-on'), 480);

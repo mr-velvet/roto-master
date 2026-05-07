@@ -2,7 +2,7 @@
 
 import { initAuth, clearToken, getToken } from './auth.js';
 import { showToast } from './modals.js';
-import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateTrash } from './router.js';
+import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateTrash, navigateFeHome } from './router.js';
 import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
 import { showHome } from './gal_home.js';
 import { showProject } from './gal_project.js';
@@ -11,6 +11,8 @@ import { showAtelieVideos } from './atelie_videos.js';
 import { showAtelieGenerate } from './atelie_generate.js';
 import { showAtelieTextVideo } from './atelie_text2video.js';
 import { initEditor, openEditor } from './editor.js';
+import { showFeHome } from './fe_home.js';
+import { showFeEditor } from './fe_editor.js';
 
 const $loginErr = document.getElementById('login-err');
 const $btnSignin = document.getElementById('btn-signin');
@@ -125,6 +127,22 @@ function showEditorScreen(id) {
   openEditor(id);
 }
 
+function showFeHomeScreen() {
+  setSpace('frame-editor', 'fe-home');
+  setBreadcrumb([{ label: 'Frames Editor' }, { label: 'Tirinhas' }]);
+  showFeHome();
+}
+
+function showFeEditorScreen(id) {
+  setSpace('frame-editor', 'fe-editor');
+  setBreadcrumb([
+    { label: 'Frames Editor', action: () => navigateFeHome() },
+    { label: 'Tirinhas', action: () => navigateFeHome() },
+    { label: 'Editor' },
+  ]);
+  showFeEditor(id);
+}
+
 (async () => {
   let result;
   try {
@@ -150,7 +168,8 @@ function showEditorScreen(id) {
   bindChrome({
     onSwitchSpace: (target) => {
       if (target === 'galeria') navigateHome();
-      else navigateAtelie('videos');
+      else if (target === 'atelie') navigateAtelie('videos');
+      else if (target === 'frame-editor') navigateFeHome();
     },
   });
 
@@ -162,6 +181,8 @@ function showEditorScreen(id) {
     onGenerate: showGenerateScreen,
     onTextVideo: showTextVideoScreen,
     onEditor: showEditorScreen,
+    onFeHome: showFeHomeScreen,
+    onFeEditor: showFeEditorScreen,
   });
   startRouter();
 })();

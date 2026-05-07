@@ -49,7 +49,7 @@
     </nav>
 
     <div class="chrome-right">
-      <div class="space-switch" role="tablist" aria-label="alternar entre Galeria e Ateliê">
+      <div class="space-switch space-switch-3" role="tablist" aria-label="alternar entre Galeria, Ateliê e Frames Editor">
         <button class="space-switch-btn is-active" data-action="goto-space" data-space="galeria" role="tab" aria-selected="true">
           <span class="space-switch-icon">▦</span>
           <span class="space-switch-name">Galeria</span>
@@ -57,6 +57,10 @@
         <button class="space-switch-btn" data-action="goto-space" data-space="atelie" role="tab" aria-selected="false">
           <span class="space-switch-icon">✦</span>
           <span class="space-switch-name">Ateliê</span>
+        </button>
+        <button class="space-switch-btn" data-action="goto-space" data-space="frame-editor" role="tab" aria-selected="false">
+          <span class="space-switch-icon">▥</span>
+          <span class="space-switch-name">Frames Editor</span>
         </button>
         <div class="space-switch-thumb" aria-hidden="true"></div>
       </div>
@@ -530,6 +534,122 @@
       </div>
     </div>
 
+    <!-- ====================================================
+         FRAMES EDITOR · HOME (lista de tirinhas)
+         ==================================================== -->
+    <section class="screen screen-fe-home">
+      <div class="stage-inner">
+        <div class="page-head">
+          <div class="page-head-meta">
+            <div class="page-head-eyebrow">Frames Editor</div>
+            <h1 class="page-head-title"><em>Tirinhas</em> em edição</h1>
+            <p class="page-head-sub">Editor online de tirinhas. Cada tirinha vive sozinha — entra por upload, vazia ou import de asset; sai por download ou publicação.</p>
+          </div>
+          <div class="page-head-actions">
+            <button class="btn btn-primary fe-btn-primary" data-action="fe-new-tirinha">
+              <span class="btn-icon">+</span>
+              nova tirinha
+            </button>
+          </div>
+        </div>
+        <div class="fe-tirinha-grid" data-bind="fe-tirinha-grid"></div>
+        <div class="empty-state" data-bind="fe-tirinha-empty" hidden>
+          <p>Nenhuma tirinha ainda. Crie a primeira pra começar a editar quadros.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================================================
+         FRAMES EDITOR · EDITOR DE TIRINHA
+         ==================================================== -->
+    <section class="screen screen-fe-editor">
+      <div class="fe-editor-shell">
+
+        <!-- topo: nome + ações -->
+        <header class="fe-editor-topbar">
+          <div class="fe-editor-topbar-left">
+            <button class="fe-editor-back" data-action="fe-back" type="button" title="voltar pra lista">
+              <span class="fe-editor-back-icon">‹</span>
+              <span>tirinhas</span>
+            </button>
+            <span class="fe-editor-sep">/</span>
+            <div class="fe-editor-name-wrap">
+              <h2 class="fe-editor-name" data-bind="fe-editor-name" tabindex="0" title="clique pra renomear">—</h2>
+              <input class="fe-editor-name-input" type="text" data-bind="fe-editor-name-input" maxlength="200" hidden />
+            </div>
+            <span class="fe-editor-meta" data-bind="fe-editor-meta">—</span>
+          </div>
+          <div class="fe-editor-topbar-right">
+            <button class="fe-btn-ghost" data-action="fe-download" type="button" title="gera o .aseprite e baixa">
+              <span class="fe-btn-icon">↓</span>
+              download
+            </button>
+            <button class="fe-btn-ghost" disabled type="button" title="em breve — cria asset novo a partir desta tirinha">
+              <span class="fe-btn-icon">◆</span>
+              publicar como asset
+            </button>
+          </div>
+        </header>
+
+        <!-- centro: canvas -->
+        <div class="fe-editor-canvas-region">
+          <div class="fe-editor-canvas-wrap">
+            <canvas class="fe-editor-canvas" data-bind="fe-editor-canvas"></canvas>
+            <div class="fe-editor-canvas-empty" data-bind="fe-editor-canvas-empty" hidden>
+              <p>nenhum quadro selecionado</p>
+            </div>
+          </div>
+          <div class="fe-editor-canvas-controls">
+            <div class="fe-zoom">
+              <button class="fe-zoom-btn" data-action="fe-zoom-out" title="diminuir zoom">−</button>
+              <span class="fe-zoom-label" data-bind="fe-zoom-label">4×</span>
+              <button class="fe-zoom-btn" data-action="fe-zoom-in" title="aumentar zoom">+</button>
+            </div>
+            <button class="fe-bg-toggle" data-action="fe-bg-toggle" data-bg="checker" type="button" title="alternar fundo">
+              <span data-bind="fe-bg-label">xadrez</span>
+            </button>
+            <div class="fe-frame-nav">
+              <button class="fe-zoom-btn" data-action="fe-prev-quadro" title="quadro anterior">‹</button>
+              <span class="fe-frame-info" data-bind="fe-frame-info">— / —</span>
+              <button class="fe-zoom-btn" data-action="fe-next-quadro" title="próximo quadro">›</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ações primárias -->
+        <div class="fe-editor-actions">
+          <div class="fe-editor-actions-left">
+            <button class="fe-btn-prompt" data-action="fe-prompt-all" type="button" title="aplica prompt em todos os quadros e camadas">
+              <span class="fe-btn-icon">✦</span>
+              prompt pra todos os quadros
+            </button>
+            <button class="fe-btn-prompt fe-btn-prompt-secondary" data-action="fe-prompt-selected" data-bind="fe-btn-prompt-selected" type="button" disabled>
+              <span class="fe-btn-icon">✧</span>
+              prompt pros selecionados <span class="fe-sel-count" data-bind="fe-sel-count">0</span>
+            </button>
+            <span class="fe-editor-sel-summary" data-bind="fe-sel-summary">nenhuma seleção</span>
+          </div>
+          <div class="fe-editor-actions-right">
+            <button class="fe-btn-ghost fe-btn-add" data-action="fe-add-camada" type="button" title="adiciona camada nova (vazia em todos os quadros)">
+              <span class="fe-btn-icon">+</span>
+              camada
+            </button>
+            <button class="fe-btn-ghost fe-btn-add" data-action="fe-add-quadro" type="button" title="adiciona quadro novo (vazio em todas as camadas)">
+              <span class="fe-btn-icon">+</span>
+              quadro
+            </button>
+          </div>
+        </div>
+
+        <!-- base: matriz camadas × quadros -->
+        <div class="fe-matrix-wrap" data-bind="fe-matrix-wrap">
+          <div class="fe-matrix" data-bind="fe-matrix">
+            <!-- montado dinamicamente por fe_editor.js -->
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- LIXEIRA (global; assets descartados, restauráveis) -->
     <section class="screen screen-trash">
       <div class="stage-inner">
@@ -877,6 +997,101 @@
       <div class="asset-detail-foot">
         <div class="asset-detail-meta" data-bind="asset-detail-meta">v1 · — · publicado por —</div>
         <button class="asset-detail-unpublish" data-action="asset-detail-unpublish" type="button" title="move pra Lixeira; vídeo volta a ser rascunho">jogar na lixeira</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: nova tirinha (Frames Editor) -->
+  <div class="modal modal-wide" data-modal="fe-new-tirinha" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Frames Editor</div>
+        <h3>Nova tirinha</h3>
+        <p class="modal-sub">Três caminhos pra começar. Cada tirinha vive sozinha — depois de criada, não fica vinculada à origem.</p>
+      </div>
+      <div class="modal-body">
+        <div class="fe-origin-tabs" role="tablist">
+          <button class="fe-origin-tab is-active" data-action="fe-pick-origin" data-origin="vazia" role="tab">
+            <span class="fe-origin-tab-num">1</span>
+            <span class="fe-origin-tab-label">vazia</span>
+          </button>
+          <button class="fe-origin-tab" data-action="fe-pick-origin" data-origin="upload" role="tab">
+            <span class="fe-origin-tab-num">2</span>
+            <span class="fe-origin-tab-label">subir .aseprite</span>
+          </button>
+          <button class="fe-origin-tab" data-action="fe-pick-origin" data-origin="asset" role="tab" disabled title="em breve — integração com Assets">
+            <span class="fe-origin-tab-num">3</span>
+            <span class="fe-origin-tab-label">de asset <em>em breve</em></span>
+          </button>
+        </div>
+
+        <!-- pane: vazia -->
+        <section class="fe-origin-pane" data-bind="fe-pane-vazia">
+          <label class="field">
+            <span>nome</span>
+            <input type="text" data-bind="fe-vazia-nome" placeholder="ex: estudo de cabeça" maxlength="200" />
+          </label>
+          <div class="fe-dim-row">
+            <label class="field fe-dim-field">
+              <span>largura (px)</span>
+              <input type="number" data-bind="fe-vazia-largura" value="64" min="1" max="4096" step="1" />
+            </label>
+            <label class="field fe-dim-field">
+              <span>altura (px)</span>
+              <input type="number" data-bind="fe-vazia-altura" value="64" min="1" max="4096" step="1" />
+            </label>
+          </div>
+        </section>
+
+        <!-- pane: upload -->
+        <section class="fe-origin-pane" data-bind="fe-pane-upload" hidden>
+          <label class="field">
+            <span>nome <em>opcional</em></span>
+            <input type="text" data-bind="fe-upload-nome" placeholder="herda do nome do arquivo se vazio" maxlength="200" />
+          </label>
+          <label class="fe-file-pick">
+            <input type="file" accept=".aseprite,.ase" data-bind="fe-upload-input" hidden />
+            <span class="fe-file-pick-label" data-bind="fe-upload-file-label">▸ escolher arquivo .aseprite</span>
+          </label>
+          <div class="fe-progress" data-bind="fe-upload-progress" hidden>
+            <div class="fe-progress-bar"><div class="fe-progress-fill" data-bind="fe-upload-progress-fill"></div></div>
+            <div class="fe-progress-msg" data-bind="fe-upload-progress-msg">…</div>
+          </div>
+        </section>
+
+        <div class="modal-err" data-bind="fe-new-tirinha-err"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="fe-confirm-new-tirinha" data-bind="fe-new-tirinha-confirm">criar tirinha</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: prompt (Frames Editor) -->
+  <div class="modal modal-wide" data-modal="fe-prompt" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Frames Editor</div>
+        <h3 data-bind="fe-prompt-title">Prompt pros quadros selecionados</h3>
+        <p class="modal-sub" data-bind="fe-prompt-sub">Texto livre. Você decide o que fazer (estilizar, limpar, mudar pose, etc.).</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>prompt</span>
+          <textarea data-bind="fe-prompt-text" rows="6" placeholder="ex: pinta com traço de bico-de-pena, fundo limpo, cores vivas"></textarea>
+        </label>
+        <div class="fe-prompt-target" data-bind="fe-prompt-target">—</div>
+        <div class="modal-err" data-bind="fe-prompt-err"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary fe-btn-primary" data-action="fe-confirm-prompt">
+          <span class="btn-icon">✦</span>
+          aplicar prompt
+        </button>
       </div>
     </div>
   </div>
