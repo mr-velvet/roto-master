@@ -4125,6 +4125,7 @@ body[data-space="frame-editor"] .modal-card,
   display: grid;
   place-items: center;
   transition: all 140ms var(--ease);
+  position: relative;
 }
 .fe-matrix-col-head:hover { color: var(--fe-cyan); border-color: var(--fe-cyan-2); }
 .fe-matrix-col-head.is-active {
@@ -4141,6 +4142,7 @@ body[data-space="frame-editor"] .modal-card,
   gap: 6px;
   padding: 6px 8px;
   min-width: 0;
+  position: relative;
 }
 .fe-cam-vis {
   width: 22px;
@@ -4244,5 +4246,41 @@ body[data-space="frame-editor"] .modal-card,
 @keyframes fe-pulse {
   0%, 100% { box-shadow: inset 0 0 0 1px var(--fe-violet), 0 0 0 1px rgba(144, 112, 240, 0.35); }
   50%      { box-shadow: inset 0 0 0 2px var(--fe-violet), 0 0 0 4px rgba(144, 112, 240, 0.18); }
+}
+
+/* === Estados otimistas (operações pendentes de sync com backend) === */
+/* Bolinha discreta no canto inferior direito do header de linha/coluna ou da
+ * borda do nome da tirinha. Sutil, não bloqueia interação. */
+.fe-sync-dot {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: var(--fe-cyan);
+  box-shadow: 0 0 4px var(--fe-cyan-glow);
+  opacity: 0.85;
+  animation: fe-sync-pulse 1.1s ease-in-out infinite;
+}
+.fe-sync-dot[data-state="error"] {
+  background: var(--rust);
+  box-shadow: 0 0 4px rgba(181, 72, 72, 0.6);
+  animation: none;
+}
+.fe-matrix-row-head.is-syncing,
+.fe-matrix-col-head.is-syncing,
+.fe-matrix-cell.is-syncing { position: relative; }
+.fe-matrix-row-head.is-sync-error,
+.fe-matrix-col-head.is-sync-error,
+.fe-matrix-cell.is-sync-error { border-color: var(--rust); }
+.fe-editor-name.is-syncing,
+.fe-editor-name.is-sync-error { position: relative; }
+.fe-editor-name.is-sync-error { color: var(--rust); }
+
+@keyframes fe-sync-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.7); }
 }
 

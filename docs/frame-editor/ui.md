@@ -132,6 +132,37 @@ User não fica bloqueado. Durante prompt em curso:
 
 Tentativa de disparar prompt sobre célula que já está `processando` é rejeitada silenciosamente (botão de prompt fica desabilitado pra essas células, ou o request volta erro tratado sem incomodar o user).
 
+### 4.6.1 Operações otimistas
+
+Operações estruturais síncronas da Tela 2 (criar/apagar camada, criar/apagar
+quadro, renomear, alternar visibilidade) são **otimistas**: a UI reflete o
+novo estado imediato e o request vai em background. Em caso de falha, a UI
+reverte e mostra toast com mensagem.
+
+- **Indicador discreto** de "sincronizando" — bolinha pequena no canto da
+  entidade enquanto request está em curso. Vira vermelha por ~2.5s se
+  falhar e a operação for revertida.
+- **IDs provisórios** (`tmp-<n>`) são usados localmente pra entidades recém-criadas
+  enquanto o servidor ainda não confirmou. Operações que precisam de id real
+  (ex: disparar prompt sobre células recém-criadas dessa camada/quadro) são
+  bloqueadas até a confirmação chegar.
+- **Conflito polling × in-flight**: enquanto há operação otimista pendente,
+  o polling de células `processando` é adiado pra não sobrescrever a mutação
+  local com um snapshot do banco que ainda não reflete a operação em andamento.
+
+Operações que **não** são otimistas (continuam síncronas com loading visível):
+
+- Upload de PNG e upload de `.aseprite` (usuário está esperando o arquivo subir).
+- Disparo de prompt (já é assíncrono pelo design — 202 + polling).
+- Criar tirinha do zero (carrego inicial — usuário já espera).
+
+### 4.6.2 Apagar camada / quadro
+
+Apagar é destrutivo, então passa por `confirmModal`. Acionado via botão direito
+(menu de contexto custom) no header da camada (linha) ou no header do quadro
+(coluna). A tirinha precisa de no mínimo 1 camada e 1 quadro — tentativa de
+apagar a última é rejeitada com toast.
+
 ### 4.7 Saída
 
 Três ações no topo:
@@ -147,7 +178,7 @@ A `visao-da-ferramenta.md` já lista anti-padrões globais. Os específicos do F
 1. **Pintura inline no canvas no MVP.** Tem que estar fora — quem precisa, baixa o `.aseprite`. Trazer pintura agora desfoca o produto.
 2. **Painel de "histórico" / "undo profundo".** Estado é `idle`/`processando`. Versões não existem no MVP.
 3. **Aba lateral de "ferramentas IA"** com presets nomeados ("estilizar", "limpar", "colorir"). É **prompt aberto**, ponto. Categorizar quebra o princípio.
-4. **Salvar explícito.** Tudo é live, autosave implícito (a cada operação, banco atualiza). Botão "Salvar" cria ilusão de estado local que não existe.
+4. **Salvar explícito.** Tudo é live, sync implícito (a cada operação, banco atualiza em background — UI atualiza instantânea, request vai em paralelo). Botão "Salvar" cria ilusão de estado local que não existe. Indicador discreto de "sincronizando" é aceitável; bloqueio do user durante request, não.
 5. **Filtros "minhas tirinhas" / "do user X"**. Não há ownership.
 6. **Modal de "novo arquivo" no estilo desktop** (com File → Open, Save As). Frames Editor é online — o modelo mental é diferente, e a UI precisa refletir isso.
 7. **Indicador de progresso bloqueante** durante prompt. User segue trabalhando; processamento é pano de fundo.
