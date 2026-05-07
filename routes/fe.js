@@ -566,6 +566,30 @@ router.delete('/quadros/:id', requireUser, async (req, res) => {
 
 // POST /api/fe/upload-png — upload de PNG pra storage. Independente de célula.
 // Multipart: file (PNG), tirinha_id, celula_id (opcional).
+// GET /api/fe/proxy-png?url=<absolute>
+// Proxy de PNGs do GCS para o front quando ele precisa dos pixels (canvas/getImageData).
+// O bucket didlu-imagestore não responde com headers CORS, então <img crossOrigin="anonymous">
+// e fetch() direto não dão acesso a bytes — proxy local resolve sem mexer em config do bucket.
+// Aceita só URLs do prefixo público da plataforma (anti-SSRF).
+router.get('/proxy-png', requireUser, async (req, res) => {
+  const url = String(req.query?.url || '');
+  if (!url.startsWith(PUBLIC_URL_PREFIX) && !url.startsWith('https://storage.googleapis.com/')) {
+    return res.status(400).json({ error: 'url fora do prefixo permitido' });
+  }
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return res.status(resp.status).json({ error: `upstream ${resp.status}` });
+    const ct = resp.headers.get('content-type') || 'image/png';
+    const buf = Buffer.from(await resp.arrayBuffer());
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(buf);
+  } catch (e) {
+    console.error('proxy-png:', e);
+    res.status(502).json({ error: 'proxy failed' });
+  }
+});
+
 router.post('/upload-png', requireUser, upload.single('file'), async (req, res) => {
   const tirinhaId = (req.body?.tirinha_id || '').trim();
   const celulaId = (req.body?.celula_id || '').trim() || null;

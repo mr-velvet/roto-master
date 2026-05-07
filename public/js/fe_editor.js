@@ -316,10 +316,21 @@ function loadImage(url) {
   }
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => { imgCache.set(url, img); resolve(img); };
     img.onerror = (e) => reject(new Error('img load failed: ' + url));
     img.src = url;
+  });
+}
+
+// Variante que carrega via /api/fe/proxy-png para liberar getImageData no canvas.
+// O bucket GCS não responde CORS, então a imagem direta tainta o canvas.
+async function loadImageForPixels(url) {
+  const proxied = '/api/fe/proxy-png?url=' + encodeURIComponent(url);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('proxy img load failed: ' + url));
+    img.src = proxied;
   });
 }
 
@@ -673,27 +684,32 @@ async function gerarAsepriteBlob() {
   const quadrosOut = quadrosAsc.map((q, i) => ({ indice: i, duracao_ms: null }));
 
   // Carrega PNGs e converte pra RGBA. Cada cel não-vazia vira pixels_rgba.
+  // Reescala pro tamanho do canvas da tirinha — PNG da IA pode vir num tamanho
+  // qualquer (1024×1024 etc.), mas o cel chunk precisa bater com a header do
+  // .aseprite (largura/altura da tirinha). Carrega via proxy pra contornar CORS
+  // do GCS (canvas tainted = getImageData lança SecurityError).
+  const W = tirinha.largura;
+  const H = tirinha.altura;
   const celulasOut = [];
   for (let ci = 0; ci < camadasAsc.length; ci++) {
     for (let qi = 0; qi < quadrosAsc.length; qi++) {
       const cel = celulasMap.get(keyOf(camadasAsc[ci].id, quadrosAsc[qi].id));
       if (!cel || !cel.png_url) continue;
       try {
-        const img = await loadImage(cel.png_url);
-        const w = cel.largura || img.naturalWidth;
-        const h = cel.altura || img.naturalHeight;
+        const img = await loadImageForPixels(cel.png_url);
         const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
+        canvas.width = W; canvas.height = H;
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0, w, h);
-        const id = ctx.getImageData(0, 0, w, h);
+        ctx.clearRect(0, 0, W, H);
+        ctx.drawImage(img, 0, 0, W, H);
+        const id = ctx.getImageData(0, 0, W, H);
         celulasOut.push({
           camada_indice: ci,
           quadro_indice: qi,
           pixels_rgba: new Uint8Array(id.data.buffer.slice(0)),
-          largura: w,
-          altura: h,
+          largura: W,
+          altura: H,
         });
       } catch (e) {
         console.warn('falha ao carregar PNG da célula:', e);
