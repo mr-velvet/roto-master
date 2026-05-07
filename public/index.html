@@ -616,29 +616,18 @@
           </div>
         </div>
 
-        <!-- ações primárias -->
-        <div class="fe-editor-actions">
-          <div class="fe-editor-actions-left">
-            <button class="fe-btn-prompt" data-action="fe-prompt-all" type="button" title="aplica prompt em todos os quadros e camadas">
-              <span class="fe-btn-icon">✦</span>
-              prompt pra todos os quadros
-            </button>
-            <button class="fe-btn-prompt fe-btn-prompt-secondary" data-action="fe-prompt-selected" data-bind="fe-btn-prompt-selected" type="button" disabled>
-              <span class="fe-btn-icon">✧</span>
-              prompt pros selecionados <span class="fe-sel-count" data-bind="fe-sel-count">0</span>
-            </button>
-            <span class="fe-editor-sel-summary" data-bind="fe-sel-summary">nenhuma seleção</span>
-          </div>
-          <div class="fe-editor-actions-right">
-            <button class="fe-btn-ghost fe-btn-add" data-action="fe-add-camada" type="button" title="adiciona camada nova (vazia em todos os quadros)">
-              <span class="fe-btn-icon">+</span>
-              camada
-            </button>
-            <button class="fe-btn-ghost fe-btn-add" data-action="fe-add-quadro" type="button" title="adiciona quadro novo (vazio em todas as camadas)">
-              <span class="fe-btn-icon">+</span>
-              quadro
-            </button>
-          </div>
+        <!-- barra de descoberta: 1 botão "prompt" + dica de menu de contexto.
+             Tudo o resto (criar/deletar/renomear camada e quadro, prompts contextuais)
+             vive no menu de contexto (botão direito) na matriz. -->
+        <div class="fe-editor-discoverbar">
+          <button class="fe-btn-prompt fe-btn-prompt-compact" data-action="fe-prompt-context" data-bind="fe-btn-prompt-context" type="button">
+            <span class="fe-btn-icon">✦</span>
+            <span data-bind="fe-prompt-context-label">prompt</span>
+          </button>
+          <span class="fe-editor-sel-summary" data-bind="fe-sel-summary">nenhuma seleção</span>
+          <span class="fe-editor-hint">botão direito na matriz pra mais ações</span>
+          <span class="fe-sel-count" data-bind="fe-sel-count" hidden>0</span>
+          <button class="fe-btn-prompt-selected-hidden" data-bind="fe-btn-prompt-selected" hidden></button>
         </div>
 
         <!-- base: matriz camadas × quadros -->
@@ -647,6 +636,9 @@
             <!-- montado dinamicamente por fe_editor.js -->
           </div>
         </div>
+
+        <!-- menu de contexto Aseprite-like (custom, anti-padrão evitado: nunca menu nativo do browser) -->
+        <div class="fe-context-menu" data-bind="fe-context-menu" hidden></div>
       </div>
     </section>
 

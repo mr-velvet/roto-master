@@ -113,11 +113,14 @@ Ao lado do canvas (ou abaixo), controles leves: zoom, alternar fundo (transparen
 
 ### 4.5 Ações primárias
 
-Três ações principais no editor, todas acessíveis sem mergulhar em menu:
+Layout enxuto Aseprite-like. **Um único botão "prompt"** visível e discreto perto do canvas (descobertabilidade), que muda de comportamento conforme seleção: sem seleção → "prompt pra todos os quadros"; com seleção → "prompt em N selecionadas". Tudo o resto vive no **menu de contexto custom (botão direito)** sobre a matriz:
 
-- **Prompt pra todos os quadros** — botão visível. Abre modal com campo de texto livre. Ao confirmar, dispara `POST /api/fe/prompts` com todas as células da tirinha (`api.md` §7).
-- **Prompt pros selecionados** — botão visível, habilita só com seleção ativa. Abre modal igual. Dispara com IDs das células selecionadas.
-- **Adicionar quadro** / **Adicionar camada** — botões discretos no canto da matriz (header da última coluna, última linha).
+- **Header de linha (camada):** + camada acima/abaixo · renomear (F2) · alternar visibilidade · prompt na camada · prompt nos selecionados (se aplicável) · deletar.
+- **Header de coluna (quadro):** + quadro à esquerda/direita · prompt no quadro · prompt nos selecionados (se aplicável) · deletar.
+- **Célula:** prompt nesta célula · prompt nos selecionados (se aplicável) · limpar (se tem PNG).
+- **Área vazia da matriz (canto sup. esquerdo):** + camada · + quadro · prompt pra todos.
+
+Botão direito numa célula/linha não-selecionada seleciona-a antes de abrir o menu (comportamento Aseprite). `F2` na tela renomeia a camada ativa. Disparar prompt envia `POST /api/fe/prompts` (`api.md` §7).
 
 Ao disparar prompt, as células alvo entram em estado `processando` imediatamente (UI reflete antes mesmo do servidor responder, ou logo após — depende da ordem de chegada). Conforme cada uma termina, o thumb na célula atualiza via gancho de live update (`api.md` §8).
 
@@ -152,6 +155,7 @@ A `visao-da-ferramenta.md` já lista anti-padrões globais. Os específicos do F
 6. **Modal de "novo arquivo" no estilo desktop** (com File → Open, Save As). Frames Editor é online — o modelo mental é diferente, e a UI precisa refletir isso.
 7. **Indicador de progresso bloqueante** durante prompt. User segue trabalhando; processamento é pano de fundo.
 8. **Diálogos nativos** (`alert`, `confirm`, `prompt`, `<select>`, etc.) — proibido em toda a plataforma. Custom sempre.
+9. **Menu de contexto nativo do browser** dentro da área do produto. `event.preventDefault()` no `contextmenu` é obrigatório fora de campos de texto. Quem implementa botão direito faz menu custom.
 
 ## 6. Fluxos de uso típicos
 
