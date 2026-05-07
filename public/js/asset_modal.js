@@ -5,8 +5,9 @@
 import { patchAsset, deleteAsset, uploadFinal } from './assets_api.js';
 import { getVideo, duplicateVideo } from './videos_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
-import { navigateEditor } from './router.js';
+import { navigateEditor, navigateFeEditor } from './router.js';
 import { attachRotoscopyPreview } from './rotoscopy_preview.js';
+import { importarAsepriteComoTirinha } from './fe_import.js';
 
 const $eyebrow = document.querySelector('[data-bind="asset-detail-eyebrow"]');
 const $name = document.querySelector('[data-bind="asset-detail-name"]');
@@ -24,6 +25,7 @@ const $meta = document.querySelector('[data-bind="asset-detail-meta"]');
 const $btnUploadFinal = document.querySelector('[data-action="asset-detail-upload-final"]');
 const $btnDownload = document.querySelector('[data-action="asset-detail-download"]');
 const $btnReedit = document.querySelector('[data-action="asset-detail-reedit"]');
+const $btnEditAsTirinha = document.querySelector('[data-action="asset-detail-edit-as-tirinha"]');
 const $btnDuplicate = document.querySelector('[data-action="asset-detail-duplicate"]');
 const $btnUnpublish = document.querySelector('[data-action="asset-detail-unpublish"]');
 const $btnGotoSource = document.querySelector('[data-action="asset-detail-goto-source"]');
@@ -267,6 +269,37 @@ $btnDownload?.addEventListener('click', () => {
   document.body.appendChild(a);
   a.click();
   a.remove();
+});
+
+// editar como tirinha: cria fe_tirinha independente a partir do .aseprite do
+// asset (cópia consciente — mudanças na tirinha NÃO voltam pro asset, conforme
+// docs/frame-editor/integracao-com-assets.md §3 e §4).
+$btnEditAsTirinha?.addEventListener('click', async () => {
+  if (!currentAsset || !currentAsset.gcs_url) {
+    showToast('asset ainda não tem .aseprite');
+    return;
+  }
+  const assetId = currentAsset.id;
+  const assetName = currentAsset.name;
+  const asepriteUrl = currentAsset.gcs_url;
+  showToast('baixando .aseprite…', 1500);
+  try {
+    const r = await fetch(asepriteUrl);
+    if (!r.ok) throw new Error(`fetch ${r.status}`);
+    const buf = await r.arrayBuffer();
+    showToast('parseando e subindo células…', 2500);
+    const { id: novaTirinhaId, total } = await importarAsepriteComoTirinha(buf, {
+      nome: assetName,
+      origem: 'asset',
+      origemMeta: { asset_id: assetId, tipo_aseprite: 'final' },
+    });
+    showToast(`tirinha criada (${total} células)`);
+    closeModal();
+    navigateFeEditor(novaTirinhaId);
+  } catch (err) {
+    console.error('edit-as-tirinha:', err);
+    showToast('falha: ' + (err.message || 'erro desconhecido'));
+  }
 });
 
 // duplicar vídeo: cria cópia independente do vídeo-fonte; leva pro editor da cópia

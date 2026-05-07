@@ -33,7 +33,7 @@ router.get('/', requireUser, async (req, res) => {
       `SELECT a.${ASSET_COLS.split(', ').join(', a.')},
               v.name AS video_name, v.origin AS video_origin, v.thumb_url AS video_thumb_url, v.gcs_url AS video_gcs_url
          FROM assets a
-         JOIN videos v ON v.id = a.video_id
+         LEFT JOIN videos v ON v.id = a.video_id
          ${whereSql}
         ORDER BY a.updated_at DESC`,
       params
@@ -55,7 +55,7 @@ router.get('/trash', requireUser, async (req, res) => {
               v.name AS video_name, v.origin AS video_origin, v.thumb_url AS video_thumb_url, v.gcs_url AS video_gcs_url,
               p.name AS project_name
          FROM assets a
-         JOIN videos v ON v.id = a.video_id
+         LEFT JOIN videos v ON v.id = a.video_id
          JOIN projects p ON p.id = a.project_id
         WHERE a.deleted_at IS NOT NULL
         ORDER BY a.deleted_at DESC`
@@ -73,7 +73,7 @@ router.get('/:id', requireUser, async (req, res) => {
       `SELECT a.${ASSET_COLS.split(', ').join(', a.')}, a.deleted_at,
               v.name AS video_name, v.origin AS video_origin, v.thumb_url AS video_thumb_url, v.gcs_url AS video_gcs_url
          FROM assets a
-         JOIN videos v ON v.id = a.video_id
+         LEFT JOIN videos v ON v.id = a.video_id
         WHERE a.id = $1`,
       [req.params.id]
     );
@@ -277,6 +277,87 @@ router.delete('/:id/purge', requireUser, async (req, res) => {
     if (e.code === '22P02') return res.status(404).json({ error: 'id inválido' });
     console.error('purge asset:', e);
     res.status(500).json({ error: 'purge failed' });
+  }
+});
+
+// Cria asset novo a partir de uma URL de .aseprite que ja vive no GCS.
+// Usado pela integracao Frames Editor -> Assets ("Publicar como novo asset"
+// no editor de tirinha). Asset criado SEM video_id (relaxado em migration 018).
+//
+// Body: { project_id, name, aseprite_url } (todos obrigatorios).
+//
+// Comportamento:
+//   - Copia o .aseprite pro path padrao do asset (roto-master/assets/<id>/v1/...).
+//     Mantemos a referencia local pra que o ciclo de "publish/upload-final" depois
+//     continue funcionando como nos demais assets.
+//   - Status nasce 'done' (ja vem trabalhado pelo Frames Editor).
+//   - Sem vinculo com tirinha de origem (integracao-com-assets.md §4.4).
+router.post('/from-aseprite', requireUser, async (req, res) => {
+  const projectId = (req.body?.project_id || '').trim();
+  const name = (req.body?.name || '').trim();
+  const asepriteUrl = (req.body?.aseprite_url || '').trim();
+
+  if (!projectId) return res.status(400).json({ error: 'project_id obrigatorio' });
+  if (!name) return res.status(400).json({ error: 'name obrigatorio' });
+  if (name.length > 200) return res.status(400).json({ error: 'name muito longo' });
+  if (!asepriteUrl) return res.status(400).json({ error: 'aseprite_url obrigatoria' });
+
+  const pool = req.app.locals.pool;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Confirma projeto.
+    const { rows: proj } = await client.query(
+      `SELECT id FROM projects WHERE id = $1`, [projectId]
+    );
+    if (!proj.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'projeto nao encontrado' });
+    }
+
+    // Cria a row primeiro (precisamos do id pra montar o path).
+    // owner_sub virou cicatriz historica (codigo nao le mais — auth simples
+    // de 2026-05-05). Ainda eh NOT NULL no schema, gravamos placeholder.
+    const { rows: novoArr } = await client.query(
+      `INSERT INTO assets (project_id, video_id, owner_sub, name, status, gcs_path, gcs_url, version)
+       VALUES ($1, NULL, 'frame-editor', $2, 'done', '', '', 1)
+       RETURNING ${ASSET_COLS}`,
+      [projectId, name]
+    );
+    const novo = novoArr[0];
+
+    // Copia o .aseprite pro path padrao do asset.
+    // aseprite_url chega como https://st.did.lu/<path>; extrair o <path> pra
+    // copiar dentro do bucket sem baixar/resubir.
+    const PUBLIC_PREFIX = 'https://st.did.lu/';
+    let srcPath = null;
+    if (asepriteUrl.startsWith(PUBLIC_PREFIX)) {
+      srcPath = asepriteUrl.slice(PUBLIC_PREFIX.length);
+    } else {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'aseprite_url precisa estar em st.did.lu' });
+    }
+
+    const { copyObject } = require('../lib/gcs');
+    const dstPath = asepritePath(novo.id, 1);
+    const { gcs_path, gcs_url } = await copyObject(srcPath, dstPath);
+
+    const { rows: atualArr } = await client.query(
+      `UPDATE assets SET gcs_path = $1, gcs_url = $2, updated_at = NOW()
+        WHERE id = $3 RETURNING ${ASSET_COLS}`,
+      [gcs_path, gcs_url, novo.id]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ asset: atualArr[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (e.code === '22P02') return res.status(400).json({ error: 'id invalido' });
+    console.error('from-aseprite:', e);
+    res.status(500).json({ error: 'create failed' });
+  } finally {
+    client.release();
   }
 });
 

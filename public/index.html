@@ -584,7 +584,7 @@
               <span class="fe-btn-icon">↓</span>
               download
             </button>
-            <button class="fe-btn-ghost" disabled type="button" title="em breve — cria asset novo a partir desta tirinha">
+            <button class="fe-btn-ghost" data-action="fe-publish-asset" type="button" title="cria asset novo na Galeria a partir desta tirinha (cópia consciente — não fica vinculada)">
               <span class="fe-btn-icon">◆</span>
               publicar como asset
             </button>
@@ -988,6 +988,10 @@
           <span class="btn-icon">✎</span>
           re-editar
         </button>
+        <button class="btn btn-ghost" data-action="asset-detail-edit-as-tirinha" type="button" title="abre como tirinha no Frames Editor (cópia consciente — mudanças lá não afetam este asset)">
+          <span class="btn-icon">▦</span>
+          editar como tirinha
+        </button>
         <button class="btn btn-ghost" data-action="asset-detail-duplicate" type="button" title="duplica o vídeo-fonte; cópia sai sem vínculo, pronta pra publicar em outro projeto">
           <span class="btn-icon">⎘</span>
           duplicar vídeo
@@ -1091,6 +1095,42 @@
         <button class="btn btn-primary fe-btn-primary" data-action="fe-confirm-prompt">
           <span class="btn-icon">✦</span>
           aplicar prompt
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: publicar tirinha como asset (Frames Editor) -->
+  <div class="modal" data-modal="fe-publish-asset" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Frames Editor → Galeria</div>
+        <h3>Publicar como novo asset</h3>
+        <p class="modal-sub">Cria asset novo na Galeria com o <code>.aseprite</code> atual da tirinha. <strong>Cópia consciente</strong> — a tirinha continua viva aqui, sem vínculo com o asset.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>projeto-destino</span>
+          <div class="custom-select" data-bind="fe-publish-project-select">
+            <button class="custom-select-btn" data-action="fe-toggle-project-select" type="button">
+              <span data-bind="fe-publish-project-label">— escolher —</span>
+              <span class="caret">▾</span>
+            </button>
+            <ul class="custom-select-menu" data-bind="fe-publish-project-menu" hidden></ul>
+          </div>
+        </label>
+        <label class="field">
+          <span>nome do asset</span>
+          <input type="text" data-bind="fe-publish-asset-name" placeholder="herda do nome da tirinha" maxlength="200" />
+        </label>
+        <div class="modal-err" data-bind="fe-publish-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary fe-btn-primary" data-action="fe-confirm-publish-asset">
+          <span class="btn-icon">◆</span>
+          publicar
         </button>
       </div>
     </div>

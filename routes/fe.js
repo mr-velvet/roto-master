@@ -726,4 +726,96 @@ router.post('/prompts', requireUser, async (req, res) => {
   }
 });
 
+// ============================================================
+// Integracao com Assets (integracao-com-assets.md §4)
+// ============================================================
+
+// POST /api/fe/tirinhas/:id/publicar-asset — cria asset novo na area Assets
+// a partir do .aseprite atual da tirinha. SEM vinculo vivo (princípio §4.4
+// do integracao-com-assets.md): tirinha continua existindo independente,
+// asset existe independente. Publicar duas vezes = dois assets distintos.
+//
+// Pre-requisito: a tirinha precisa ter last_aseprite_url (o front gera o
+// .aseprite e sobe via POST /api/fe/upload-aseprite ANTES de chamar este).
+//
+// Body: { project_id, name }.
+router.post('/tirinhas/:id/publicar-asset', requireUser, async (req, res) => {
+  const tirinhaId = req.params.id;
+  const projectId = (req.body?.project_id || '').trim();
+  const nome = (req.body?.name || '').trim();
+
+  if (!projectId) return res.status(400).json({ error: 'project_id obrigatório' });
+  if (!nome) return res.status(400).json({ error: 'name obrigatório' });
+
+  const pool = req.app.locals.pool;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, nome, last_aseprite_url FROM fe_tirinha WHERE id = $1`,
+      [tirinhaId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'tirinha não encontrada' });
+    const t = rows[0];
+    if (!t.last_aseprite_url) {
+      return res.status(400).json({
+        error: 'tirinha precisa ter um .aseprite gerado primeiro (chame /upload-aseprite antes)',
+      });
+    }
+
+    // Reusa o handler de criacao de Assets via call interno simples:
+    // gravamos direto no banco com a mesma logica que /api/assets/from-aseprite,
+    // pra evitar HTTP loopback. A logica eh basicamente uma copia da rota.
+    // Razao: rotas internas chamarem outras rotas via fetch tem custo
+    // desnecessario num monolito Express (mesma instancia, mesma transacao).
+    const { copyObject } = require('../lib/gcs');
+    const PUBLIC_PREFIX = 'https://st.did.lu/';
+    if (!t.last_aseprite_url.startsWith(PUBLIC_PREFIX)) {
+      return res.status(500).json({ error: 'last_aseprite_url em formato inesperado' });
+    }
+    const srcPath = t.last_aseprite_url.slice(PUBLIC_PREFIX.length);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows: proj } = await client.query(
+        `SELECT id FROM projects WHERE id = $1`, [projectId]
+      );
+      if (!proj.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'projeto não encontrado' });
+      }
+
+      const { rows: novoArr } = await client.query(
+        `INSERT INTO assets (project_id, video_id, owner_sub, name, status, gcs_path, gcs_url, version)
+         VALUES ($1, NULL, 'frame-editor', $2, 'done', '', '', 1)
+         RETURNING id`,
+        [projectId, nome]
+      );
+      const novoId = novoArr[0].id;
+
+      // Path padrao do asset.
+      const dstPath = `roto-master/assets/${novoId}/v1/${novoId}.aseprite`;
+      const { gcs_path, gcs_url } = await copyObject(srcPath, dstPath);
+
+      await client.query(
+        `UPDATE assets SET gcs_path = $1, gcs_url = $2, updated_at = NOW()
+          WHERE id = $3`,
+        [gcs_path, gcs_url, novoId]
+      );
+
+      await client.query('COMMIT');
+      res.status(201).json({ asset_id: novoId });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    if (tratarErroId(e, res)) return;
+    console.error('publicar-asset:', e);
+    res.status(500).json({ error: 'publicar falhou' });
+  }
+});
+
 module.exports = router;

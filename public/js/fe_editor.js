@@ -11,7 +11,9 @@ import {
   getTirinha, patchTirinha,
   addCamada, patchCamada, addQuadro,
   uploadAseprite, dispararPrompt,
+  publicarComoAsset,
 } from './fe_api.js';
+import { listProjects } from './projects_api.js';
 import { openModal, closeModal, showToast } from './modals.js';
 import { navigateFeHome } from './router.js';
 import { buildAsepriteDoFrameEditor } from './aseprite_io.js';
@@ -580,6 +582,84 @@ document.addEventListener('click', async (e) => {
   } catch (err) {
     console.error('download:', err);
     showToast('falha no download: ' + err.message);
+  }
+});
+
+// Publicar como novo asset (Frames Editor → Galeria).
+// Cópia consciente — sem vínculo (integracao-com-assets.md §4.4).
+let publishProjectId = null;
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="fe-publish-asset"]')) return;
+  if (!tirinha) return;
+  // Reset estado.
+  publishProjectId = null;
+  document.querySelector('[data-bind="fe-publish-project-label"]').textContent = '— escolher —';
+  document.querySelector('[data-bind="fe-publish-asset-name"]').value = tirinha.nome || '';
+  document.querySelector('[data-bind="fe-publish-err"]').textContent = '';
+  // Carrega projetos.
+  try {
+    const projetos = await listProjects();
+    const $menu = document.querySelector('[data-bind="fe-publish-project-menu"]');
+    $menu.innerHTML = '';
+    if (!projetos.length) {
+      $menu.innerHTML = '<li class="custom-select-empty">nenhum projeto — crie um na Galeria primeiro</li>';
+    } else {
+      for (const p of projetos) {
+        const li = document.createElement('li');
+        li.className = 'custom-select-item';
+        li.textContent = p.name;
+        li.dataset.projectId = p.id;
+        li.dataset.projectName = p.name;
+        $menu.appendChild(li);
+      }
+    }
+    openModal('fe-publish-asset');
+  } catch (err) {
+    showToast('falha ao listar projetos: ' + err.message);
+  }
+});
+
+document.addEventListener('click', (e) => {
+  // Toggle do dropdown
+  if (e.target.closest('[data-action="fe-toggle-project-select"]')) {
+    const $menu = document.querySelector('[data-bind="fe-publish-project-menu"]');
+    if ($menu) $menu.toggleAttribute('hidden');
+    return;
+  }
+  // Escolha de item
+  const item = e.target.closest('[data-bind="fe-publish-project-menu"] .custom-select-item');
+  if (item) {
+    publishProjectId = item.dataset.projectId;
+    document.querySelector('[data-bind="fe-publish-project-label"]').textContent = item.dataset.projectName;
+    document.querySelector('[data-bind="fe-publish-project-menu"]').setAttribute('hidden', '');
+  }
+});
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="fe-confirm-publish-asset"]')) return;
+  const $err = document.querySelector('[data-bind="fe-publish-err"]');
+  $err.textContent = '';
+  if (!publishProjectId) { $err.textContent = 'escolha um projeto'; return; }
+  const nome = (document.querySelector('[data-bind="fe-publish-asset-name"]').value || '').trim() || tirinha.nome || 'sem nome';
+  const $btn = e.target.closest('[data-action="fe-confirm-publish-asset"]');
+  $btn.disabled = true;
+  try {
+    showToast('gerando .aseprite…', 1500);
+    const blob = await gerarAsepriteBlob();
+    showToast('subindo arquivo…', 1500);
+    await uploadAseprite({ tirinhaId: tirinha.id, blob, filename: `${slugify(nome)}.aseprite` });
+    // last_aseprite_url agora está gravada no banco; chama publicar-asset.
+    showToast('criando asset…', 1500);
+    const out = await publicarComoAsset({ tirinhaId: tirinha.id, projectId: publishProjectId, name: nome });
+    closeModal();
+    showToast(`asset criado · ${nome}`, 3000);
+    // Não navegamos pro asset — princípio de cópia consciente, user fica na tirinha.
+  } catch (err) {
+    console.error('publish-asset:', err);
+    $err.textContent = err.message || 'falhou';
+  } finally {
+    $btn.disabled = false;
   }
 });
 

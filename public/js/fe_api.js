@@ -35,6 +35,38 @@ export async function createTirinhaVazia({ nome, largura, altura }) {
   return jsonOrThrow(r, 'create tirinha (vazia)');
 }
 
+// Cria tirinha "asset" — variante 3 do api.md §3. Front passa estrutura ja
+// parseada (igual variante 'upload') + origem_meta com asset_id e tipo.
+// Servidor grava com origem='asset' pra cicatriz informativa.
+export async function createTirinhaDeAsset({ nome, asset_id, tipo_aseprite, largura, altura, camadas, quadros, celulas }) {
+  const r = await authedFetch('/api/fe/tirinhas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      origem: 'asset',
+      nome,
+      origem_meta: { asset_id, tipo_aseprite: tipo_aseprite || 'final' },
+      largura,
+      altura,
+      camadas,
+      quadros,
+      celulas,
+    }),
+  });
+  return jsonOrThrow(r, 'create tirinha (asset)');
+}
+
+// Publica tirinha como asset novo. Pre-requisito: chamar uploadAseprite antes
+// (pra que last_aseprite_url esteja gravada).
+export async function publicarComoAsset({ tirinhaId, projectId, name }) {
+  const r = await authedFetch(`/api/fe/tirinhas/${tirinhaId}/publicar-asset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, name }),
+  });
+  return jsonOrThrow(r, 'publicar como asset');
+}
+
 // Cria tirinha de upload (após front parsear .aseprite e subir os PNGs).
 // Recebe a estrutura final com URLs já resolvidas.
 export async function createTirinhaUpload({ nome, origem_meta, largura, altura, camadas, quadros, celulas }) {
