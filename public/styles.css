@@ -1,3 +1,8 @@
+/* O atributo HTML `hidden` deve sempre esconder. Qualquer regra com
+   display:flex/grid/etc. sobrescreve a folha do user agent — esta linha
+   garante que `hidden` continue funcionando. */
+[hidden] { display: none !important; }
+
 /* ============================================================================
    ROTO-MASTER · PROTÓTIPO NAVEGÁVEL v2
    ----------------------------------------------------------------------------
@@ -360,6 +365,15 @@ body[data-space="atelie"] .space-label-name { color: var(--copper); }
   padding: 4px 6px;
 }
 .notif-panel-clear:hover { color: var(--paper); }
+.notif-panel-head-actions {
+  display: flex; align-items: center; gap: 6px;
+}
+.notif-panel-close {
+  background: none; border: 0; color: var(--paper-4);
+  font-size: 18px; line-height: 1; cursor: pointer;
+  padding: 2px 6px;
+}
+.notif-panel-close:hover { color: var(--paper); }
 
 .notif-list { overflow-y: auto; flex: 1 1 auto; }
 .notif-empty {

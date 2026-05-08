@@ -78,7 +78,10 @@
         <div class="notif-panel" data-bind="notif-panel" hidden>
           <header class="notif-panel-head">
             <span class="notif-panel-title">gerações</span>
-            <button class="notif-panel-clear" data-action="dismiss-all-notifs" type="button" hidden>limpar concluídas</button>
+            <div class="notif-panel-head-actions">
+              <button class="notif-panel-clear" data-action="dismiss-all-notifs" type="button" hidden>limpar concluídas</button>
+              <button class="notif-panel-close" data-action="close-notif-tray" type="button" aria-label="fechar bandeja" title="fechar (Esc)">×</button>
+            </div>
           </header>
           <div class="notif-list" data-bind="notif-list"></div>
           <div class="notif-empty" data-bind="notif-empty">

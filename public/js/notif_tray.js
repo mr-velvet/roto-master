@@ -35,6 +35,11 @@ export function initNotifTray() {
 
   $bell.addEventListener('click', togglePanel);
   $clearBtn.addEventListener('click', dismissAllCompleted);
+  const $closeBtn = document.querySelector('[data-action="close-notif-tray"]');
+  if ($closeBtn) $closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closePanel();
+  });
 
   // click fora fecha
   document.addEventListener('click', (e) => {
