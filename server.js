@@ -11,6 +11,19 @@ app.set('query parser', 'simple');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 app.locals.pool = pool;
 
+// CRÍTICO: pg.Pool emite 'error' quando uma conexão idle morre (ex: túnel IAP
+// cai). Sem listener, Node mata o processo. Em dev local com túnel instável
+// isso era a causa real do "frontend trava no verificando token" — o backend
+// morria silenciosamente e o /api/config nunca respondia. Logamos e seguimos.
+pool.on('error', (err) => {
+  console.error('[pg] idle client error (server segue vivo):', err.message);
+});
+
+// Garante que crashes de promessas órfãs não derrubem o processo.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', (req, res, next) => {

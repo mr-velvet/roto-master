@@ -86,7 +86,7 @@ function getSync(key) { return syncState.get(key) || null; }
 
 // Interação do canvas (pan/zoom). Espaço é exclusivo de pan.
 // Toggle do play migrou pra tecla K (Espaço deixou de ser atalho).
-let panX = 0, panY = 0;
+// (panX/panY já declarados no bloco de visualização acima)
 let panActive = false;        // está arrastando?
 let panTrigger = null;        // 'middle' | 'space'
 let panStartX = 0, panStartY = 0;       // ponto inicial do mouse (clientX/Y)

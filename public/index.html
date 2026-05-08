@@ -19,9 +19,14 @@
   <div id="login-screen">
     <div class="login-brand"><span class="mark">◆</span>roto<span style="color:var(--paper-4)">·</span>master</div>
     <div class="login-tagline">vídeo → <em style="color:var(--copper); font-style:italic">.aseprite</em> pronto pra rotoscopar</div>
-    <div id="login-loading" class="loading-msg">verificando token…</div>
-    <div id="login-actions" style="display:flex; flex-direction:column; gap:14px; align-items:center;">
-      <button class="btn-google" id="btn-signin">▸ colar token</button>
+    <div id="login-loading" class="loading-msg">verificando…</div>
+    <div id="login-actions" style="display:none; flex-direction:column; gap:14px; align-items:center; max-width:340px; margin:0 auto;">
+      <p style="color:var(--paper-3); font-size:12px; line-height:1.6; text-align:center;">
+        Cole o token compartilhado abaixo. Ele fica salvo no browser.
+      </p>
+      <input id="login-token-input" type="password" placeholder="token" autocomplete="off" spellcheck="false"
+             style="width:100%; padding:10px 14px; background:var(--ink-1); border:1px solid var(--line); color:var(--paper); font-family:inherit; font-size:13px; letter-spacing:0.04em;" />
+      <button class="btn-google" id="btn-signin">▸ entrar</button>
       <div id="login-err" class="err"></div>
     </div>
   </div>

@@ -1,8 +1,84 @@
 # PROGRESS — roto-master
 
-Última atualização: 2026-05-08 noite — **geração de vídeo virou assíncrona com bandeja global de notificações.** Migration `019_jobs_async_video.sql` reativou tabela `jobs` (criada em 008 e nunca consumida), worker in-process em `lib/job-runner.js` (sem container separado), endpoints `/api/jobs` + `/api/jobs/:id/dismiss`. Front ganhou sino global no header com badge pulsante, modal de preview do vídeo gerado (player + prompt + custo + abrir editor + lixeira), e multi-select com checkbox no Ateliê → Vídeos pra mandar muitos pra lixeira de uma vez. Geração de vídeo (`/api/generate/video` e `/text-video`) agora retorna 202 imediato com `{ job_id }` — fechar a aba não perde mais trabalho, dá pra disparar 5 ideias em paralelo. Smoke test end-to-end validado: `queued → running → completed`, $0.35 cobrado real, vídeo entregou no GCS+banco. Concorrência 3, recovery de jobs órfãos (`status='running'` ao subir → `failed`). Sem cancelamento (Fal cobra ao receber, sem reembolso).
+Última atualização: 2026-05-08 madrugada — **DX endurecida: `scripts/dev.ps1` e `~/ved/devops-workflow-2026/scripts/did.ps1` reescritos pra auto-diagnóstico e auto-recovery.** Sem fricção crônica de túnel/deploy. Subcomandos canônicos `start | stop | restart | status | logs | doctor` (dev local) e `deploy | preflight | logs | tail | status | secret | ssh | doctor` (plataforma). Detalhes na seção "Fluxo de dev/deploy (2026-05-08)" abaixo.
+
+Última atualização anterior: 2026-05-08 noite — **geração de vídeo virou assíncrona com bandeja global de notificações.** Migration `019_jobs_async_video.sql` reativou tabela `jobs` (criada em 008 e nunca consumida), worker in-process em `lib/job-runner.js` (sem container separado), endpoints `/api/jobs` + `/api/jobs/:id/dismiss`. Front ganhou sino global no header com badge pulsante, modal de preview do vídeo gerado (player + prompt + custo + abrir editor + lixeira), e multi-select com checkbox no Ateliê → Vídeos pra mandar muitos pra lixeira de uma vez. Geração de vídeo (`/api/generate/video` e `/text-video`) agora retorna 202 imediato com `{ job_id }` — fechar a aba não perde mais trabalho, dá pra disparar 5 ideias em paralelo. Smoke test end-to-end validado: `queued → running → completed`, $0.35 cobrado real, vídeo entregou no GCS+banco. Concorrência 3, recovery de jobs órfãos (`status='running'` ao subir → `failed`). Sem cancelamento (Fal cobra ao receber, sem reembolso).
 
 Última atualização anterior: 2026-05-08 — **Frames Editor implementado em uma sessão (back + front), pendente smoke test do user com banco/túnel ativo.** Em paralelo: PixVerse V6 entrou como segundo provider de vídeo (commit `6fcb1dc`). Frames Editor pousou em ~10 commits, dois agentes em worktree (parser/writer e UI) rodando em paralelo enquanto a main fazia migration + back. Status concreto na seção "Estado da implementação do Frames Editor (2026-05-08)" abaixo. **Falta:** smoke test com user usando, integração Frames Editor ↔ Assets (task #9 — "Editar como tirinha" no card do asset, "Publicar como novo asset" no editor).
+
+## Fluxo de dev/deploy (2026-05-08)
+
+### Comandos canônicos
+
+**Dev local** — qualquer terminal (cmd, git-bash, pwsh):
+
+```
+scripts\dev.cmd              # = start (sobe túnel + server)
+scripts\dev.cmd stop         # derruba só o que subi
+scripts\dev.cmd status       # estado de túnel, server local, prod
+scripts\dev.cmd logs         # tail -f do server local
+scripts\dev.cmd doctor       # varre ambiente e conserta o que dá
+scripts\dev.cmd restart
+```
+
+**Deploy** — de `~/ved/devops-workflow-2026/`:
+
+```
+.\scripts\did.ps1 preflight roto-master   # valida sem deployar
+.\scripts\did.ps1 deploy roto-master      # roda preflight, depois deploy
+.\scripts\did.ps1 logs roto-master        # logs do container em prod
+.\scripts\did.ps1 tail roto-master        # logs ao vivo
+.\scripts\did.ps1 status                  # todos os apps na VM
+.\scripts\did.ps1 doctor                  # auth/ssh/apps
+```
+
+### O que o dev.ps1 faz sozinho
+
+- **Túnel IAP em background**, PID persistido em `.dev-state.json`. Healthcheck real (TCP connect + leitura, não só porta `LISTENING`). Se cair entre sessões, derruba órfão e reabre.
+- **Detecta gcloud auth expirado** e abre `gcloud auth login` no browser sem perguntar.
+- **Server em background** com logs em `logs/server.log`. Mata server zumbi de sessão anterior antes de subir o novo. Aguarda `/api/health` em `127.0.0.1` (não `localhost` — Windows resolve IPv6 e Express está bound em IPv4).
+- **Porta livre escolhida automaticamente** dentre `5050, 5070, 5080, 5090, 5060, 5055, 5056`.
+- **Migrations aplicadas idempotente** via `scripts/apply-migrations.js` (tabela `_migrations`).
+- **Não toca em processos de outros projetos** — só em PIDs registrados em `.dev-state.json` ou comprovadamente do roto-master via `Win32_Process.CommandLine`.
+
+### O que o did.ps1 faz sozinho
+
+- **Preflight obrigatório antes de deploy** (suprimível com `-SkipPreflight`):
+  - gcloud autenticado e em `didlu-main`. Se não, abre login.
+  - SSH na VM funciona.
+  - Repo local do app limpo (sem mudanças não comitadas) e sincronizado com origin (sem commits locais não pushados, não atrás do remote). **Esse era o ponto frequente:** `deploy.sh` na VM faz `git reset --hard origin/main`, então commits locais não chegam. Detecta antes de gastar tempo.
+- **`-Force` permite deploy mesmo com repo sujo** — uso consciente quando o estado local é genuinamente intermediário.
+- **Health check com retry exponencial** (2/3/5/8/13s = ~31s total). Se passar, ok. Se não, **automaticamente puxa `docker logs --tail=80` do container** pra mostrar o erro.
+- **`logs`/`status` mostram output direto** (sem `Out-Null` engolindo).
+- **`secret set` aceita qualquer valor** (aspas simples, quebras de linha, `$`, `\`) via base64 + script Python copiado por scp pra VM.
+
+### Pontos de atenção que ficam fora do escopo dos scripts
+
+- **Logout do gcloud por inatividade** — gcloud exige reauth periódico. O script detecta e pede login. Não tenta keep-alive automático porque seria cerimônia desnecessária.
+- **Postgres/Logto na VM caírem** — fora de escopo do wrapper. `did doctor` mostra status do compose.
+- **Mudança de porta do túnel ou da VM** — se a infra mudar, atualizar constantes no topo do script (`$TUNNEL_PORT`, `$VM`, `$ZONE`).
+
+### Onde está o quê
+
+| Arquivo | Onde | Função |
+|---|---|---|
+| `scripts/dev.ps1` | dentro de `roto-master/` | dev local |
+| `scripts/dev.cmd` | dentro de `roto-master/` | wrapper que prefere `pwsh` (PS7), cai pra Windows PowerShell 5.1 |
+| `scripts/apply-migrations.js` | dentro de `roto-master/` | migrations idempotentes |
+| `scripts/did.ps1` | em `~/ved/devops-workflow-2026/` | deploy |
+| `.dev-state.json` | gerado em `roto-master/` (gitignored) | PIDs do túnel + server |
+| `logs/server.log` + `logs/tunnel.log` | gerados em `roto-master/` (gitignored) | output dos processos em background |
+
+### Histórico das fricções que motivaram a reescrita
+
+- **Túnel IAP caindo silenciosamente** — gcloud morria mas porta ficava em TIME_WAIT, script anterior dizia "tunel ja de pe" e backend dava 500. Resolvido com healthcheck que faz round-trip TCP.
+- **Server zumbi de sessão anterior** — sem persistência de PID, script anterior pulava pra outra porta e deixava o velho rodando, dois job runners no mesmo banco. Resolvido com `.dev-state.json`.
+- **Output engolido por `Out-Null` no `did logs`** — comando funcionava mas usuário via tela em branco. Resolvido removendo o `Out-Null`.
+- **`localhost` resolvendo IPv6 em Windows** — Express bound em `0.0.0.0` (IPv4), `Invoke-WebRequest http://localhost` falhava. Resolvido usando `127.0.0.1` em todos os healthchecks.
+- **Encoding UTF-8 sem BOM em PS5.1** — `dev.cmd` usa `powershell.exe` (5.1) por compatibilidade; PS5.1 lê arquivos sem BOM como Windows-1252 e quebra em acentos. Resolvido salvando os scripts com BOM e preferindo `pwsh` quando disponível.
+- **`deploy.sh` na VM puxando código desatualizado** porque commits locais não foram pushados — preflight no wrapper detecta antes.
+
+---
 
 ## Estado da implementação do Frames Editor (2026-05-08)
 

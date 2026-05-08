@@ -12,3 +12,5 @@ temp-*/
 .env
 .env.local
 scripts/dev.local.*
+.dev-state.json
+logs/

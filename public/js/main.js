@@ -1,6 +1,6 @@
 // Bootstrap. Auth (token) → router → screens.
 
-import { initAuth, clearToken, getToken } from './auth.js';
+import { initAuth, clearToken, getToken, setTokenAndValidate } from './auth.js';
 import { showToast, openModal } from './modals.js';
 import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateTrash, navigateFeHome } from './router.js';
 import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
@@ -17,11 +17,45 @@ import { initNotifTray } from './notif_tray.js';
 
 const $loginErr = document.getElementById('login-err');
 const $btnSignin = document.getElementById('btn-signin');
+const $loginInput = document.getElementById('login-token-input');
+const $loginLoading = document.getElementById('login-loading');
+const $loginActions = document.getElementById('login-actions');
 
-// Botão "colar token" — limpa token salvo e recarrega pra reabrir prompt.
-$btnSignin.addEventListener('click', () => {
-  clearToken();
-  window.location.reload();
+function showLoginActions(errMsg) {
+  if ($loginLoading) $loginLoading.style.display = 'none';
+  if ($loginActions) $loginActions.style.display = 'flex';
+  if (errMsg && $loginErr) $loginErr.textContent = errMsg;
+  setTimeout(() => $loginInput?.focus(), 50);
+}
+
+async function tryEnter() {
+  const v = $loginInput?.value?.trim();
+  if (!v) {
+    if ($loginErr) $loginErr.textContent = 'cole o token primeiro';
+    return;
+  }
+  if ($loginErr) $loginErr.textContent = '';
+  $btnSignin.disabled = true;
+  $btnSignin.textContent = 'validando…';
+  try {
+    const r = await setTokenAndValidate(v);
+    if (!r.ok) {
+      if ($loginErr) $loginErr.textContent = r.error;
+      $btnSignin.disabled = false;
+      $btnSignin.textContent = '▸ entrar';
+      return;
+    }
+    window.location.reload();
+  } catch (e) {
+    if ($loginErr) $loginErr.textContent = 'falha de rede — tente de novo';
+    $btnSignin.disabled = false;
+    $btnSignin.textContent = '▸ entrar';
+  }
+}
+
+$btnSignin.addEventListener('click', tryEnter);
+$loginInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') tryEnter();
 });
 
 // Botão de copiar token (header global). Útil pra compartilhar o token
@@ -170,14 +204,14 @@ function showFeEditorScreen(id) {
   } catch (e) {
     document.body.classList.remove('app-loading');
     document.body.classList.add('app-unauth');
-    $loginErr.textContent = 'Erro inicializando auth: ' + e.message;
+    showLoginActions('falha ao verificar auth: ' + (e?.message || 'erro de rede'));
     return;
   }
 
   if (!result.authenticated) {
     document.body.classList.remove('app-loading');
     document.body.classList.add('app-unauth');
-    if (result.error) $loginErr.textContent = result.error;
+    showLoginActions(result.error || 'cole o token pra entrar');
     return;
   }
 
