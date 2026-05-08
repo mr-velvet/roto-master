@@ -510,6 +510,8 @@ function reverterLocalProcessando(idsRevertir) {
     cel.estado = 'idle';
     cel.estado_erro = null;
     cel.estado_atualizado_em = new Date().toISOString();
+  }
+}
 
 // === Canvas ===
 //
