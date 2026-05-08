@@ -61,11 +61,12 @@ export async function generateImage({ prompt, ref_image_urls }) {
   return r.json();
 }
 
-export async function generateVideo({ image_url, motion_prompt, duration_s, image_prompt, video_id }) {
+// Enfileira job de i2v. Retorna { job: { id, kind, status, created_at } }.
+export async function generateVideo({ image_url, motion_prompt, duration_s, image_prompt, video_id, model_key }) {
   const r = await authedFetch('/api/generate/video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url, motion_prompt, duration_s, image_prompt, video_id }),
+    body: JSON.stringify({ image_url, motion_prompt, duration_s, image_prompt, video_id, model_key }),
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
@@ -74,11 +75,12 @@ export async function generateVideo({ image_url, motion_prompt, duration_s, imag
   return r.json();
 }
 
-export async function generateTextVideo({ prompt, duration_s, video_id, mode, structured }) {
+// Enfileira job de t2v. Retorna { job: { id, kind, status, created_at } }.
+export async function generateTextVideo({ prompt, duration_s, video_id, mode, structured, model_key }) {
   const r = await authedFetch('/api/generate/text-video', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, duration_s, video_id, mode, structured }),
+    body: JSON.stringify({ prompt, duration_s, video_id, mode, structured, model_key }),
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));

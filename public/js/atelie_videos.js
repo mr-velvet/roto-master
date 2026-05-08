@@ -8,12 +8,23 @@ const $grid = document.querySelector('[data-bind="video-grid"]');
 const $empty = document.querySelector('[data-bind="videos-empty"]');
 const $countVideos = document.querySelector('[data-bind="count-videos"]');
 
+const $multiToggle = document.querySelector('[data-action="toggle-multi-select"]');
+const $multiToggleLabel = document.querySelector('[data-bind="multi-select-toggle-label"]');
+const $multiBar = document.querySelector('[data-bind="multi-select-bar"]');
+const $multiCount = document.querySelector('[data-bind="multi-select-count"]');
+const $multiTrashLabel = document.querySelector('[data-bind="multi-select-trash-label"]');
+
 let videos = [];
 let pendingFlow = null;
+let multiMode = false;
+let selected = new Set();  // ids selecionados
 
 export async function showAtelieVideos() {
   await refresh();
 }
+
+// refresh quando vídeo é deletado em outro lugar (modal preview da bandeja)
+window.addEventListener('video-deleted', () => { refresh().catch(() => {}); });
 
 async function refresh() {
   try {
@@ -29,8 +40,10 @@ async function refresh() {
 
 function render() {
   $grid.innerHTML = '';
+  $grid.classList.toggle('is-multi-select', multiMode);
   if (!videos.length) {
     $empty.removeAttribute('hidden');
+    updateMultiBar();
     return;
   }
   $empty.setAttribute('hidden', '');
@@ -38,9 +51,14 @@ function render() {
   for (const v of videos) {
     const card = document.createElement('div');
     card.className = 'video-card';
+    if (multiMode && selected.has(v.id)) card.classList.add('is-selected');
     card.addEventListener('click', (e) => {
       if (e.target.closest('.video-card-hover-actions')) return;
       if (e.target.closest('[data-action="goto-published-project"]')) return;
+      if (multiMode) {
+        toggleSelection(v.id);
+        return;
+      }
       navigateEditor(v.id);
     });
 
@@ -69,7 +87,11 @@ function render() {
     const costTag = renderCostTag(v);
 
     const thumbUrl = v.thumb_url;
+    const checkbox = multiMode
+      ? `<span class="video-card-check" aria-hidden="true"><span class="video-card-check-mark">✓</span></span>`
+      : '';
     card.innerHTML = `
+      ${checkbox}
       <div class="video-card-thumb${thumbUrl ? ' has-thumb' : ''}"${thumbUrl ? ` style="background-image:url('${thumbUrl}')"` : ''}>
         <span class="play-mark">▶</span>
         ${dur ? `<span class="video-card-duration">${dur}</span>` : ''}
@@ -274,3 +296,85 @@ function renderCostTag(v) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// === multi-select ===
+function setMultiMode(on) {
+  multiMode = on;
+  selected.clear();
+  if ($multiToggle) $multiToggle.classList.toggle('is-active', on);
+  if ($multiToggleLabel) $multiToggleLabel.textContent = on ? 'sair da seleção' : 'selecionar';
+  render();
+  updateMultiBar();
+}
+
+function toggleSelection(id) {
+  if (selected.has(id)) selected.delete(id);
+  else selected.add(id);
+  render();
+  updateMultiBar();
+}
+
+function updateMultiBar() {
+  if (!$multiBar) return;
+  if (!multiMode) {
+    $multiBar.setAttribute('hidden', '');
+    return;
+  }
+  $multiBar.removeAttribute('hidden');
+  const n = selected.size;
+  $multiCount.textContent = n === 1 ? '1 selecionado' : `${n} selecionados`;
+  $multiTrashLabel.textContent = n
+    ? `jogar ${n} ${n === 1 ? 'vídeo' : 'vídeos'} na lixeira`
+    : 'jogar na lixeira';
+  // botão lixeira disabled se nenhum selecionado
+  const $trash = document.querySelector('[data-action="multi-select-trash"]');
+  if ($trash) $trash.disabled = n === 0;
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-action="toggle-multi-select"]')) {
+    setMultiMode(!multiMode);
+    return;
+  }
+  if (e.target.closest('[data-action="multi-select-clear"]')) {
+    selected.clear();
+    render();
+    updateMultiBar();
+    return;
+  }
+  if (e.target.closest('[data-action="multi-select-all"]')) {
+    videos.forEach((v) => selected.add(v.id));
+    render();
+    updateMultiBar();
+    return;
+  }
+});
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="multi-select-trash"]')) return;
+  if (!selected.size) return;
+  const ids = [...selected];
+  const ok = await confirmModal({
+    title: 'mandar pra lixeira',
+    message: `Mandar ${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} pra lixeira? Você pode restaurar depois.`,
+    confirmLabel: `mandar ${ids.length} pra lixeira`,
+    danger: true,
+  });
+  if (!ok) return;
+  // otimista: remove da lista local + executa em paralelo
+  videos = videos.filter((v) => !selected.has(v.id));
+  $countVideos.textContent = String(videos.length);
+  render();
+  const failed = [];
+  await Promise.all(ids.map(async (id) => {
+    try { await deleteVideo(id); }
+    catch { failed.push(id); }
+  }));
+  if (failed.length) {
+    showToast(`falha em ${failed.length} de ${ids.length} — atualizando lista`);
+  } else {
+    showToast(`${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} na lixeira`);
+  }
+  setMultiMode(false);
+  refresh();
+});

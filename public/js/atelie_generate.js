@@ -3,7 +3,8 @@
 
 import { listModels, generateImage, generateVideo, uploadRef, setActiveAttempt, enhancePrompt, sanitizeImage } from './generate_api.js';
 import { showToast, openModal, closeModal, confirmModal } from './modals.js';
-import { navigateEditor } from './router.js';
+import { navigateEditor, navigateAtelie } from './router.js';
+import { notifyJobEnqueued } from './notif_tray.js';
 
 // === refs DOM ===
 const $imgPrompt = document.querySelector('[data-bind="gen-image-prompt"]');
@@ -315,50 +316,23 @@ document.addEventListener('click', (e) => {
   updateCostLabels();
 });
 
-// === gerar vídeo ===
-let videoTimerInterval = null;
-function startVideoTimer() {
-  const start = Date.now();
-  const m = effectiveVideoModel();
-  const tick = () => {
-    const sec = Math.floor((Date.now() - start) / 1000);
-    $videoBtnLabel.textContent = `gerando há ${sec}s…`;
-    $videoStatus.textContent = `${m.label} rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
-  };
-  tick();
-  videoTimerInterval = setInterval(tick, 1000);
-}
-function stopVideoTimer() {
-  if (videoTimerInterval) clearInterval(videoTimerInterval);
-  videoTimerInterval = null;
-}
-
+// === enfileirar vídeo (assíncrono) ===
+// Não trava mais a UI. Cria job e volta pra lista de Vídeos com toast.
+// User acompanha pela bandeja no header.
 async function runGenVideo(body) {
   $videoErr.textContent = '';
   $videoRetry.setAttribute('hidden', '');
   $videoBtn.disabled = true;
-  $videoStatus.removeAttribute('hidden');
-  startVideoTimer();
   try {
-    const result = await generateVideo(body);
-    videoId = result.video.id;
-    videoActiveIdx = result.attempt_idx;
-    videoAttempts = result.video.generation_meta?.attempts || [];
+    await generateVideo(body);
+    notifyJobEnqueued();
+    showToast('vídeo na fila — vou avisar quando terminar', 6000);
+    // limpa o motion_prompt pra próxima ideia, mantém imagem inicial.
+    $motionPrompt.value = '';
     lastVideoBody = body;
-
-    stopVideoTimer();
-    $videoStatus.setAttribute('hidden', '');
-    $videoBtnLabel.textContent = 'gerar nova tentativa';
-    renderAttempts();
-    $finalize.removeAttribute('hidden');
-    showToast('vídeo pronto');
   } catch (e) {
-    stopVideoTimer();
-    $videoStatus.setAttribute('hidden', '');
-    $videoErr.textContent = e.message;
+    $videoErr.textContent = 'falha ao enfileirar — tente de novo';
     $videoRetry.removeAttribute('hidden');
-    $videoBtnLabel.textContent = videoAttempts.length ? 'gerar nova tentativa' : 'gerar vídeo';
-
   } finally {
     $videoBtn.disabled = false;
   }
@@ -382,7 +356,7 @@ document.addEventListener('click', async (e) => {
   const costStr = cost ? `~$${cost.toFixed(2)}` : 'custo não disponível';
   const ok = await confirmModal({
     title: 'Gerar vídeo',
-    message: `Vai custar ${costStr} (${m.label} · ${realDur}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
+    message: `Vai custar ${costStr} (${m.label} · ${realDur}s). Cobrança no provider acontece no envio. O vídeo gera em background — fica acompanhando pelo sino no header. Confirmar?`,
     danger: false,
     confirmLabel: `gerar (${costStr})`,
   });

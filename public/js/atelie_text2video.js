@@ -3,7 +3,8 @@
 
 import { listModels, generateTextVideo, enhancePrompt, setActiveAttempt } from './generate_api.js';
 import { showToast, openModal, closeModal, confirmModal } from './modals.js';
-import { navigateEditor } from './router.js';
+import { navigateEditor, navigateAtelie } from './router.js';
+import { notifyJobEnqueued } from './notif_tray.js';
 
 // === paletas de chips (em inglês — vão direto pro prompt) ===
 // Cada item: label exibido = label que entra no prompt. Mantemos curto e
@@ -361,28 +362,8 @@ document.addEventListener('click', (e) => {
   });
 });
 
-// === gerar ===
-let timerInterval = null;
-function startTimer() {
-  const start = Date.now();
-  const m = effectiveVideoModel();
-  const tick = () => {
-    const sec = Math.floor((Date.now() - start) / 1000);
-    $generateLabel.textContent = `gerando há ${sec}s…`;
-    $status.textContent = `${m.label} rolando — ${sec}s decorridos. Costuma levar 1-2min.`;
-  };
-  tick();
-  timerInterval = setInterval(tick, 1000);
-}
-function stopTimer() {
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = null;
-}
-
+// === enfileirar (assíncrono) ===
 async function runGenerate(body) {
-  // Confirmação com estimativa de custo. Geração t2v é cobrada na hora que
-  // o provider aceita o job — sem cancelamento real depois. Centralizado
-  // aqui pra cobrir tanto o modo livre quanto o rigoroso.
   const mDeriv = effectiveVideoModel();
   const realDur = clampDurationForModel(body.duration_s || durationS, mDeriv.key);
   const entry = modelsByKey[mDeriv.modelId];
@@ -390,38 +371,28 @@ async function runGenerate(body) {
   const costStr = cost ? `~$${cost.toFixed(2)}` : 'custo não disponível';
   const ok = await confirmModal({
     title: 'Gerar vídeo',
-    message: `Vai custar ${costStr} (${mDeriv.label} · ${realDur}s). Cobrança no provider acontece no envio — não dá pra reembolsar depois. Confirmar?`,
+    message: `Vai custar ${costStr} (${mDeriv.label} · ${realDur}s). Cobrança no provider acontece no envio. O vídeo gera em background — fica acompanhando pelo sino no header. Confirmar?`,
     danger: false,
     confirmLabel: `gerar (${costStr})`,
   });
   if (!ok) return;
-  // garante body sincronizado com modelo + duração efetivos
   body.duration_s = realDur;
   body.model_key = mDeriv.key;
 
   $err.textContent = '';
   $generateBtn.disabled = true;
   $previewBtn.disabled = true;
-  $status.removeAttribute('hidden');
-  startTimer();
   try {
-    const result = await generateTextVideo(body);
-    videoId = result.video.id;
-    videoActiveIdx = result.attempt_idx;
-    videoAttempts = result.video.generation_meta?.attempts || [];
+    await generateTextVideo(body);
+    notifyJobEnqueued();
+    showToast('vídeo na fila — vou avisar quando terminar', 6000);
     lastBody = body;
-
-    stopTimer();
-    $status.setAttribute('hidden', '');
-    $generateLabel.textContent = 'gerar nova tentativa';
-    renderAttempts();
-    $finalize.removeAttribute('hidden');
-    showToast('vídeo pronto');
+    // limpa o prompt no modo livre pra abrir caminho pra próxima ideia
+    if (body.mode === 'free') {
+      $freePrompt.value = '';
+    }
   } catch (e) {
-    stopTimer();
-    $status.setAttribute('hidden', '');
-    $err.textContent = e.message;
-    $generateLabel.textContent = videoAttempts.length ? 'gerar nova tentativa' : 'gerar vídeo';
+    $err.textContent = 'falha ao enfileirar — tente de novo';
   } finally {
     $generateBtn.disabled = false;
     $previewBtn.disabled = false;

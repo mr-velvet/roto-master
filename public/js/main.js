@@ -1,7 +1,7 @@
 // Bootstrap. Auth (token) → router → screens.
 
 import { initAuth, clearToken, getToken } from './auth.js';
-import { showToast } from './modals.js';
+import { showToast, openModal } from './modals.js';
 import { bindRouter, startRouter, navigateHome, navigateAtelie, navigateTrash, navigateFeHome } from './router.js';
 import { bindChrome, setSpace, setBreadcrumb } from './chrome.js';
 import { showHome } from './gal_home.js';
@@ -13,6 +13,7 @@ import { showAtelieTextVideo } from './atelie_text2video.js';
 import { initEditor, openEditor } from './editor.js';
 import { showFeHome } from './fe_home.js';
 import { showFeEditor } from './fe_editor.js';
+import { initNotifTray } from './notif_tray.js';
 
 const $loginErr = document.getElementById('login-err');
 const $btnSignin = document.getElementById('btn-signin');
@@ -48,21 +49,40 @@ document.addEventListener('click', (e) => {
 
 // Versão em produção: lê /version.json (arquivo estático servido pelo
 // express.static). Cada commit que vai pra prod atualiza esse arquivo.
-// Bypass de cache via query string com timestamp.
+// Header mostra só `v0.0.4`; clicar abre modal com label/data/sha.
+let versionInfo = null;
 (async () => {
   try {
     const r = await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) return;
-    const v = await r.json();
+    versionInfo = await r.json();
     const $v = document.querySelector('[data-bind="brand-version"]');
-    if (!$v || !v.sha) return;
-    const sha = String(v.sha).slice(0, 7);
-    $v.textContent = v.label ? `${sha} · ${v.label}` : sha;
+    if (!$v) return;
+    const tag = versionInfo.version ? `v${versionInfo.version}` : (versionInfo.sha ? String(versionInfo.sha).slice(0, 7) : '');
+    if (!tag) return;
+    $v.textContent = tag;
     $v.removeAttribute('hidden');
   } catch (e) {
     // silencioso — versão é cosmética
   }
 })();
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="open-version-info"]')) return;
+  if (!versionInfo) return;
+  openModal('version-info', {
+    onOpen: (m) => {
+      const set = (key, val) => {
+        const $el = m.querySelector(`[data-bind="version-info-${key}"]`);
+        if ($el) $el.textContent = val || '—';
+      };
+      set('version', versionInfo.version ? `v${versionInfo.version}` : '—');
+      set('date', versionInfo.date || '—');
+      set('sha', versionInfo.sha || '—');
+      set('label', versionInfo.label || '—');
+    },
+  });
+});
 
 function showHomeScreen() {
   setSpace('galeria', 'home');
@@ -164,6 +184,7 @@ function showFeEditorScreen(id) {
   document.body.classList.remove('app-loading');
 
   initEditor();
+  initNotifTray();
 
   bindChrome({
     onSwitchSpace: (target) => {

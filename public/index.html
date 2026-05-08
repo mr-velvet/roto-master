@@ -34,7 +34,7 @@
       <div class="brand">
         <span class="brand-mark">◆</span>
         <span class="brand-name">roto<span class="brand-sep">·</span>master</span>
-        <span class="brand-version" data-bind="brand-version" title="versão em produção" hidden></span>
+        <button type="button" class="brand-version" data-bind="brand-version" data-action="open-version-info" title="ver detalhes da versão" hidden></button>
       </div>
       <div class="space-label">
         <span class="space-label-here">você está em</span>
@@ -63,6 +63,23 @@
           <span class="space-switch-name">Frames Editor</span>
         </button>
         <div class="space-switch-thumb" aria-hidden="true"></div>
+      </div>
+
+      <div class="notif-tray" data-bind="notif-tray">
+        <button class="notif-bell" data-action="toggle-notif-tray" type="button" title="notificações de gerações em background" aria-label="notificações" aria-expanded="false">
+          <span class="notif-bell-icon">◐</span>
+          <span class="notif-bell-badge" data-bind="notif-badge" hidden>0</span>
+        </button>
+        <div class="notif-panel" data-bind="notif-panel" hidden>
+          <header class="notif-panel-head">
+            <span class="notif-panel-title">gerações</span>
+            <button class="notif-panel-clear" data-action="dismiss-all-notifs" type="button" hidden>limpar concluídas</button>
+          </header>
+          <div class="notif-list" data-bind="notif-list"></div>
+          <div class="notif-empty" data-bind="notif-empty">
+            nenhuma geração rolando.<br/>quando você dispara um vídeo, ele aparece aqui.
+          </div>
+        </div>
       </div>
 
       <button class="token-copy-btn" data-action="goto-trash" type="button" title="lixeira (assets descartados)" aria-label="lixeira">
@@ -189,11 +206,24 @@
               <p class="page-head-sub">Matéria-prima da rotoscopia. Cada vídeo é seu até você publicar como asset.</p>
             </div>
             <div class="page-head-actions">
+              <button class="btn btn-ghost" data-action="toggle-multi-select" data-bind="multi-select-toggle">
+                <span class="btn-icon">▢</span>
+                <span data-bind="multi-select-toggle-label">selecionar</span>
+              </button>
               <button class="btn btn-primary btn-lg" data-action="new-video">
                 <span class="btn-icon">+</span>
                 criar vídeo
               </button>
             </div>
+          </div>
+          <div class="multi-select-bar" data-bind="multi-select-bar" hidden>
+            <span class="multi-select-count" data-bind="multi-select-count">0 selecionados</span>
+            <button class="btn btn-ghost btn-sm" data-action="multi-select-all">selecionar todos</button>
+            <button class="btn btn-ghost btn-sm" data-action="multi-select-clear">desmarcar</button>
+            <button class="btn btn-ghost btn-sm btn-danger" data-action="multi-select-trash">
+              <span class="btn-icon">🗑</span>
+              <span data-bind="multi-select-trash-label">jogar na lixeira</span>
+            </button>
           </div>
           <div class="video-grid" data-bind="video-grid"></div>
           <div class="empty-state" data-bind="videos-empty" hidden>
@@ -1128,6 +1158,73 @@
           <span class="btn-icon">◆</span>
           publicar
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: preview de vídeo gerado (vindo da bandeja) -->
+  <div class="modal modal-wide" data-modal="job-video-preview" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card job-preview-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow" data-bind="job-preview-eyebrow">Vídeo gerado</div>
+        <h3 data-bind="job-preview-title">—</h3>
+      </div>
+      <div class="modal-body">
+        <div class="job-preview-player">
+          <video data-bind="job-preview-video" controls autoplay loop playsinline preload="metadata"></video>
+        </div>
+        <div class="job-preview-meta">
+          <div class="job-preview-row">
+            <span class="job-preview-key">prompt</span>
+            <span class="job-preview-val" data-bind="job-preview-prompt">—</span>
+          </div>
+          <div class="job-preview-row">
+            <span class="job-preview-key">duração</span>
+            <span class="job-preview-val" data-bind="job-preview-duration">—</span>
+          </div>
+          <div class="job-preview-row">
+            <span class="job-preview-key">custo</span>
+            <span class="job-preview-val" data-bind="job-preview-cost">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost btn-danger" data-action="job-preview-trash">
+          <span class="btn-icon">🗑</span>
+          mandar pra lixeira
+        </button>
+        <button class="btn btn-ghost" data-action="modal-close">fechar</button>
+        <button class="btn btn-primary" data-action="job-preview-open-editor">
+          <span class="btn-icon">▶</span>
+          abrir no editor
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: detalhes da versão atual em produção -->
+  <div class="modal" data-modal="version-info" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>versão em produção</h3>
+        <p class="modal-sub">o que tem rodando agora em <code>roto.did.lu</code></p>
+      </div>
+      <div class="modal-body">
+        <dl class="version-info-list">
+          <dt>versão</dt>
+          <dd data-bind="version-info-version">—</dd>
+          <dt>deploy</dt>
+          <dd data-bind="version-info-date">—</dd>
+          <dt>commit</dt>
+          <dd><code data-bind="version-info-sha">—</code></dd>
+          <dt>mudanças</dt>
+          <dd data-bind="version-info-label">—</dd>
+        </dl>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-primary" data-action="modal-close">fechar</button>
       </div>
     </div>
   </div>

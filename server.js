@@ -33,6 +33,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api/assets', require('./routes/assets').router);
 app.use('/api/models', require('./routes/models'));
 app.use('/api/generate', require('./routes/generate'));
+app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/fe', require('./routes/fe'));
 
 app.get('*', (req, res) => {
@@ -56,6 +57,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'internal error' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`roto-master running on port ${PORT}`);
+  try {
+    await require('./lib/job-runner').init(pool);
+  } catch (e) {
+    console.error('[jobs] init falhou:', e.message);
+  }
 });

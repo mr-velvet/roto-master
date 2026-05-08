@@ -1,16 +1,11 @@
 // Rotas de geração de mídia (fluxo C — geração genérica).
 //
-// POST /api/generate/image    body: { prompt, ref_image_urls? }
-//                             resp: { image_url, cost_actual, model }
+// POST /api/generate/image          (síncrono) — Nano Banana Pro ~30s.
+// POST /api/generate/video          (assíncrono — cria job, devolve 202).
+// POST /api/generate/text-video     (assíncrono — cria job, devolve 202).
 //
-// POST /api/generate/video    body: { image_url, motion_prompt, duration_s,
-//                                     image_prompt?, video_id? }
-//                             - sem video_id: cria nova row em videos
-//                             - com video_id: anexa attempt na existente
-//                             resp: { video, attempt_idx }
-//
-// Síncronas: bloqueiam até o fal terminar (loading no front).
-// Imagem ~30s; vídeo ~60-120s.
+// Imagem segue síncrona (rápida). Vídeo (60-180s) virou job pra não travar
+// UI nem perder trabalho se a aba fechar. Worker em lib/job-runner.js.
 
 const { Router } = require('express');
 const multer = require('multer');
@@ -22,13 +17,6 @@ const { getRecipe, SANITIZE_IMAGE_PROMPT } = require('../lib/prompt-recipes');
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-
-const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, size_bytes, duration_s, width, height,
-                    edit_state, share_id, published_asset_id,
-                    source_aparencia_id, source_enquadramento_id, source_enquadramento_kind,
-                    source_motion_prompt, source_model_key,
-                    generation_meta,
-                    created_at, updated_at`;
 
 // Calcula custo real consultando o catálogo. Pra modelos `per_second`,
 // multiplica pela duração.
@@ -127,14 +115,14 @@ router.post('/image', requireUser, async (req, res) => {
   }
 });
 
+// POST /api/generate/video — enfileira job. Resposta 202 com { job_id }.
+// Cobrança no Fal só acontece quando o worker pega o job.
 router.post('/video', requireUser, async (req, res) => {
   const image_url = (req.body?.image_url || '').trim();
   const motion_prompt = (req.body?.motion_prompt || '').trim();
   const image_prompt = (req.body?.image_prompt || '').trim();
   const videoId = req.body?.video_id || null;
-  // model_key novo: 'kling-i2v' (default) ou 'pixverse-i2v'.
   const modelKey = req.body?.model_key === 'pixverse-i2v' ? 'pixverse-i2v' : 'kling-i2v';
-  // Duração: Kling = 5/10; PixVerse = 1-15 inteiro.
   let duration_s;
   if (modelKey === 'pixverse-i2v') {
     const d = parseInt(req.body?.duration_s, 10);
@@ -157,124 +145,29 @@ router.post('/video', requireUser, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'video_id não encontrado' });
   }
 
+  // Custo estimado calculado no momento de enfileirar (não-vinculante; valor real
+  // entra em cost_actual quando o worker termina).
+  const modelId = modelKey === 'pixverse-i2v'
+    ? 'fal-ai/pixverse/v6/image-to-video'
+    : 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video';
+  const costEst = await modelCost(pool, modelId, duration_s);
+
   try {
-    const result = await fal.generateVideo({ image_url, prompt: motion_prompt, duration_s, model_key: modelKey });
-    // duration_s real volta do provider (PixVerse pode ter clampado).
-    duration_s = result.duration_s;
-    const cost = await modelCost(pool, result.model, duration_s);
-    const costValue = cost?.cost ?? null;
-    const generated_at = new Date().toISOString();
-
-    // sobe vídeo pro GCS (path determinístico depois que tivermos id da row)
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      let videoRow;
-      let attemptIdx;
-
-      if (videoId) {
-        // ATUALIZA video existente: anexa attempt
-        const { rows } = await client.query(
-          `SELECT generation_meta FROM videos WHERE id = $1 FOR UPDATE`,
-          [videoId]
-        );
-        const meta = rows[0].generation_meta || {};
-        const attempts = Array.isArray(meta.attempts) ? meta.attempts : [];
-
-        // path único pra essa attempt
-        const attemptId = `att-${attempts.length}-${Date.now()}`;
-        const dstPath = `roto-master/videos/${videoId}/source-${attemptId}.mp4`;
-        const stored = await uploadFromUrl(result.url, dstPath, 'video/mp4');
-
-        const newAttempt = {
-          url: stored.gcs_url,
-          motion_prompt,
-          duration_s,
-          source_image_url: image_url,
-          cost: costValue,
-          generated_at,
-        };
-        attempts.push(newAttempt);
-        attemptIdx = attempts.length - 1;
-
-        const newMeta = {
-          ...meta,
-          image_prompt: image_prompt || meta.image_prompt,
-          image_url: image_url, // imagem-base atual
-          model_motion: result.model,
-          attempts,
-          active_attempt_idx: attemptIdx,
-        };
-
-        const { rows: upd } = await client.query(
-          `UPDATE videos
-              SET gcs_path = $1, gcs_url = $2, duration_s = $3,
-                  generation_meta = $4, updated_at = NOW()
-            WHERE id = $5
-            RETURNING ${VIDEO_COLS}`,
-          [stored.gcs_path, stored.gcs_url, duration_s, newMeta, videoId]
-        );
-        videoRow = upd[0];
-      } else {
-        // CRIA video novo
-        const name = (image_prompt || motion_prompt).slice(0, 60).trim() || 'sem nome';
-
-        const { rows: ins } = await client.query(
-          `INSERT INTO videos (name, origin, gcs_path, gcs_url, duration_s)
-           VALUES ($1, 'generated-generic', '', '', $2) RETURNING id`,
-          [name, duration_s]
-        );
-        const newId = ins[0].id;
-
-        const dstPath = `roto-master/videos/${newId}/source-att-0-${Date.now()}.mp4`;
-        const stored = await uploadFromUrl(result.url, dstPath, 'video/mp4');
-
-        const newMeta = {
-          image_prompt: image_prompt || null,
-          image_url,
-          model_image: null, // pode ser preenchido depois se rastrearmos
-          model_motion: result.model,
-          attempts: [{
-            url: stored.gcs_url,
-            motion_prompt,
-            duration_s,
-            source_image_url: image_url,
-            cost: costValue,
-            generated_at,
-          }],
-          active_attempt_idx: 0,
-        };
-
-        const { rows: upd } = await client.query(
-          `UPDATE videos
-              SET gcs_path = $1, gcs_url = $2, generation_meta = $3, updated_at = NOW()
-            WHERE id = $4
-            RETURNING ${VIDEO_COLS}`,
-          [stored.gcs_path, stored.gcs_url, newMeta, newId]
-        );
-        videoRow = upd[0];
-        attemptIdx = 0;
-      }
-
-      await client.query('COMMIT');
-      res.status(videoId ? 200 : 201).json({ video: videoRow, attempt_idx: attemptIdx });
-    } catch (txErr) {
-      await client.query('ROLLBACK');
-      throw txErr;
-    } finally {
-      client.release();
-    }
+    const params = { image_url, motion_prompt, duration_s, model_key: modelKey, image_prompt, video_id: videoId };
+    const { rows } = await pool.query(
+      `INSERT INTO jobs (kind, status, params, cost_estimated, video_id)
+       VALUES ('generate-video', 'queued', $1, $2, $3)
+       RETURNING id, kind, status, created_at`,
+      [params, costEst?.cost ?? 0, videoId]
+    );
+    res.status(202).json({ job: rows[0] });
   } catch (e) {
-    console.error('generate video:', e.message);
-    res.status(502).json({ error: e.message });
+    console.error('generate video enqueue:', e.message);
+    res.status(500).json({ error: 'falha ao enfileirar' });
   }
 });
 
-// Fluxo D — text-to-video. Sem image_url. Body:
-//   { prompt, duration_s, video_id?, mode?, structured? }
-// mode: 'free' | 'structured' | 'structured-edited' (telemetria)
-// structured: campos do modo rigoroso (guardado em meta pra histórico)
+// POST /api/generate/text-video — enfileira job. Resposta 202 com { job_id }.
 router.post('/text-video', requireUser, async (req, res) => {
   const prompt = (req.body?.prompt || '').trim();
   const videoId = req.body?.video_id || null;
@@ -302,109 +195,23 @@ router.post('/text-video', requireUser, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'video_id não encontrado' });
   }
 
+  const modelId = modelKey === 'pixverse-t2v'
+    ? 'fal-ai/pixverse/v6/text-to-video'
+    : 'fal-ai/kling-video/v2.5-turbo/pro/text-to-video';
+  const costEst = await modelCost(pool, modelId, duration_s);
+
   try {
-    const result = await fal.generateTextVideo({ prompt, duration_s, model_key: modelKey });
-    duration_s = result.duration_s;
-    const cost = await modelCost(pool, result.model, duration_s);
-    const costValue = cost?.cost ?? null;
-    const generated_at = new Date().toISOString();
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      let videoRow;
-      let attemptIdx;
-
-      if (videoId) {
-        const { rows } = await client.query(
-          `SELECT generation_meta FROM videos WHERE id = $1 FOR UPDATE`,
-          [videoId]
-        );
-        const meta = rows[0].generation_meta || {};
-        const attempts = Array.isArray(meta.attempts) ? meta.attempts : [];
-
-        const attemptId = `att-${attempts.length}-${Date.now()}`;
-        const dstPath = `roto-master/videos/${videoId}/source-${attemptId}.mp4`;
-        const stored = await uploadFromUrl(result.url, dstPath, 'video/mp4');
-
-        const newAttempt = {
-          url: stored.gcs_url,
-          motion_prompt: prompt,
-          duration_s,
-          mode,
-          structured,
-          cost: costValue,
-          generated_at,
-        };
-        attempts.push(newAttempt);
-        attemptIdx = attempts.length - 1;
-
-        const newMeta = {
-          ...meta,
-          model_motion: result.model,
-          attempts,
-          active_attempt_idx: attemptIdx,
-        };
-
-        const { rows: upd } = await client.query(
-          `UPDATE videos
-              SET gcs_path = $1, gcs_url = $2, duration_s = $3,
-                  generation_meta = $4, updated_at = NOW()
-            WHERE id = $5
-            RETURNING ${VIDEO_COLS}`,
-          [stored.gcs_path, stored.gcs_url, duration_s, newMeta, videoId]
-        );
-        videoRow = upd[0];
-      } else {
-        const name = prompt.slice(0, 60).trim() || 'sem nome';
-
-        const { rows: ins } = await client.query(
-          `INSERT INTO videos (name, origin, gcs_path, gcs_url, duration_s)
-           VALUES ($1, 'generated-t2v', '', '', $2) RETURNING id`,
-          [name, duration_s]
-        );
-        const newId = ins[0].id;
-
-        const dstPath = `roto-master/videos/${newId}/source-att-0-${Date.now()}.mp4`;
-        const stored = await uploadFromUrl(result.url, dstPath, 'video/mp4');
-
-        const newMeta = {
-          model_motion: result.model,
-          attempts: [{
-            url: stored.gcs_url,
-            motion_prompt: prompt,
-            duration_s,
-            mode,
-            structured,
-            cost: costValue,
-            generated_at,
-          }],
-          active_attempt_idx: 0,
-        };
-
-        const { rows: upd } = await client.query(
-          `UPDATE videos
-              SET gcs_path = $1, gcs_url = $2, generation_meta = $3, updated_at = NOW()
-            WHERE id = $4
-            RETURNING ${VIDEO_COLS}`,
-          [stored.gcs_path, stored.gcs_url, newMeta, newId]
-        );
-        videoRow = upd[0];
-        attemptIdx = 0;
-      }
-
-      await client.query('COMMIT');
-      res.status(videoId ? 200 : 201).json({ video: videoRow, attempt_idx: attemptIdx });
-    } catch (txErr) {
-      await client.query('ROLLBACK');
-      throw txErr;
-    } finally {
-      client.release();
-    }
+    const params = { prompt, duration_s, model_key: modelKey, mode, structured, video_id: videoId };
+    const { rows } = await pool.query(
+      `INSERT INTO jobs (kind, status, params, cost_estimated, video_id)
+       VALUES ('generate-text-video', 'queued', $1, $2, $3)
+       RETURNING id, kind, status, created_at`,
+      [params, costEst?.cost ?? 0, videoId]
+    );
+    res.status(202).json({ job: rows[0] });
   } catch (e) {
-    console.error('generate text-video:', e.message);
-    res.status(502).json({ error: e.message });
+    console.error('generate text-video enqueue:', e.message);
+    res.status(500).json({ error: 'falha ao enfileirar' });
   }
 });
 
