@@ -1057,6 +1057,15 @@ body[data-space="atelie"] .screen-gal-project { display: none; }
   background: var(--ink-1);
   border: 1px solid var(--copper, var(--rust, #d2693c));
   margin-bottom: 14px;
+  /* sticky no topo do .atelie-stage (que tem overflow-y:auto). Sem isso,
+     com muitos vídeos selecionados o user precisava rolar de volta pro
+     topo só pra clicar em "jogar na lixeira". */
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  /* escudo opaco pros cards passarem por baixo sem aparecer atravessando
+     a borda translúcida do container. */
+  box-shadow: 0 8px 16px -8px rgba(0, 0, 0, 0.6);
 }
 .multi-select-count {
   font-size: 11px; letter-spacing: 0.06em;

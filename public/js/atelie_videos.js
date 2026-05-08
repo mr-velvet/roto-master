@@ -383,10 +383,13 @@ document.addEventListener('click', async (e) => {
   const failed = [];
   await Promise.all(ids.map(async (id) => {
     try { await deleteVideo(id); }
-    catch { failed.push(id); }
+    catch (err) {
+      console.error('bulk-delete falhou pro id', id, err);
+      failed.push(id);
+    }
   }));
   if (failed.length) {
-    showToast(`falha em ${failed.length} de ${ids.length} — atualizando lista`);
+    showToast(`falha em ${failed.length} de ${ids.length} — veja console pra detalhes`);
   } else {
     showToast(`${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} na lixeira`);
   }
