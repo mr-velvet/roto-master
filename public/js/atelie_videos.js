@@ -27,15 +27,37 @@ export async function showAtelieVideos() {
 window.addEventListener('video-deleted', () => { refresh().catch(() => {}); });
 
 async function refresh() {
+  // Esqueleto pulsante se a API demorar mais que 150ms (não pisca em rede boa).
+  // 6 cards é o suficiente pra preencher a primeira fileira sem parecer vazio.
+  const skeletonTimer = setTimeout(() => renderSkeleton(6), 150);
   try {
     videos = await listVideos();
   } catch (e) {
+    clearTimeout(skeletonTimer);
     console.error('list videos:', e);
     showToast('falha ao listar vídeos');
     return;
   }
+  clearTimeout(skeletonTimer);
   $countVideos.textContent = String(videos.length);
   render();
+}
+
+function renderSkeleton(n) {
+  $grid.innerHTML = '';
+  $empty.setAttribute('hidden', '');
+  for (let i = 0; i < n; i++) {
+    const card = document.createElement('div');
+    card.className = 'video-card video-card-skeleton';
+    card.innerHTML = `
+      <div class="video-card-thumb"></div>
+      <div class="video-card-body">
+        <div class="skel-line skel-line-name"></div>
+        <div class="skel-line skel-line-meta"></div>
+      </div>
+    `;
+    $grid.appendChild(card);
+  }
 }
 
 function render() {
@@ -273,22 +295,15 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// Tag de custo no card de vídeo. Soma os attempts de generation_meta.
-// Só aparece pra vídeos gerados via IA (origin generated-*) — uploads e
-// vídeos de URL não têm custo de geração.
+// Tag de custo no card de vídeo. Backend agrega cost_total e cost_attempts
+// no SQL pra evitar trafegar generation_meta inteiro na listagem.
+// Só aparece pra vídeos gerados via IA — uploads e URL não têm custo.
 function renderCostTag(v) {
   if (!v.origin || !v.origin.startsWith('generated-')) return '';
-  const meta = v.generation_meta;
-  if (!meta || !Array.isArray(meta.attempts) || !meta.attempts.length) return '';
-  let total = 0;
-  let counted = 0;
-  for (const a of meta.attempts) {
-    const c = parseFloat(a.cost);
-    if (Number.isFinite(c)) { total += c; counted++; }
-  }
-  if (!counted) return '';
+  const total = Number(v.cost_total);
+  const tries = Number(v.cost_attempts) || 0;
+  if (!Number.isFinite(total) || total <= 0) return '';
   const totalStr = `$${total.toFixed(2)}`;
-  const tries = meta.attempts.length;
   const label = tries > 1 ? `${totalStr} · ${tries}×` : totalStr;
   return `<span class="tag tag-cost">⛁ ${escapeHtml(label)}</span>`;
 }

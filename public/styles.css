@@ -4613,3 +4613,26 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   50%      { opacity: 0.35; transform: scale(0.7); }
 }
 
+/* === Esqueletos pulsantes pra carregamento === */
+.video-card-skeleton, .asset-card-skeleton {
+  pointer-events: none;
+  cursor: default;
+  animation: skel-pulse 1.4s ease-in-out infinite;
+}
+.video-card-skeleton .video-card-thumb,
+.asset-card-skeleton .asset-card-preview {
+  background: var(--ink-1);
+}
+.skel-line {
+  height: 11px;
+  background: var(--ink-1);
+  border-radius: 2px;
+  margin: 6px 0;
+}
+.skel-line-name { width: 65%; height: 13px; }
+.skel-line-meta { width: 40%; height: 10px; }
+@keyframes skel-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.45; }
+}
+

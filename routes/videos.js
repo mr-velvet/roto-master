@@ -19,13 +19,22 @@ const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, thumb_url, size_bytes, 
                     generation_meta,
                     created_at, updated_at`;
 
+// Listagem: payload enxuto. Só os campos que o card do Ateliê → Vídeos
+// precisa pra renderizar. Custo dos attempts é agregado em SQL pra evitar
+// trafegar a coluna `generation_meta` inteira (JSONB pode ser gordo).
 router.get('/', requireUser, async (req, res) => {
-  const cols = VIDEO_COLS.replace(/\s+/g, ' ').split(',').map((c) => `v.${c.trim()}`).join(', ');
   try {
     const { rows } = await req.app.locals.pool.query(
-      `SELECT ${cols},
+      `SELECT v.id, v.name, v.origin, v.thumb_url, v.duration_s,
+              v.created_at, v.updated_at,
               a.project_id AS published_project_id,
-              p.name AS published_project_name
+              p.name       AS published_project_name,
+              COALESCE((
+                SELECT SUM((att->>'cost')::numeric)
+                  FROM jsonb_array_elements(COALESCE(v.generation_meta->'attempts', '[]'::jsonb)) att
+                 WHERE (att->>'cost') ~ '^[0-9]+(\\.[0-9]+)?$'
+              ), 0)::float AS cost_total,
+              COALESCE(jsonb_array_length(v.generation_meta->'attempts'), 0) AS cost_attempts
          FROM videos v
          LEFT JOIN assets a   ON a.id = v.published_asset_id AND a.deleted_at IS NULL
          LEFT JOIN projects p ON p.id = a.project_id

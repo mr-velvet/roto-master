@@ -58,13 +58,32 @@ export async function showProject(projectId) {
 }
 
 async function refreshAssets() {
+  const skeletonTimer = setTimeout(() => renderAssetSkeleton(6), 150);
   try {
     currentAssets = await listAssets({ projectId: currentProjectId });
   } catch (e) {
     console.error('list assets:', e);
     currentAssets = [];
   }
+  clearTimeout(skeletonTimer);
   renderAssets();
+}
+
+function renderAssetSkeleton(n) {
+  $grid.innerHTML = '';
+  $emptyCall.setAttribute('hidden', '');
+  for (let i = 0; i < n; i++) {
+    const card = document.createElement('div');
+    card.className = 'asset-card asset-card-skeleton';
+    card.innerHTML = `
+      <div class="asset-card-preview"></div>
+      <div class="asset-card-body">
+        <div class="skel-line skel-line-name"></div>
+        <div class="skel-line skel-line-meta"></div>
+      </div>
+    `;
+    $grid.appendChild(card);
+  }
 }
 
 function renderAssets() {
@@ -102,7 +121,12 @@ function renderAssets() {
     if (isDone) {
       previewHtml = `<canvas class="asset-card-preview-canvas" data-bind="rotoscopy-canvas"></canvas>`;
     } else if (videoUrl) {
-      previewHtml = `<video class="asset-card-preview-video" muted playsinline loop preload="metadata" src="${escapeAttr(videoUrl)}"></video>`;
+      // src é setado lazy (intersection observer + hover) pra não disparar
+      // N requests pesadas pro GCS na primeira renderização. preload="none"
+      // garante que mesmo depois de setar o src, nada é baixado até o user
+      // dar hover (que chama play()).
+      previewHtml = `<video class="asset-card-preview-video" muted playsinline loop preload="none" data-src="${escapeAttr(videoUrl)}"></video>
+                     <div class="preview-mark preview-mark-letter is-fallback">${escapeHtml(previewChar)}</div>`;
     } else {
       previewHtml = `<div class="preview-mark preview-mark-letter">${escapeHtml(previewChar)}</div>`;
     }
@@ -146,7 +170,15 @@ function renderAssets() {
 
     const $vid = card.querySelector('.asset-card-preview-video');
     if ($vid) {
-      card.addEventListener('mouseenter', () => { $vid.play().catch(() => {}); });
+      const ensureSrc = () => {
+        if ($vid.src) return;
+        const url = $vid.getAttribute('data-src');
+        if (url) $vid.src = url;
+      };
+      card.addEventListener('mouseenter', () => {
+        ensureSrc();
+        $vid.play().catch(() => {});
+      });
       card.addEventListener('mouseleave', () => {
         $vid.pause();
         try { $vid.currentTime = 0; } catch {}

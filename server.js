@@ -8,7 +8,13 @@ const PORT = process.env.PORT || 5031;
 
 app.set('query parser', 'simple');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// min:1 mantém uma conexão sempre quente — primeira request do app não
+// paga TLS handshake + auth (em VM com túnel IAP isso era 1-2s só de cold).
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  min: 1,
+  idleTimeoutMillis: 0,
+});
 app.locals.pool = pool;
 
 // CRÍTICO: pg.Pool emite 'error' quando uma conexão idle morre (ex: túnel IAP
@@ -34,6 +40,47 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Cache-busting do index.html: injeta ?v=<startup_ts> em todos os
+// <script src> e <link href>. O index sai com Cache-Control: no-store
+// (sempre revalidado), mas os arquivos versionados podem cachear pra
+// sempre — porque ?v muda no próximo deploy. Resolve dois problemas:
+//   - dev: refresh sempre pega a versão nova de fe_editor.js etc.
+//   - prod: visita seguinte do user pula 100% dos GETs de JS/CSS,
+//           que era o que mais bloqueava percepção de loading.
+const isDev = !!process.env.DEV_BYPASS;
+const fs = require('fs');
+const startupTs = Date.now();
+const indexPath = path.join(__dirname, 'public', 'index.html');
+
+app.get(['/', '/index.html'], (req, res) => {
+  fs.readFile(indexPath, 'utf-8', (err, html) => {
+    if (err) return res.status(500).send('falha ao ler index');
+    const v = `v=${startupTs}`;
+    const patched = html
+      .replace(/(<script[^>]*\bsrc=")([^"?]+)(")/g, (_, a, src, c) => `${a}${src}?${v}${c}`)
+      .replace(/(<link[^>]*\bhref=")(\.\/[^"?]+)(")/g, (_, a, src, c) => `${a}${src}?${v}${c}`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(patched);
+  });
+});
+
+// Middleware de cache: precisa rodar ANTES do express.static pra ler o
+// querystring (que express.static não passa pro setHeaders).
+app.use((req, res, next) => {
+  if (isDev) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+  } else if (/\.(js|css|woff2?|ttf|svg|png|jpg|jpeg|webp)$/i.test(req.path)) {
+    // URL com ?v= veio do index versionado → pode cachear pra sempre.
+    // URL sem ?v= é navegação direta (ou worker) → revalidar curto.
+    if (req.query && req.query.v) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    }
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/health', (req, res) => {
@@ -72,6 +119,12 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`roto-master running on port ${PORT}`);
+  // Esquenta o pool: SELECT 1 + cache de plan da listagem mais usada.
+  // Sem isso, primeira chamada de /api/videos paga handshake + parser.
+  try {
+    await pool.query('SELECT 1');
+    await pool.query('EXPLAIN SELECT 1 FROM videos ORDER BY updated_at DESC LIMIT 1');
+  } catch (e) { /* warm-up best-effort */ }
   try {
     await require('./lib/job-runner').init(pool);
   } catch (e) {
