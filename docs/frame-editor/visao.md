@@ -95,12 +95,13 @@ Cada tirinha aberta entra num editor com layout inspirado em editores de pixel-a
 
 A palavra **"prompt"** é deliberada. **Não** chamamos de "estilizar" — o user decide o que escrever no prompt (estilizar, limpar, mudar pose, ajustar cor, qualquer coisa). A ferramenta não enforça intenção.
 
-**O que o MVP do editor não inclui (ficam pra depois):**
+**Pintura no canvas** (revisão 2026-05-12): a versão original deste doc colocava edição manual de pixels fora do MVP. Após experimentação, **pintura entrou como capacidade independente** — ferramenta Pincel e Borracha sobre células, com brushes Procreate (`.brushset`) carregados pela engine documentada em `brushes.md`. Continua sem interagir com IA (princípios 9 e 10 de `docs/visao-da-ferramenta.md` — IA tira trabalho bruto, pintura é toque humano; as duas vias coexistem como capacidades independentes, sem fluxo prescrito). Detalhes de integração no editor em `plano-pintura-editor.md`.
 
-- **Edição manual de pixels (pintar com lápis, balde, borracha, etc.)** — fica fora do MVP. Quem precisa editar pixel-a-pixel baixa o `.aseprite` e mexe no Aseprite desktop. No futuro pode entrar, mas o objetivo nunca será replicar o Aseprite — só cobrir coisas que são chatas no desktop e ficam fáceis aqui.
+**O que continua fora do MVP do editor (ficam pra depois):**
+
 - Versões coexistentes de um mesmo quadro (variantes alternativas comparáveis).
 - Histórico de revisões granular.
-- Undo/redo profundo entre sessões.
+- Undo/redo profundo entre sessões (existe undo local em RAM por sessão de célula, mas não entre sessões).
 - Múltiplas tirinhas abertas em abas.
 
 Cada um desses entra (ou não) numa rodada própria, no momento em que justificar.

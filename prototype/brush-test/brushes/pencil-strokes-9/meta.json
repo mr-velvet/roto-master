@@ -1,0 +1,400 @@
+{
+  "name": "Pencil Strokes 9",
+  "tip": "tip.png",
+  "spacing": 0.106,
+  "sizeMin": 0,
+  "sizeMax": 3.4968,
+  "opacityMin": 0,
+  "opacityMax": 1,
+  "paintSize": 0.7756,
+  "paintOpacity": 1,
+  "scatter": 0.0234,
+  "rotationRandom": 1,
+  "shapeAngle": -1.5766,
+  "shapeRoundness": 1,
+  "jitterSize": 0.1225,
+  "jitterOpacity": 0.121,
+  "pressureSize": 0,
+  "pressureOpacity": 0,
+  "grainDepth": 0.2753,
+  "grainMovement": "follows",
+  "blendMode": 0,
+  "textureScale": 1.0607,
+  "plotJitter": 0.1085,
+  "dynamicsFalloff": 0.0433,
+  "taperStartLength": 0,
+  "taperEndLength": 0,
+  "taperSize": 0,
+  "taperOpacity": 0,
+  "taperPressure": 1,
+  "tiltSize": 0,
+  "tiltOpacity": 0.7032,
+  "tiltAngle": 0.3331,
+  "tiltCompression": 0,
+  "grainTip": "../shared/grain-c1d84e342a27.png",
+  "__implemented": [
+    "blendMode",
+    "dynamicsFalloff",
+    "dynamicsJitterOpacity",
+    "dynamicsJitterSize",
+    "dynamicsPressureOpacity",
+    "dynamicsPressureSize",
+    "dynamicsTiltAngle",
+    "dynamicsTiltCompression",
+    "dynamicsTiltOpacity",
+    "dynamicsTiltSize",
+    "grainDepth",
+    "grainOrientation",
+    "maxOpacity",
+    "maxSize",
+    "minOpacity",
+    "minSize",
+    "name",
+    "paintOpacity",
+    "paintSize",
+    "plotJitter",
+    "plotSpacing",
+    "shapeAngle",
+    "shapeRotation",
+    "shapeRoundness",
+    "shapeScatter",
+    "taperEndLength",
+    "taperOpacity",
+    "taperPressure",
+    "taperSize",
+    "taperStartLength",
+    "textureScale"
+  ],
+  "__notImplemented": [
+    {
+      "field": "dynamicsPressureBleed",
+      "value": 0.0017132624052464962
+    }
+  ],
+  "__source": {
+    "grainDepthMinimum": 0,
+    "dynamicsJitterLightness": 0,
+    "plotSpacing": 0.10604190826416016,
+    "blendGammaCorrect": false,
+    "metallicScale": 0.1599999964237213,
+    "dynamicsPressureSecondaryColor": 0,
+    "dynamicsPressureSaturationCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "lightnessJitterTilt": false,
+    "textureMovement": 1,
+    "taperSizeLinked": false,
+    "extendedBlend": 0,
+    "dynamicsJitterDarkness": 0,
+    "dynamicsWetnessJitter": 0,
+    "shapeFilterMode": 0,
+    "shapeInverted": false,
+    "savedEraseSizes": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "savedPaintOpacities": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "textureDepthTilt": false,
+    "grainBlendMode": 1,
+    "dynamicsTiltShapeRoundness": 1,
+    "dynamicsTiltAngle": 0.3330570161342621,
+    "previewSize": 0.30000001192092896,
+    "dynamicsPressureMix": 0,
+    "saturationJitterTiltAngle": 0.10000000149011612,
+    "taperEndLength": 0,
+    "dynamicsTiltBleed": 0,
+    "taperSize": 0,
+    "textureOrientation": 1,
+    "dynamicsMix": 0,
+    "textureContrast": 0,
+    "plotSmoothing": 0,
+    "taperPressure": 1,
+    "dynamicsPressureOpacityCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "roughnessScale": 0.1599999964237213,
+    "heightScale": 0.1599999964237213,
+    "dualBlendMode": 0,
+    "shapeFilter": true,
+    "roughnessGrainInverted": false,
+    "maxOpacity": 1,
+    "dynamicsTiltBrightness": 0,
+    "dynamicsPressureHueCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "shapeCount": 0,
+    "importedFromABR": false,
+    "color": {
+      "__type": "opaque",
+      "repr": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+    },
+    "dynamicsPressureSizeCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "dynamicsSpeedSize": 0,
+    "shapeFlipYJitter": false,
+    "shapeAzimuth": false,
+    "textureFilterMode": 0,
+    "shapeRotation": 1,
+    "opacityTiltAngle": 0.10000000149011612,
+    "pencilTaperSizeLinked": false,
+    "plotSpacingVersion": 1,
+    "creationDate": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "dynamicsPressureSmoothing": 0,
+    "paintOpacity": 1,
+    "dynamicsJitterSize": 0.12253424525260925,
+    "name": "Pencil Strokes 9",
+    "plotFFTSmoothingBias": 0,
+    "grainDepth": 0.2752534747123718,
+    "dynamicsPressureBrightnessCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "bleedTiltAngle": 0.10000000149011612,
+    "oriented": true,
+    "blendMode": 0,
+    "metallicAmount": 0,
+    "minSize": 0,
+    "smudgeSize": 0.5,
+    "dynamicsPressureSecondaryColorCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "secondaryColorTiltAngle": 0.10000000149011612,
+    "shapeRandomise": false,
+    "bundledRoughnessPath": "$null",
+    "hueTiltAngle": 0.10000000149011612,
+    "pencilTaperSize": 0,
+    "renderingModulatedTransfer": false,
+    "taperVersion": 1,
+    "dynamicsPressureShapeRoundnessCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "dynamicsJitterHue": 0,
+    "pencilTaperOpacity": 0,
+    "dynamicsFalloff": 0.043335333466529846,
+    "grainDepthJitter": 0,
+    "textureOffsetJitter": true,
+    "taperOpacity": 0,
+    "shapeRoundness": 1,
+    "dynamicsPressureBleedSpeed": 0,
+    "secondaryColorJitterTilt": false,
+    "dynamicsJitterStrokeLightness": 0,
+    "shapeFlipXJitter": false,
+    "savedSmudgeOpacities": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "dynamicsJitterOpacity": 0.12103992700576782,
+    "minOpacity": 0,
+    "textureInverted": false,
+    "dynamicsPressureResponse": 0,
+    "bundledHeightPath": "$null",
+    "textureApplication": 0,
+    "eraseSize": 0.5,
+    "dynamicsTiltSecondaryColor": 0,
+    "plotJitter": 0.10851086676120758,
+    "dynamicsJitterSaturation": 0,
+    "dynamicsLoad": 0.5,
+    "maxPressureSizeClamped": false,
+    "attackTiltAngle": 0.10000000149011612,
+    "dynamicsJitterStrokeHue": 0,
+    "pencilTaperEndLength": 0,
+    "taperStartLength": 0,
+    "saturationJitterTilt": false,
+    "textureZoom": 1,
+    "plotJitterTilt": false,
+    "gradationTiltAngle": 0.10000000149011612,
+    "paintPressure": 1,
+    "plotFFTSmoothingAmount": 0,
+    "dynamicsMixSoftening": 0,
+    "shapeScatter": 0.023358892649412155,
+    "textureScale": 1.0606659650802612,
+    "metallicGrainInverted": false,
+    "dynamicsJitterStrokeDarkness": 0,
+    "bundledShapePath": "$null",
+    "textureBrightness": 0,
+    "shapeCountJitter": 0,
+    "grainOrientation": 1,
+    "heightAmount": 0.5,
+    "darknessJitterTilt": false,
+    "dynamicsTiltHue": 0,
+    "wetEdgesAmount": 0,
+    "dynamicsPressureSaturation": 0,
+    "pencilTaperShape": 0,
+    "texturizedGrainFollowsCamera": true,
+    "jitterSecondary": 0,
+    "dynamicsTiltGradation": 0,
+    "brightnessTiltAngle": 0.10000000149011612,
+    "dynamicsWetAccumulation": 0.75,
+    "dynamicsBlur": 0,
+    "shapeCountTilt": false,
+    "dynamicsPressureBleed": 0.0017132624052464962,
+    "maxSize": 3.4968106746673584,
+    "version": 2,
+    "eraseOpacity": 1,
+    "textureDepthTiltAngle": 0.10000000149011612,
+    "savedEraseOpacities": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "savedPaintSizes": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "secondaryColorJitterTiltAngle": 0.10000000149011612,
+    "lightnessJitterTiltAngle": 0.10000000149011612,
+    "attackTilt": false,
+    "renderingMaxTransfer": false,
+    "dynamicsPressureShapeRoundness": 1,
+    "dynamicsPressureSizeSpeed": 0,
+    "darknessJitterTiltAngle": 0.10000000149011612,
+    "smudgeOpacity": 0.800000011920929,
+    "dynamicsTiltCompression": 0,
+    "saturationTiltAngle": 0.10000000149011612,
+    "shapeRoundnessTiltAngle": 0.10000000149011612,
+    "dynamicsJitterStrokeSaturation": 0,
+    "dynamicsPressureOpacitySpeed": 0,
+    "savedSmudgeSizes": {
+      "__type": "opaque",
+      "repr": "[object Object]"
+    },
+    "dynamicsPressureShapeRoundnessMinimum": 1,
+    "taperShape": 0,
+    "pencilTipAnimation": true,
+    "roughnessAmount": 0.5,
+    "dynamicsTiltSaturation": 0,
+    "burntEdgesAmount": 0,
+    "dynamicsPressureBleedCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "dynamicsPressureHue": 0,
+    "pencilTaperStartLength": 0,
+    "dynamicsPressureOpacity": 0,
+    "shapeCountTiltAngle": 0.10000000149011612,
+    "dynamicsPressureSize": 0,
+    "dynamicsSpeedOpacity": 0,
+    "dynamicsSmudgeAccumulation": 0.75,
+    "shapeOrientation": 1,
+    "stamp": false,
+    "sizeTiltAngle": 0.10000000149011612,
+    "plotMovingAverageStabilization": 0,
+    "renderingRecursiveMixing": false,
+    "authorName": "Andrew Skoch Design",
+    "dynamicsGlazedFlow": 1,
+    "burntEdgesBlendMode": 1,
+    "hueJitterTiltAngle": 0.10000000149011612,
+    "dynamicsTiltShapeRoundnessMinimum": 1,
+    "textureFilter": true,
+    "dynamicsTiltSize": 0,
+    "dynamicsTiltOpacity": 0.7031691074371338,
+    "dynamicsPressureOpacityTransfer": 1,
+    "shapeAngle": -1.5766253471374512,
+    "plotJitterTiltAngle": 0.10000000149011612,
+    "bundledMetallicPath": "$null",
+    "dynamicsPressureTransferModulationCurve": {
+      "__type": "curve",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    },
+    "dynamicsBlurJitter": 0,
+    "paintSize": 0.7756212949752808,
+    "textureRotation": 0,
+    "hueJitterTilt": false,
+    "jitterStrokeSecondary": 0,
+    "bundledGrainPath": "$null",
+    "dynamicsPressureBrightness": 0
+  }
+}

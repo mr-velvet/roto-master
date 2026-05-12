@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Brush test — Frames Editor</title>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --panel: #16181d;
+    --line: #262931;
+    --text: #e7e9ec;
+    --muted: #8a8f99;
+    --accent: #4dd9d6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  body { display: grid; grid-template-columns: 240px 1fr 260px; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 12px; }
+  aside.right { border-right: none; border-left: 1px solid var(--line); }
+  aside h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 4px 0 10px; }
+  .brush-item { display: flex; gap: 8px; padding: 6px; border-radius: 6px; cursor: pointer; align-items: center; }
+  .brush-item:hover { background: rgba(77,217,214,0.08); }
+  .brush-item.active { background: rgba(77,217,214,0.18); }
+  .brush-item .preview { width: 80px; height: 40px; background: #fafafa; border-radius: 4px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .brush-item .preview img { max-width: 100%; max-height: 100%; filter: invert(1); image-rendering: auto; }
+  .brush-item .name { font-size: 12px; line-height: 1.2; }
+  main { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; gap: 12px; }
+  .canvas-wrap { position: relative; box-shadow: 0 2px 24px rgba(0,0,0,0.4); border-radius: 4px; overflow: hidden; }
+  canvas#paint { background: #ffffff; display: block; cursor: none; touch-action: none; }
+  #cursor { position: absolute; pointer-events: none; border: 1px solid #000; outline: 1px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 0.5px #000 inset; }
+  .controls { display: flex; flex-direction: column; gap: 14px; padding: 4px; }
+  .row { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .value { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sw { width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+  .sw.active { border-color: var(--accent); }
+  button { background: var(--line); color: var(--text); border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #2e323b; }
+  .pressure-info { font-size: 11px; color: var(--muted); padding: 8px; border: 1px dashed var(--line); border-radius: 6px; }
+  .pressure-info b { color: var(--text); }
+  .checkbox { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+  .checkbox input { accent-color: var(--accent); }
+</style>
+</head>
+<body>
+  <aside>
+    <h2>Brushes</h2>
+    <div id="brush-list"></div>
+  </aside>
+
+  <main>
+    <div class="canvas-wrap">
+      <canvas id="paint" width="900" height="700"></canvas>
+      <div id="cursor"></div>
+    </div>
+    <div style="display:flex; gap: 8px;">
+      <button id="clear">Limpar</button>
+      <button id="erase-toggle">Borracha: off</button>
+    </div>
+  </main>
+
+  <aside class="right">
+    <h2>Controles</h2>
+    <div class="controls">
+      <div class="row">
+        <label>Tamanho <span class="value" id="size-v">32</span> px</label>
+        <input type="range" id="size" min="2" max="200" value="32">
+      </div>
+      <div class="row">
+        <label>Cor</label>
+        <div class="swatches" id="swatches">
+          <div class="sw active" data-color="#000000" style="background:#000"></div>
+          <div class="sw" data-color="#444444" style="background:#444"></div>
+          <div class="sw" data-color="#7a4a2a" style="background:#7a4a2a"></div>
+          <div class="sw" data-color="#1e4a8a" style="background:#1e4a8a"></div>
+          <div class="sw" data-color="#a02828" style="background:#a02828"></div>
+          <div class="sw" data-color="#2a7a3a" style="background:#2a7a3a"></div>
+        </div>
+      </div>
+      <div class="row">
+        <label class="checkbox"><input type="checkbox" id="force-pressure"> Forçar pressão = 0.5 (mouse)</label>
+      </div>
+      <div class="pressure-info">
+        Último evento: <b id="ptype">—</b><br>
+        Pressure: <b id="pval">—</b><br>
+        Tilt: <b id="ptilt">—</b>
+      </div>
+      <h2 style="margin-top: 14px;">Não implementado <span id="ni-count" style="color: #d99c4d; font-weight: 600;"></span></h2>
+      <div id="ni-list" style="font-size: 10px; color: var(--muted); max-height: 200px; overflow: auto; line-height: 1.5; font-family: ui-monospace, monospace;"></div>
+      <h2 style="margin-top: 14px;">Params do brush</h2>
+      <pre id="brush-meta" style="font-size: 10px; color: var(--muted); white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;"></pre>
+    </div>
+  </aside>
+
+<script type="module">
+import { loadBrush, createBrushStroke } from './brush.js';
+
+const $canvas = document.getElementById('paint');
+const $cursor = document.getElementById('cursor');
+const $list = document.getElementById('brush-list');
+const $size = document.getElementById('size');
+const $sizeV = document.getElementById('size-v');
+const $ptype = document.getElementById('ptype');
+const $pval = document.getElementById('pval');
+const $ptilt = document.getElementById('ptilt');
+const $forcePressure = document.getElementById('force-pressure');
+const $clear = document.getElementById('clear');
+const $eraseToggle = document.getElementById('erase-toggle');
+const $meta = document.getElementById('brush-meta');
+const $swatches = document.getElementById('swatches');
+
+const ctx = $canvas.getContext('2d');
+
+let currentColor = '#000000';
+let currentBrush = null;
+let erase = false;
+let stroke = null;
+
+// Carrega catálogo
+const index = await fetch('./brushes/index.json').then((r) => r.json());
+
+for (const item of index) {
+  const el = document.createElement('div');
+  el.className = 'brush-item';
+  el.innerHTML = `<div class="preview"><img src="./brushes/${item.dir}/${item.thumb}" alt=""></div><div class="name">${item.name}</div>`;
+  el.addEventListener('click', () => selectBrush(item, el));
+  $list.appendChild(el);
+}
+
+async function selectBrush(item, el) {
+  document.querySelectorAll('.brush-item').forEach((n) => n.classList.remove('active'));
+  el.classList.add('active');
+  currentBrush = await loadBrush(`./brushes/${item.dir}`);
+  // Mostra params (sem as seções __* internas)
+  const visibleMeta = { ...currentBrush.meta };
+  delete visibleMeta.__implemented;
+  delete visibleMeta.__notImplemented;
+  delete visibleMeta.__source;
+  $meta.textContent = JSON.stringify(visibleMeta, null, 2);
+  // Lista de não-implementados
+  const ni = currentBrush.meta.__notImplemented || [];
+  const $niCount = document.getElementById('ni-count');
+  const $niList = document.getElementById('ni-list');
+  $niCount.textContent = ni.length ? `(${ni.length})` : '(0)';
+  $niList.innerHTML = ni.length === 0
+    ? '<i style="color: #4dd9d6;">Tudo do arquivo consumido pela engine.</i>'
+    : ni.map((it) => {
+        let v = it.value;
+        if (v && typeof v === 'object') {
+          if (v.__type === 'curve') v = 'curva: ' + JSON.stringify(v.points);
+          else v = v.repr || '[obj]';
+        } else if (typeof v === 'number') {
+          v = v.toFixed(4);
+        }
+        return `<div><b style="color:#d99c4d;">${it.field}</b> = <span style="color:#e7e9ec;">${v}</span></div>`;
+      }).join('');
+}
+
+// seleciona o primeiro automaticamente
+$list.firstElementChild?.click();
+
+$size.addEventListener('input', () => {
+  $sizeV.textContent = $size.value;
+  updateCursor(lastX, lastY);
+});
+
+$swatches.addEventListener('click', (e) => {
+  const sw = e.target.closest('.sw');
+  if (!sw) return;
+  document.querySelectorAll('.sw').forEach((n) => n.classList.remove('active'));
+  sw.classList.add('active');
+  currentColor = sw.dataset.color;
+});
+
+$clear.addEventListener('click', () => {
+  ctx.clearRect(0, 0, $canvas.width, $canvas.height);
+});
+
+$eraseToggle.addEventListener('click', () => {
+  erase = !erase;
+  $eraseToggle.textContent = `Borracha: ${erase ? 'on' : 'off'}`;
+  $eraseToggle.style.background = erase ? 'var(--accent)' : '';
+  $eraseToggle.style.color = erase ? '#000' : '';
+});
+
+let lastX = 0, lastY = 0;
+function updateCursor(x, y) {
+  const size = parseInt($size.value, 10);
+  $cursor.style.width = size + 'px';
+  $cursor.style.height = size + 'px';
+  $cursor.style.left = x + 'px';
+  $cursor.style.top = y + 'px';
+}
+
+$canvas.addEventListener('pointermove', (e) => {
+  const r = $canvas.getBoundingClientRect();
+  lastX = e.clientX - r.left;
+  lastY = e.clientY - r.top;
+  updateCursor(lastX, lastY);
+  $ptype.textContent = e.pointerType;
+  $pval.textContent = e.pressure.toFixed(3);
+  $ptilt.textContent = `${(e.tiltX || 0).toFixed(0)}°, ${(e.tiltY || 0).toFixed(0)}°`;
+
+  if (stroke && (e.buttons & 1)) {
+    const p = resolvePressure(e);
+    stroke.addPoint(lastX, lastY, p, e.tiltX || 0, e.tiltY || 0);
+  }
+});
+
+$canvas.addEventListener('pointerdown', (e) => {
+  if (!currentBrush) return;
+  if (!(e.buttons & 1)) return;
+  $canvas.setPointerCapture(e.pointerId);
+  const r = $canvas.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const y = e.clientY - r.top;
+  stroke = createBrushStroke(ctx, currentBrush, {
+    color: currentColor,
+    size: parseInt($size.value, 10),
+    erase,
+  });
+  stroke.addPoint(x, y, resolvePressure(e), e.tiltX || 0, e.tiltY || 0);
+});
+
+$canvas.addEventListener('pointerup', (e) => {
+  if (stroke) { stroke.finish(); stroke = null; }
+});
+$canvas.addEventListener('pointercancel', () => {
+  if (stroke) { stroke.finish(); stroke = null; }
+});
+
+function resolvePressure(e) {
+  if ($forcePressure.checked) return 0.5;
+  if (e.pointerType === 'mouse') return 0.5;
+  // pen com pressure 0 (algumas mesas reportam 0 no pointerdown inicial): trata como 0.5
+  if (e.pressure === 0 && e.pointerType === 'pen') return 0.5;
+  return e.pressure || 0.5;
+}
+
+// previne menu contextual e gestos do browser
+$canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+document.addEventListener('pointermove', (e) => {
+  if (e.target === $canvas) return;
+  // esconde cursor quando fora do canvas
+  $cursor.style.display = 'none';
+});
+$canvas.addEventListener('pointerenter', () => { $cursor.style.display = 'block'; });
+$canvas.addEventListener('pointerleave', () => { $cursor.style.display = 'none'; });
+</script>
+</body>
+</html>

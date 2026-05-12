@@ -48,6 +48,8 @@ Hoje o entregável é `.aseprite`. No futuro pode ser outros formatos.
 
 Time interno pequeno de artistas e quem prepara material pra eles. Sem distinção formal de papéis — todos fazem um pouco de tudo.
 
+**Hardware de trabalho do artista:** PC desktop com **mesa digitalizadora** (Wacom-like) conectada como periférico. Não iPad, não tablet Android, não tela touch. O artista olha pra tela do monitor enquanto desenha na mesa — não vê a ponta da caneta sobre a arte. Implicação pra UI de qualquer ferramenta de desenho dentro do produto: **cursor visual de brush é essencial** (preview do tamanho/forma do brush no canvas, antes de pintar). Pressão da caneta chega via `PointerEvent.pressure` (driver Wacom → Windows Ink → browser).
+
 **Modelo de acesso colaborativo extremo:** quem tem o token compartilhado da plataforma vê e mexe em tudo. **Nada na plataforma é do usuário** — não há "meus vídeos", "meu projeto", "minha tirinha", "meu `.aseprite`". O banco é a única fonte da verdade do que existe; a visibilidade não tem filtro por usuário.
 
 Esse modelo é deliberado:
@@ -68,11 +70,13 @@ A coluna `owner_sub` que existe no banco em algumas tabelas (cicatriz histórica
 6. **Etapas opcionais, nenhuma substitui outra.** Cada funcionalidade é uma camada que se aplica ou não. Aplicar uma não apaga a anterior — fica disponível pra voltar, comparar, criar fork. "Tentar de novo" produz alternativa lado a lado, não sobrescrita.
 7. **Ciclo com artista é não-linear.** O `.aseprite` vai e volta entre Frames Editor, Aseprite desktop e o asset sem ordem prescrita. Cada ida-e-volta é uma ação consciente; o artista escolhe onde quer trabalhar a cada momento.
 8. **Hierarquia de prompt é responsabilidade da ferramenta.** Quando há geração por IA, o usuário descreve intenção criativa. Constantes técnicas são injetadas invisivelmente.
-9. **Custo previsto antes de cada geração.** Toda ação que gasta dinheiro mostra o valor antes do clique.
-10. **Modelo trocável por etapa.** Catálogo de modelos é cidadão de primeira classe.
-11. **Resultados de IA são imutáveis e cacheados.** Mesma combinação (entrada + prompt + modelo + parâmetros) já gerada não cobra de novo. Variações se acumulam, não se sobrescrevem.
-12. **Acoplamento mínimo entre conceitos.** Recursos são reutilizáveis: um personagem pode alimentar muitos vídeos, um enquadramento pode ser usado com vários personagens. Frames Editor não conhece nada do resto.
-13. **Footprint visível e controlável.** Saber o quanto a ferramenta consome em storage e ter mecanismo (manual ou automatizado) pra varrer e limpar material descartado.
+9. **A ferramenta não é babá do usuário.** O usuário é artista profissional e não precisa ser lembrado de como trabalhar. A ferramenta oferece capacidades; não dita fluxo, não bloqueia combinações, não infere intenção a partir de uma ação pra modificar outra ("se pintou então a IA muda"), não pergunta "tem certeza?" fora do estritamente destrutivo. Capacidades são ortogonais e combináveis livremente pelo usuário, na ordem que ele decidir.
+10. **IA tira o trabalho grosso; toque final é humano.** A IA serve pra remover bruto e tarefas repetitivas chatas (ex: rotoscopia em lote, limpeza de massa). Arte de IA sozinha não atinge o padrão do produto e nunca é o resultado final. Qualquer feature de pintura, brush, retoque manual existe pra **viabilizar o toque humano**, não pra "guiar" a IA nem servir de input pra ela. As duas vias (pintura humana / IA por prompt) coexistem como capacidades independentes; a ferramenta não inventa interação entre elas.
+11. **Custo previsto antes de cada geração.** Toda ação que gasta dinheiro mostra o valor antes do clique.
+12. **Modelo trocável por etapa.** Catálogo de modelos é cidadão de primeira classe.
+13. **Resultados de IA são imutáveis e cacheados.** Mesma combinação (entrada + prompt + modelo + parâmetros) já gerada não cobra de novo. Variações se acumulam, não se sobrescrevem.
+14. **Acoplamento mínimo entre conceitos.** Recursos são reutilizáveis: um personagem pode alimentar muitos vídeos, um enquadramento pode ser usado com vários personagens. Frames Editor não conhece nada do resto.
+15. **Footprint visível e controlável.** Saber o quanto a ferramenta consome em storage e ter mecanismo (manual ou automatizado) pra varrer e limpar material descartado.
 
 ## 4. Estrutura de entidades
 

@@ -14,5 +14,10 @@
     "express": "^4.19.2",
     "multer": "^2.0.0",
     "pg": "^8.11.5"
+  },
+  "devDependencies": {
+    "adm-zip": "^0.5.17",
+    "bplist-parser": "^0.3.2",
+    "pngjs": "^7.0.0"
   }
 }

@@ -105,7 +105,7 @@ A célula clicada (ou a primeira da seleção múltipla) define o **quadro ativo
 
 ### 4.4 Canvas (preview do quadro)
 
-Mostra o **quadro ativo** com todas as camadas visíveis (`visivel = true`) compostas conforme ordem (z-index). É read-only no MVP — não há ferramentas de pintura.
+Mostra o **quadro ativo** com todas as camadas visíveis (`visivel = true`) compostas conforme ordem (z-index). ~~É read-only no MVP — não há ferramentas de pintura.~~ **Revisado em 2026-05-12:** canvas é interativo quando uma ferramenta de pintura está ativa (Pincel ou Borracha). Detalhes em `plano-pintura-editor.md` §3-5.
 
 Quando o quadro ativo muda (via seleção na matriz, ou setas do teclado), o canvas re-renderiza.
 
@@ -178,7 +178,7 @@ Três ações no topo:
 
 A `visao-da-ferramenta.md` já lista anti-padrões globais. Os específicos do Frames Editor:
 
-1. **Pintura inline no canvas no MVP.** Tem que estar fora — quem precisa, baixa o `.aseprite`. Trazer pintura agora desfoca o produto.
+1. ~~**Pintura inline no canvas no MVP.** Tem que estar fora — quem precisa, baixa o `.aseprite`.~~ **Revisado em 2026-05-12:** pintura entrou no escopo como capacidade independente. Não desfoca o produto enquanto for tratada como **outra ferramenta** (ao lado de "prompt"), sem fluxo prescrito de quando usar uma vs outra. Anti-padrão real continua sendo: **ferramenta inventar interação entre pintura e IA** ("se pintou então a IA muda comportamento") — isso quebra o princípio 9 ("não é babá") e o princípio 10 ("IA tira bruto, toque é humano"). Detalhes em `brushes.md` e `plano-pintura-editor.md`.
 2. **Painel de "histórico" / "undo profundo".** Estado é `idle`/`processando`. Versões não existem no MVP.
 3. **Aba lateral de "ferramentas IA"** com presets nomeados ("estilizar", "limpar", "colorir"). É **prompt aberto**, ponto. Categorizar quebra o princípio.
 4. **Salvar explícito.** Tudo é live, sync implícito (a cada operação, banco atualiza em background — UI atualiza instantânea, request vai em paralelo). Botão "Salvar" cria ilusão de estado local que não existe. Indicador discreto de "sincronizando" é aceitável; bloqueio do user durante request, não.
