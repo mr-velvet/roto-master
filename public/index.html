@@ -603,8 +603,9 @@
     <section class="screen screen-fe-editor">
       <div class="fe-editor-shell">
 
-        <!-- topo: nome + ações -->
+        <!-- topo: toggle | nome+meta | controles de canvas | acoes -->
         <header class="fe-editor-topbar">
+          <button class="fe-collapse-toggle fe-collapse-topbar" data-action="fe-toggle-topbar" type="button" title="esconder/mostrar topo">▼</button>
           <div class="fe-editor-topbar-left">
             <button class="fe-editor-back" data-action="fe-back" type="button" title="voltar pra lista">
               <span class="fe-editor-back-icon">‹</span>
@@ -616,6 +617,25 @@
               <input class="fe-editor-name-input" type="text" data-bind="fe-editor-name-input" maxlength="200" hidden />
             </div>
             <span class="fe-editor-meta" data-bind="fe-editor-meta">—</span>
+          </div>
+          <div class="fe-editor-topbar-center">
+            <div class="fe-zoom">
+              <button class="fe-zoom-btn" data-action="fe-zoom-out" title="diminuir zoom">−</button>
+              <span class="fe-zoom-label" data-bind="fe-zoom-label">—</span>
+              <button class="fe-zoom-btn" data-action="fe-zoom-in" title="aumentar zoom">+</button>
+            </div>
+            <div class="fe-frame-nav">
+              <button class="fe-zoom-btn" data-action="fe-prev-quadro" title="quadro anterior (←)">‹</button>
+              <span class="fe-frame-info" data-bind="fe-frame-info">— / —</span>
+              <button class="fe-zoom-btn" data-action="fe-next-quadro" title="próximo quadro (→)">›</button>
+            </div>
+            <button class="fe-play-btn" data-action="fe-toggle-play" data-bind="fe-play-btn" type="button" title="tocar animação quadro a quadro (espaço)">
+              <span class="fe-play-icon" data-bind="fe-play-icon">▶</span>
+              <span class="fe-play-label" data-bind="fe-play-label">play</span>
+            </button>
+            <button class="fe-bg-toggle" data-action="fe-bg-toggle" data-bg="checker" type="button" title="alternar fundo">
+              <span data-bind="fe-bg-label">xadrez</span>
+            </button>
           </div>
           <div class="fe-editor-topbar-right">
             <button class="fe-btn-ghost" data-action="fe-download" type="button" title="gera o .aseprite e baixa">
@@ -637,43 +657,11 @@
               <p>nenhum quadro selecionado</p>
             </div>
           </div>
-          <div class="fe-editor-canvas-controls">
-            <div class="fe-zoom">
-              <button class="fe-zoom-btn" data-action="fe-zoom-out" title="diminuir zoom">−</button>
-              <span class="fe-zoom-label" data-bind="fe-zoom-label">4×</span>
-              <button class="fe-zoom-btn" data-action="fe-zoom-in" title="aumentar zoom">+</button>
-            </div>
-            <button class="fe-bg-toggle" data-action="fe-bg-toggle" data-bg="checker" type="button" title="alternar fundo">
-              <span data-bind="fe-bg-label">xadrez</span>
-            </button>
-            <div class="fe-frame-nav">
-              <button class="fe-zoom-btn" data-action="fe-prev-quadro" title="quadro anterior (←)">‹</button>
-              <span class="fe-frame-info" data-bind="fe-frame-info">— / —</span>
-              <button class="fe-zoom-btn" data-action="fe-next-quadro" title="próximo quadro (→)">›</button>
-            </div>
-            <button class="fe-play-btn" data-action="fe-toggle-play" data-bind="fe-play-btn" type="button" title="tocar animação quadro a quadro (espaço)">
-              <span class="fe-play-icon" data-bind="fe-play-icon">▶</span>
-              <span class="fe-play-label" data-bind="fe-play-label">play</span>
-            </button>
-          </div>
         </div>
 
-        <!-- barra de descoberta: 1 botão "prompt" + dica de menu de contexto.
-             Tudo o resto (criar/deletar/renomear camada e quadro, prompts contextuais)
-             vive no menu de contexto (botão direito) na matriz. -->
-        <div class="fe-editor-discoverbar">
-          <button class="fe-btn-prompt fe-btn-prompt-compact" data-action="fe-prompt-context" data-bind="fe-btn-prompt-context" type="button">
-            <span class="fe-btn-icon">✦</span>
-            <span data-bind="fe-prompt-context-label">prompt</span>
-          </button>
-          <span class="fe-editor-sel-summary" data-bind="fe-sel-summary">nenhuma seleção</span>
-          <span class="fe-editor-hint">botão direito na matriz pra mais ações</span>
-          <span class="fe-sel-count" data-bind="fe-sel-count" hidden>0</span>
-          <button class="fe-btn-prompt-selected-hidden" data-bind="fe-btn-prompt-selected" hidden></button>
-        </div>
-
-        <!-- base: matriz camadas × quadros -->
+        <!-- base: matriz camadas × quadros (botao direito pra prompts e mais acoes) -->
         <div class="fe-matrix-wrap" data-bind="fe-matrix-wrap">
+          <button class="fe-collapse-toggle fe-collapse-matrix" data-action="fe-toggle-matrix" type="button" title="esconder/mostrar timeline">▼</button>
           <div class="fe-matrix" data-bind="fe-matrix">
             <!-- montado dinamicamente por fe_editor.js -->
           </div>

@@ -4103,13 +4103,26 @@ body[data-space="frame-editor"] .modal-card,
 }
 
 .fe-editor-topbar {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 22px;
+  padding: 10px 22px 10px 38px;
   background: var(--fe-graphite-1);
   border-bottom: 1px solid var(--fe-line);
   gap: 16px;
+  transition: max-height 200ms var(--ease), padding 200ms var(--ease);
+  max-height: 200px;
+  overflow: hidden;
+}
+.fe-editor-topbar.is-collapsed {
+  max-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--fe-line);
+}
+.fe-editor-topbar.is-collapsed > *:not(.fe-collapse-topbar) {
+  visibility: hidden;
 }
 .fe-editor-topbar-left {
   display: flex;
@@ -4199,9 +4212,9 @@ body[data-space="frame-editor"] .modal-card,
 .fe-editor-canvas-region {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 28px 22px 18px;
-  gap: 12px;
+  align-items: stretch;
+  padding: 14px 22px;
+  gap: 0;
   flex: 1;
   min-height: 0;
 }
@@ -4242,13 +4255,11 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   text-align: center;
   pointer-events: none;
 }
-.fe-editor-canvas-controls {
+.fe-editor-topbar-center {
   display: flex;
   gap: 14px;
   align-items: center;
-  background: var(--fe-graphite-1);
-  border: 1px solid var(--fe-line);
-  padding: 6px 12px;
+  justify-content: center;
 }
 .fe-zoom {
   display: inline-flex;
@@ -4332,61 +4343,29 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   line-height: 1;
 }
 
-/* discover bar — barra fina com 1 botão "prompt" + dica do menu de contexto */
-.fe-editor-discoverbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 22px;
-  background: var(--fe-graphite-1);
-  border-top: 1px solid var(--fe-line);
-  border-bottom: 1px solid var(--fe-line);
-}
-.fe-btn-prompt {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--fe-cyan-soft);
-  border: 1px solid var(--fe-cyan);
-  color: var(--fe-cyan);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  text-transform: lowercase;
-  transition: all 160ms var(--ease);
-}
-.fe-btn-prompt:hover:not(:disabled) {
-  background: rgba(77, 217, 214, 0.20);
-  box-shadow: 0 0 0 1px var(--fe-cyan-glow);
-}
-.fe-btn-prompt:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.fe-btn-prompt-compact { padding: 5px 10px; font-size: 10.5px; }
-.fe-btn-prompt-selected-hidden { display: none !important; }
-.fe-editor-sel-summary {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  color: var(--paper-3);
-}
-.fe-editor-hint {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
+/* botao de colapsar topbar / matriz (canto superior esquerdo) */
+.fe-collapse-toggle {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--paper-5);
-  margin-left: auto;
-  font-style: italic;
+  font-size: 10px;
+  cursor: pointer;
+  z-index: 2;
+  transition: all 140ms var(--ease);
+  padding: 0;
 }
-.fe-sel-count {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 14px;
-  margin-left: 4px;
+.fe-collapse-toggle:hover {
+  color: var(--fe-cyan);
+  border-color: var(--fe-cyan-2);
 }
+.fe-collapse-matrix { top: 2px; left: 8px; }
 /* menu de contexto — Aseprite-like, custom (anti-padrão: nunca o menu nativo do browser) */
 .fe-context-menu {
   position: fixed;
@@ -4450,16 +4429,24 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   background: var(--fe-line);
   margin: 3px 6px;
 }
-/* sumiço do summary quando não há seleção */
-.fe-editor-sel-summary.is-empty { display: none; }
-
 /* matriz camadas × quadros */
 .fe-matrix-wrap {
+  position: relative;
   flex: 0 0 auto;
   max-height: 420px;
   overflow: auto;
-  padding: 12px 22px 22px;
+  padding: 12px 22px 22px 38px;
   background: var(--fe-graphite-0);
+  transition: max-height 200ms var(--ease), padding 200ms var(--ease);
+}
+.fe-matrix-wrap.is-collapsed {
+  max-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.fe-matrix-wrap.is-collapsed > *:not(.fe-collapse-matrix) {
+  visibility: hidden;
 }
 .fe-matrix {
   display: grid;

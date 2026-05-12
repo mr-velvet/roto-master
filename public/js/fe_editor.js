@@ -47,9 +47,13 @@ let panY = 0;
 let bgMode = 'checker'; // 'checker' | 'solid'
 let activeQuadroIdx = 0;
 
-const ZOOM_MIN = 1;
+const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 32;
 const ZOOM_FACTOR = 1.15;
+
+// Vira true no primeiro zoom/pan/wheel do user. Enquanto false, o ResizeObserver
+// recalcula fit-to-canvas em resize. Depois disso, preserva o que o user escolheu.
+let userAdjustedView = false;
 
 // Cache de imagens carregadas pelo canvas
 const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
@@ -215,6 +219,7 @@ export async function showFeEditor(id) {
   stopPolling();
   stopPlay({ restore: false });
   resetView();
+  restaurarColapsoFeEditor();
   attachCanvasInteraction();
   $matrix.innerHTML = '';
 
@@ -537,6 +542,12 @@ function ajustarCanvasParaWrap() {
 function centerCanvas() {
   if (!tirinha || !$canvas) return;
   ajustarCanvasParaWrap();
+  // Recalcula fit agora que `tirinha` esta definida (resetView é chamado antes
+  // do data chegar e cai no fallback zoom=4).
+  if (!userAdjustedView) {
+    const fit = Math.min($canvas.width / tirinha.largura, $canvas.height / tirinha.altura) * 0.95;
+    zoom = Math.min(Math.max(fit, ZOOM_MIN), ZOOM_MAX);
+  }
   const w = tirinha.largura;
   const h = tirinha.altura;
   panX = ($canvas.width - w * zoom) / 2;
@@ -545,9 +556,21 @@ function centerCanvas() {
 }
 
 function resetView() {
-  zoom = 4;
+  // Fit-to-canvas: calcula o zoom que enquadra a imagem inteira no wrap, com
+  // 5% de folga. Tirinhas pequenas (64x64 pixel art) ficam no ZOOM_MAX (32x);
+  // tirinhas grandes (1920x1080 vindo de video) ficam abaixo de 1x.
+  if (tirinha && $canvasWrap) {
+    const r = $canvasWrap.getBoundingClientRect();
+    const cw = Math.max(1, r.width);
+    const ch = Math.max(1, r.height);
+    const fit = Math.min(cw / tirinha.largura, ch / tirinha.altura) * 0.95;
+    zoom = Math.min(Math.max(fit, ZOOM_MIN), ZOOM_MAX);
+  } else {
+    zoom = 4;
+  }
   panX = 0;
   panY = 0;
+  userAdjustedView = false;
   if ($zoomLabel) $zoomLabel.textContent = formatZoom(zoom);
 }
 
@@ -1459,6 +1482,7 @@ function aplicarZoomNoPonto(cx, cy, alvoZoom) {
   const oldZoom = zoom;
   const newZoom = clamp(alvoZoom, ZOOM_MIN, ZOOM_MAX);
   if (newZoom === oldZoom) return;
+  userAdjustedView = true;
   // ponto da imagem (px de imagem) sob o cursor
   const imgX = (cx - panX) / oldZoom;
   const imgY = (cy - panY) / oldZoom;
@@ -1488,6 +1512,7 @@ function comecarPan(ev, trigger) {
   panStartY = ev.clientY;
   panStartPanX = panX;
   panStartPanY = panY;
+  userAdjustedView = true;
   atualizarCursor();
 }
 
@@ -1598,9 +1623,13 @@ function attachCanvasInteraction() {
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlurWindow);
-  // Resize do contêiner: re-render preservando pan/zoom.
+  // Resize do contêiner: se o user ainda não interagiu com zoom/pan, refaz o
+  // fit-to-canvas. Senão preserva o que ele escolheu.
   if (typeof ResizeObserver !== 'undefined' && $canvasWrap) {
-    canvasResizeObs = new ResizeObserver(() => { renderCanvas(); });
+    canvasResizeObs = new ResizeObserver(() => {
+      if (!userAdjustedView && tirinha) centerCanvas();
+      renderCanvas();
+    });
     canvasResizeObs.observe($canvasWrap);
   }
   canvasInteractionAttached = true;
@@ -1753,17 +1782,6 @@ document.addEventListener('click', (e) => {
       if (activeQuadroIdx < 0) activeQuadroIdx = 0;
     },
   });
-});
-
-// Botão "prompt" da discoverbar: contextual.
-// - sem seleção → prompt em todos os quadros
-// - com seleção → prompt nas células selecionadas
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('[data-action="fe-prompt-context"]')) return;
-  if (!tirinha) return;
-  if (dispararEmCurso) return; // disparo anterior ainda em voo
-  if (selecionadas.size === 0) abrirModalPrompt({ tipo: 'all' });
-  else abrirModalPrompt({ tipo: 'selected' });
 });
 
 // Atalhos retro-compatíveis (não há botão visível com esses data-actions hoje;
@@ -2046,4 +2064,47 @@ function slugify(s) {
   return String(s || 'tirinha').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tirinha';
+}
+
+// === Colapsar topbar e matriz ===
+// Toggle ↕ no canto superior esquerdo de cada area. Estado em localStorage,
+// restaurado no boot do editor. Quando colapsado, so o botao do toggle fica.
+
+const LS_TOPBAR = 'fe-topbar-collapsed';
+const LS_MATRIX = 'fe-matrix-collapsed';
+
+function aplicarColapso(seletor, classe, colapsado) {
+  const $el = document.querySelector(seletor);
+  if (!$el) return;
+  if (colapsado) $el.classList.add('is-collapsed');
+  else $el.classList.remove('is-collapsed');
+  const $btn = $el.querySelector(`[data-action="${classe}"]`);
+  if ($btn) $btn.textContent = colapsado ? '▶' : '▼';
+}
+
+function toggleColapso(seletor, btnAction, lsKey) {
+  const $el = document.querySelector(seletor);
+  if (!$el) return;
+  const novo = !$el.classList.contains('is-collapsed');
+  aplicarColapso(seletor, btnAction, novo);
+  try { localStorage.setItem(lsKey, novo ? '1' : '0'); } catch {}
+  // Resize do canvas pode acontecer; centerCanvas se ainda nao interagiu.
+  if (!userAdjustedView && tirinha) {
+    requestAnimationFrame(() => { centerCanvas(); renderCanvas(); });
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-action="fe-toggle-topbar"]')) {
+    toggleColapso('.fe-editor-topbar', 'fe-toggle-topbar', LS_TOPBAR);
+  } else if (e.target.closest('[data-action="fe-toggle-matrix"]')) {
+    toggleColapso('.fe-matrix-wrap', 'fe-toggle-matrix', LS_MATRIX);
+  }
+});
+
+export function restaurarColapsoFeEditor() {
+  try {
+    aplicarColapso('.fe-editor-topbar', 'fe-toggle-topbar', localStorage.getItem(LS_TOPBAR) === '1');
+    aplicarColapso('.fe-matrix-wrap', 'fe-toggle-matrix', localStorage.getItem(LS_MATRIX) === '1');
+  } catch {}
 }
