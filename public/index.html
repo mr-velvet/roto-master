@@ -808,8 +808,10 @@
             <div class="progress-bar" id="pbar"></div>
             <div class="editor-publish-real">
               <button id="btn-publish-asset"><span style="margin-right:8px">◆</span>publicar como asset</button>
+              <button id="btn-open-as-tirinha" class="btn-secondary"><span style="margin-right:8px">✦</span>abrir no Frames Editor</button>
               <p class="editor-publish-hint-real">
-                Publicar gera o <code>.aseprite</code> final, sobe pro storage e cria o asset no projeto que você escolher.
+                <strong>Publicar</strong> gera o <code>.aseprite</code> e cria o asset no projeto escolhido.
+                <strong>Abrir no Frames Editor</strong> cria uma tirinha pra estilizar quadro a quadro sem precisar publicar primeiro.
               </p>
             </div>
           </div>
@@ -934,7 +936,7 @@
               <span data-bind="publish-project-label">— escolher —</span>
               <span class="caret">▾</span>
             </button>
-            <ul class="custom-select-menu" data-bind="publish-project-menu" hidden></ul>
+            <ul class="custom-select-menu" data-bind="publish-project-menu"></ul>
           </div>
         </label>
         <label class="field">

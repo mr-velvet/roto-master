@@ -11,7 +11,8 @@ import { STATE } from './state.js';
 import { vid } from './gl.js';
 import { buildAseprite } from './aseprite.js';
 import { openModal, closeModal, showToast } from './modals.js';
-import { navigateProject, navigateAtelie } from './router.js';
+import { navigateProject, navigateAtelie, navigateFeEditor } from './router.js';
+import { importarAsepriteComoTirinha } from './fe_import.js';
 import { startAutosave, stopAutosave, notifyChange, applyEditState, onAutosaveStatus } from './autosave.js';
 
 let editorBooted = false;
@@ -26,6 +27,7 @@ let currentAssetForRepublish = null;
 const $videoNameDisplay = document.getElementById('video-name-display');
 const $videoPublishState = document.getElementById('video-publish-state');
 const $btnPublish = document.getElementById('btn-publish-asset');
+const $btnOpenAsTirinha = document.getElementById('btn-open-as-tirinha');
 
 export function initEditor() {
   if (editorBooted) return;
@@ -72,6 +74,7 @@ export function initEditor() {
       $btnPublish.innerHTML = orig;
     }
   });
+  $btnOpenAsTirinha?.addEventListener('click', openAsTirinha);
   wirePublishModal();
   wireAutosaveListeners();
   wireBackButton();
@@ -389,22 +392,88 @@ async function uploadInBackground(file) {
   }
 }
 
+// ====================== Abrir no Frames Editor ======================
+
+// Atalho do editor de vídeo pro Frames Editor sem precisar publicar como asset
+// primeiro. Builda o .aseprite em memória (mesmo build que o publish usa),
+// passa pro importador padrão de tirinha. Origem registrada como 'upload' com
+// origem_meta apontando pro video_id — banco não tem opção 'video' na
+// constraint (017) e essa rota não publica nada.
+async function openAsTirinha() {
+  if (!currentVideo) return;
+  if ($btnOpenAsTirinha.disabled) return;
+  const orig = $btnOpenAsTirinha.innerHTML;
+  $btnOpenAsTirinha.disabled = true;
+
+  try {
+    if (!STATE.frames || !STATE.frames.length) {
+      $btnOpenAsTirinha.innerHTML = '<span class="btn-spin">◴</span> construindo frames…';
+      setProgress('<span class="stage">Construindo frames antes de abrir…</span>', 10);
+      await ensureBuilt();
+      if (!STATE.frames.length) {
+        showToast('falha ao construir frames');
+        setProgress('<span class="err">Falha ao construir frames.</span>', 0);
+        return;
+      }
+    }
+
+    $btnOpenAsTirinha.innerHTML = '<span class="btn-spin">◴</span> empacotando…';
+    setProgress('<span class="stage">Gerando .aseprite…</span>', 40);
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    const aseBytes = buildAseprite(STATE.frames, STATE.dw, STATE.dh, STATE.frameDurationMs);
+
+    $btnOpenAsTirinha.innerHTML = '<span class="btn-spin">◴</span> criando tirinha…';
+    setProgress('<span class="stage">Subindo células pro Frames Editor…</span>', 70);
+    const { id: tirinhaId } = await importarAsepriteComoTirinha(aseBytes.buffer, {
+      nome: currentVideo.name || 'Tirinha sem título',
+      origem: 'upload',
+      origemMeta: { video_id: currentVideo.id, video_name: currentVideo.name },
+      onProgress: (fase, atual, total) => {
+        if (fase === 'upload-celulas' && total) {
+          const pct = 70 + Math.round((atual / total) * 25);
+          setProgress(`<span class="stage">Subindo célula ${atual + 1}/${total}…</span>`, pct);
+        }
+      },
+    });
+
+    setProgress('<span class="ok">✓ Tirinha criada.</span> Abrindo no Frames Editor…', 100);
+    showToast('tirinha criada — abrindo');
+    setTimeout(() => navigateFeEditor(tirinhaId), 400);
+  } catch (e) {
+    console.error('abrir como tirinha:', e);
+    showToast('falha: ' + (e.message || 'erro desconhecido'));
+    setProgress('<span class="err">Falha ao abrir como tirinha:</span> ' + e.message, 0);
+  } finally {
+    $btnOpenAsTirinha.disabled = false;
+    $btnOpenAsTirinha.innerHTML = orig;
+  }
+}
+
 // ====================== Publicar ======================
 
 function wirePublishModal() {
   // Toggle do dropdown via classList no wrapper .custom-select.
   // Click-fora fecha (dropdown precisa disso pra parecer nativo).
+  // O <ul> também sincroniza atributo `hidden` pra blindar contra a regra
+  // global `[hidden] { display: none !important; }` em styles.css (commit
+  // 0aa4e06) que vence o `.is-open .custom-select-menu { display: block }`.
   document.addEventListener('click', (e) => {
     const select = document.querySelector('[data-bind="publish-project-select"]');
     if (!select) return;
+    const menu = select.querySelector('[data-bind="publish-project-menu"]');
     const toggleBtn = e.target.closest('[data-action="toggle-project-select"]');
     if (toggleBtn && select.contains(toggleBtn)) {
       select.classList.toggle('is-open');
+      if (menu) {
+        if (select.classList.contains('is-open')) menu.removeAttribute('hidden');
+        else menu.setAttribute('hidden', '');
+      }
       return;
     }
     // click fora do select fecha
     if (!select.contains(e.target)) {
       select.classList.remove('is-open');
+      if (menu) menu.setAttribute('hidden', '');
     }
   });
   document.addEventListener('click', async (e) => {
@@ -530,6 +599,7 @@ async function openPublishModal() {
     menu.appendChild(li);
   }
   select.classList.remove('is-open'); // garante fechado ao reabrir modal
+  menu.setAttribute('hidden', '');
 
   if (currentAssetForRepublish) updateRepublishInfo();
 

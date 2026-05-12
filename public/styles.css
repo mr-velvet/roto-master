@@ -2209,6 +2209,28 @@ body.no-video #btn-publish-asset { opacity: 0.4; pointer-events: none; }
 #btn-publish-asset:hover:not(:disabled) { background: var(--copper-2); }
 #btn-publish-asset:disabled { opacity: 0.4; cursor: not-allowed; }
 
+#btn-open-as-tirinha {
+  width: 100%;
+  margin-top: 8px;
+  background: transparent;
+  color: var(--paper-2);
+  border: 1px solid var(--paper-5);
+  padding: 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+  transition: all 160ms var(--ease);
+  cursor: pointer;
+}
+#btn-open-as-tirinha:hover:not(:disabled) {
+  color: var(--paper);
+  border-color: var(--paper);
+  background: rgba(255,255,255,0.03);
+}
+#btn-open-as-tirinha:disabled { opacity: 0.4; cursor: not-allowed; }
+body.no-video #btn-open-as-tirinha { opacity: 0.4; pointer-events: none; }
+
 .editor-publish-hint-real {
   margin-top: 8px;
   font-size: 10px;
