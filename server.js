@@ -133,4 +133,12 @@ app.listen(PORT, '0.0.0.0', async () => {
   } catch (e) {
     console.error('[jobs] init falhou:', e.message);
   }
+  // Recovery de celulas do fe-prompts que ficaram em 'processando' quando o
+  // servidor anterior morreu (deploy, crash, OOM). Workers do processarLote
+  // s~ao in-process, ent~ao n~ao sobrevivem a reinicio.
+  try {
+    await require('./lib/fe-prompts').recoverCelulasOrfas(pool);
+  } catch (e) {
+    console.error('[fe-prompts] recovery falhou:', e.message);
+  }
 });
