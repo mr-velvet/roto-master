@@ -61,6 +61,24 @@ let userAdjustedView = false;
 // proprio canvas mudando ja' eh o feedback.
 let mostrandoOriginal = false;
 
+// Dimensoes da matriz (largura de quadros / altura de camadas). Persistidas
+// em localStorage. Wheel sobre a matriz ajusta — sem mod, mexe largura;
+// segurando 'L', mexe altura.
+const MATRIX_COL_MIN = 24;
+const MATRIX_COL_MAX = 240;
+const MATRIX_ROW_MIN = 32;
+const MATRIX_ROW_MAX = 240;
+const LS_MATRIX_COL = 'fe-matrix-col-w';
+const LS_MATRIX_ROW = 'fe-matrix-row-h';
+let matrixColWidth = clampN(parseInt(localStorage.getItem(LS_MATRIX_COL), 10), MATRIX_COL_MIN, MATRIX_COL_MAX, 96);
+let matrixRowHeight = clampN(parseInt(localStorage.getItem(LS_MATRIX_ROW), 10), MATRIX_ROW_MIN, MATRIX_ROW_MAX, 96);
+let lSegurada = false;
+
+function clampN(n, lo, hi, fallback) {
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(hi, Math.max(lo, n));
+}
+
 // Cache de imagens carregadas pelo canvas
 const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
 
@@ -128,6 +146,29 @@ const $canvas = document.querySelector('[data-bind="fe-editor-canvas"]');
 const $canvasWrap = $canvas?.parentElement || null;
 const $canvasEmpty = document.querySelector('[data-bind="fe-editor-canvas-empty"]');
 const $matrix = document.querySelector('[data-bind="fe-matrix"]');
+const $matrixWrap = document.querySelector('[data-bind="fe-matrix-wrap"]');
+
+// Wheel sobre a matriz: ajusta dimensoes (largura dos quadros por padrao, ou
+// altura das camadas se L estiver segurada). preventDefault pra impedir scroll
+// normal — o user esta zoomando, n~ao navegando.
+if ($matrixWrap) {
+  $matrixWrap.addEventListener('wheel', (e) => {
+    if (!tirinha) return;
+    e.preventDefault();
+    // deltaY < 0 → scroll pra cima → aumenta dimensao.
+    // deltaY > 0 → scroll pra baixo → reduz dimensao.
+    const dir = e.deltaY < 0 ? 1 : -1;
+    const step = 8;
+    if (lSegurada) {
+      matrixRowHeight = clampN(matrixRowHeight + dir * step, MATRIX_ROW_MIN, MATRIX_ROW_MAX, 96);
+      try { localStorage.setItem(LS_MATRIX_ROW, String(matrixRowHeight)); } catch {}
+    } else {
+      matrixColWidth = clampN(matrixColWidth + dir * step, MATRIX_COL_MIN, MATRIX_COL_MAX, 96);
+      try { localStorage.setItem(LS_MATRIX_COL, String(matrixColWidth)); } catch {}
+    }
+    renderMatrix();
+  }, { passive: false });
+}
 const $btnSel = document.querySelector('[data-bind="fe-btn-prompt-selected"]'); // hidden, mantido por compat
 const $btnAll = document.querySelector('[data-action="fe-prompt-all"]');
 const $btnConfirmPrompt = document.querySelector('[data-action="fe-confirm-prompt"]');
@@ -394,9 +435,11 @@ function renderMatrix() {
   $matrix.innerHTML = '';
 
   // grid: 1ª col = headers de linha (camada). Restante = quadros (1 col cada).
+  // colWidth/rowHeight ajustaveis via wheel sobre a matriz — wheel sem mod
+  // muda largura dos quadros; segurando 'L' muda altura das camadas.
   const cols = quadrosOrdenados.length;
-  $matrix.style.gridTemplateColumns = `200px repeat(${cols}, 96px)`;
-  $matrix.style.gridTemplateRows = `36px repeat(${camadasOrdenadas.length}, 96px)`;
+  $matrix.style.gridTemplateColumns = `200px repeat(${cols}, ${matrixColWidth}px)`;
+  $matrix.style.gridTemplateRows = `36px repeat(${camadasOrdenadas.length}, ${matrixRowHeight}px)`;
 
   // canto superior esquerdo — área "vazia" da matriz; botão direito abre menu global.
   const corner = document.createElement('div');
@@ -1719,6 +1762,12 @@ document.addEventListener('keydown', (e) => {
     renderCanvas();
     return;
   }
+  // Segurando L: wheel sobre a matriz ajusta altura das camadas em vez da
+  // largura dos quadros. So' marca o flag — wheel handler le ele.
+  if ((e.key === 'l' || e.key === 'L') && !e.repeat) {
+    lSegurada = true;
+    return;
+  }
   // Toggle play em K (Espaço fica reservado pra pan do canvas — ver
   // attachCanvasInteraction). Botão visível continua sendo o caminho principal.
   if (e.key === 'k' || e.key === 'K') {
@@ -1743,6 +1792,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Soltar O: volta pra imagem atual. Independente do foco — se soltou, volta.
+// Soltar L: para de afetar altura das camadas no wheel.
 document.addEventListener('keyup', (e) => {
   if (!tirinha) return;
   if (document.body.getAttribute('data-screen') !== 'fe-editor') return;
@@ -1750,6 +1800,15 @@ document.addEventListener('keyup', (e) => {
     mostrandoOriginal = false;
     renderCanvas();
   }
+  if (e.key === 'l' || e.key === 'L') {
+    lSegurada = false;
+  }
+});
+
+// Blur da janela: zera flags de tecla "segurada" pra n~ao ficar travado.
+window.addEventListener('blur', () => {
+  if (lSegurada) lSegurada = false;
+  if (mostrandoOriginal) { mostrandoOriginal = false; renderCanvas(); }
 });
 
 // Rename inline da tirinha
