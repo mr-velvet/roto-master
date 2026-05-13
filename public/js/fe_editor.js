@@ -26,6 +26,7 @@ import { openModal, closeModal, showToast, confirmModal } from './modals.js';
 import { navigateFeHome } from './router.js';
 import { buildAsepriteDoFrameEditor } from './aseprite_io.js';
 import { initFeEdits, abrirModalEdits } from './fe_edits.js';
+import { authedFetch } from './auth.js';
 
 // === Estado local da tirinha em edição ===
 //
@@ -970,14 +971,16 @@ function loadImage(url) {
 
 // Variante que carrega via /api/fe/proxy-png para liberar getImageData no canvas.
 // O bucket GCS não responde CORS, então a imagem direta tainta o canvas.
+// `<img src>` não envia header Authorization — o proxy exige Bearer token, então
+// usa fetch autenticado + createImageBitmap pra decodificar sem tainting.
 async function loadImageForPixels(url) {
   const proxied = '/api/fe/proxy-png?url=' + encodeURIComponent(url);
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('proxy img load failed: ' + url));
-    img.src = proxied;
-  });
+  const r = await authedFetch(proxied);
+  if (!r.ok) {
+    throw new Error(`proxy-png ${r.status} pra ${url}`);
+  }
+  const blob = await r.blob();
+  return await createImageBitmap(blob);
 }
 
 // === Rename de camada (otimista) ===
@@ -2966,6 +2969,7 @@ async function gerarAsepriteBlob() {
   const W = tirinha.largura;
   const H = tirinha.altura;
   const celulasOut = [];
+  const falhas = [];
   for (let ci = 0; ci < camadasAsc.length; ci++) {
     for (let qi = 0; qi < quadrosAsc.length; qi++) {
       const cel = celulasMap.get(keyOf(camadasAsc[ci].id, quadrosAsc[qi].id));
@@ -2987,9 +2991,17 @@ async function gerarAsepriteBlob() {
           altura: H,
         });
       } catch (e) {
-        console.warn('falha ao carregar PNG da célula:', e);
+        falhas.push({ cam: camadasAsc[ci].nome, q: qi + 1, msg: e.message || String(e) });
       }
     }
+  }
+  // Sem tolerância silenciosa: o arquivo precisa ser fiel ao editor. Se qualquer
+  // célula não pôde ser carregada, aborta com mensagem clara — antes o catch
+  // engolia e gerava .aseprite vazio (cels faltando), confundindo o user.
+  if (falhas.length) {
+    const detalhe = falhas.slice(0, 3).map((f) => `${f.cam} q${f.q}: ${f.msg}`).join(' · ');
+    const extra = falhas.length > 3 ? ` (+${falhas.length - 3} mais)` : '';
+    throw new Error(`falha ao carregar ${falhas.length} célula(s) — ${detalhe}${extra}`);
   }
 
   const bytes = buildAsepriteDoFrameEditor({
