@@ -2232,9 +2232,10 @@ function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
   m.querySelector('[data-bind="fe-prompt-err"]').textContent = '';
   m.querySelector('[data-bind="fe-prompt-title"]').textContent = titulo;
   m.querySelector('[data-bind="fe-prompt-target"]').textContent = alvo;
-  // dropdown de modelo + bloco informativo de ratio
+  // dropdown de modelo + bloco informativo de ratio + preview de custo
   popularDropdownModelos();
   atualizarRatioInfo();
+  atualizarCustoEstimado();
   // checkbox "usar imagem original": reset off; disable se nenhum alvo tem
   // png_url_original (ex: tirinha vazia ou celulas sem importacao).
   const $cbWrap = m.querySelector('[data-bind="fe-prompt-use-original-wrap"]');
@@ -2308,6 +2309,29 @@ function popularDropdownModelos() {
 // Pergunta ao backend qual ratio o modelo realmente vai entregar pras dims
 // atuais da tirinha. Compara com o ratio real da tirinha — se difere, badge
 // laranja avisando; se bate, badge verde discreto.
+// Preview de gasto: estimativa baseada em price_usd_estimate do catalogo de
+// modelos (vem de GET /api/fe/models). Eh estimativa — Fal cobra ao receber
+// com base no que processou. Tooltip avisa.
+function atualizarCustoEstimado() {
+  const $cost = document.querySelector('[data-bind="fe-prompt-cost"]');
+  if (!$cost) return;
+  const modelo = modelosFeByKey[feModeloSelecionado];
+  const n = promptAlvosIds.length;
+  const preco = modelo && Number.isFinite(modelo.price_usd_estimate) ? modelo.price_usd_estimate : null;
+  if (!n || preco == null) {
+    $cost.setAttribute('hidden', '');
+    $cost.textContent = '';
+    $cost.removeAttribute('title');
+    return;
+  }
+  const total = n * preco;
+  const totalFmt = total < 0.01 ? '<$0.01' : `$${total.toFixed(2)}`;
+  const unitFmt = `$${preco.toFixed(3)}/célula`;
+  $cost.removeAttribute('hidden');
+  $cost.innerHTML = `≈ ${escapeHtmlFe(totalFmt)} <span class="fe-prompt-cost-sub">${escapeHtmlFe(unitFmt)}</span>`;
+  $cost.title = `estimativa: ${n} × ${unitFmt} = ${totalFmt}. valor real cobrado pelo provider pode variar.`;
+}
+
 async function atualizarRatioInfo() {
   if (!tirinha || !feModeloSelecionado) return;
   const $info = document.querySelector('[data-bind="fe-ratio-info"]');
@@ -2385,6 +2409,7 @@ document.addEventListener('click', (e) => {
     $sel.classList.remove('is-open');
     if ($menu) $menu.setAttribute('hidden', '');
     atualizarRatioInfo();
+    atualizarCustoEstimado();
     return;
   }
   if (!$sel.contains(e.target)) {

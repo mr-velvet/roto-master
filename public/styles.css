@@ -4111,6 +4111,23 @@ body[data-space="frame-editor"] .modal-card,
   font-size: 11px;
   color: var(--paper-2);
   letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.fe-prompt-cost {
+  color: var(--fe-cyan);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fe-prompt-cost[hidden] {
+  display: none;
+}
+.fe-prompt-cost-sub {
+  color: var(--paper-3);
+  font-weight: 400;
+  margin-left: 6px;
 }
 
 /* ----------------------------------------------------------------------------

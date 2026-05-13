@@ -1162,7 +1162,10 @@
           <textarea data-bind="fe-prompt-text" rows="6" placeholder="ex: pinta com traço de bico-de-pena, fundo limpo, cores vivas"></textarea>
         </label>
         <button class="enhance-undo" data-bind="fe-prompt-enhance-undo" type="button" hidden>↶ desfazer melhoria</button>
-        <div class="fe-prompt-target" data-bind="fe-prompt-target">—</div>
+        <div class="fe-prompt-target">
+          <span data-bind="fe-prompt-target">—</span>
+          <span class="fe-prompt-cost" data-bind="fe-prompt-cost" hidden></span>
+        </div>
         <div class="modal-err" data-bind="fe-prompt-err"></div>
       </div>
       <div class="modal-foot">
