@@ -1108,9 +1108,27 @@
       </div>
       <div class="modal-body">
         <label class="field">
-          <span>prompt</span>
+          <span>modelo</span>
+          <div class="custom-select" data-bind="fe-prompt-model-select">
+            <button class="custom-select-btn" data-action="fe-toggle-model-select" type="button">
+              <span data-bind="fe-prompt-model-label">—</span>
+              <span class="caret">▾</span>
+            </button>
+            <ul class="custom-select-menu" data-bind="fe-prompt-model-menu" hidden></ul>
+          </div>
+          <span class="fe-prompt-model-hint" data-bind="fe-prompt-model-hint"></span>
+        </label>
+        <label class="field">
+          <div class="field-row-head">
+            <span>prompt</span>
+            <button class="enhance-btn" data-action="fe-enhance-prompt" type="button" title="melhorar prompt com IA (Claude Sonnet 4.6)">
+              <span class="enhance-icon">✧</span>
+              <span class="enhance-label">melhorar</span>
+            </button>
+          </div>
           <textarea data-bind="fe-prompt-text" rows="6" placeholder="ex: pinta com traço de bico-de-pena, fundo limpo, cores vivas"></textarea>
         </label>
+        <button class="enhance-undo" data-bind="fe-prompt-enhance-undo" type="button" hidden>↶ desfazer melhoria</button>
         <div class="fe-prompt-target" data-bind="fe-prompt-target">—</div>
         <div class="modal-err" data-bind="fe-prompt-err"></div>
       </div>

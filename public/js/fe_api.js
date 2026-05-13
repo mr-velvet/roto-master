@@ -189,14 +189,30 @@ export async function uploadAseprite({ tirinhaId, blob, filename = 'tirinha.asep
 // Endpoint pode ainda não existir na worktree atual (está sendo escrito em
 // paralelo). Front trata 404 como "back ainda não tem o endpoint" e mostra
 // mensagem amigável.
-export async function dispararPrompt({ tirinhaId, prompt, celulasIds }) {
+export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey }) {
+  const body = { tirinha_id: tirinhaId, prompt, celulas_ids: celulasIds };
+  if (modelKey) body.model_key = modelKey;
   const r = await authedFetch('/api/fe/prompts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tirinha_id: tirinhaId, prompt, celulas_ids: celulasIds }),
+    body: JSON.stringify(body),
   });
   if (r.status === 404) {
     throw new Error('endpoint de prompt ainda não disponível no servidor');
   }
   return jsonOrThrow(r, 'disparar prompt');
+}
+
+// Catalogo de modelos pra prompts em celula.
+export async function listFeModels() {
+  const r = await authedFetch('/api/fe/models');
+  return jsonOrThrow(r, 'listar modelos');
+}
+
+// Single-step undo de uma celula: backend pop a versao mais recente e
+// devolve a celula atualizada. 404 se nao ha historico.
+export async function undoCelula(celulaId) {
+  const r = await authedFetch(`/api/fe/celulas/${celulaId}/undo`, { method: 'POST' });
+  if (r.status === 404) return null;
+  return jsonOrThrow(r, 'desfazer celula');
 }

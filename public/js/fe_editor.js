@@ -17,9 +17,10 @@ import {
   addCamada, patchCamada, deleteCamada,
   addQuadro, deleteQuadro,
   patchCelula,
-  uploadAseprite, dispararPrompt,
+  uploadAseprite, dispararPrompt, listFeModels, undoCelula,
   publicarComoAsset,
 } from './fe_api.js';
+import { enhancePrompt } from './generate_api.js';
 import { listProjects } from './projects_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
 import { navigateFeHome } from './router.js';
@@ -60,6 +61,21 @@ const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
 
 // Polling
 let pollTimer = null;
+
+// === Modelos / prompt / undo ===
+// Cat~alogo de modelos pra prompts em c~elula (carregado uma vez por sess~ao).
+let modelosFe = [];
+let modelosFeByKey = {};
+let feModeloSelecionado = null;
+
+// Pilha de operacoes de prompt da sess~ao atual. Cada item = { celulasIds }.
+// Ctrl+Z pop o topo e chama POST /api/fe/celulas/:id/undo em paralelo.
+// N~ao persiste entre reloads (o hist~orico real fica no banco em fe_celula_versao).
+const historicoPrompts = [];
+const HISTORICO_MAX = 50;
+
+// "Antes" do bot~ao melhorar — pra desfazer melhoria do prompt no modal.
+let feLastEnhanceBefore = null;
 
 // Play (timeline)
 const PLAY_DEFAULT_MS = 100;
@@ -216,6 +232,8 @@ export async function showFeEditor(id) {
   imgCache.clear();
   inFlight.clear();
   syncState.clear();
+  historicoPrompts.length = 0;
+  feLastEnhanceBefore = null;
   stopPolling();
   stopPlay({ restore: false });
   resetView();
@@ -237,6 +255,21 @@ export async function showFeEditor(id) {
     return;
   }
   await aplicarEstadoTirinha(data, { recenter: true });
+  await garantirModelosCarregados();
+}
+
+// Carrega o cat~alogo de modelos do servidor (apenas uma vez por sess~ao).
+// O modal de prompt usa o estado em mem~oria — n~ao bloqueia a abertura.
+async function garantirModelosCarregados() {
+  if (modelosFe.length) return;
+  try {
+    const { models, default: def } = await listFeModels();
+    modelosFe = models || [];
+    modelosFeByKey = Object.fromEntries(modelosFe.map((m) => [m.key, m]));
+    feModeloSelecionado = def && modelosFeByKey[def] ? def : (modelosFe[0]?.key || null);
+  } catch (e) {
+    console.warn('listFeModels falhou:', e);
+  }
 }
 
 async function aplicarEstadoTirinha(data, opts = {}) {
@@ -502,6 +535,48 @@ function marcarLocalProcessando(idsAlvo) {
     idsMarcados.push(cel.id);
   }
   return idsMarcados;
+}
+
+// === Undo de prompts (Ctrl/Cmd+Z) ===
+//
+// Pop o topo de `historicoPrompts` e chama POST /api/fe/celulas/:id/undo pra
+// cada celula em paralelo. Cada chamada pop a versao mais recente da celula
+// no banco (fe_celula_versao), copia png_url anterior pra fe_celula, deleta
+// a linha de versao. Aqui no front, recebe a celula atualizada e merge no
+// celulasMap. Falha individual (404 = sem hist~orico) eh silenciosa — desfaz
+// s~o o que tem.
+async function desfazerUltimoPromptAplicado() {
+  if (!tirinha) return;
+  const item = historicoPrompts.pop();
+  if (!item || !item.celulasIds?.length) {
+    showToast('nada pra desfazer');
+    return;
+  }
+  const resultados = await Promise.allSettled(item.celulasIds.map((id) => undoCelula(id)));
+  let okCount = 0;
+  for (const r of resultados) {
+    if (r.status !== 'fulfilled' || !r.value) continue;
+    const c = r.value.celula;
+    if (!c) continue;
+    // Atualiza estado local da celula. A chave eh (camada_id, quadro_id).
+    const k = keyOf(c.camada_id, c.quadro_id);
+    const existente = celulasMap.get(k);
+    if (existente) {
+      Object.assign(existente, c);
+    } else {
+      celulasMap.set(k, c);
+    }
+    okCount++;
+  }
+  if (okCount === 0) {
+    showToast('nada pra desfazer');
+    return;
+  }
+  // Invalida cache de imagens (png_url voltou ao anterior — pode coincidir
+  // com chave em cache ou n~ao; mais seguro repintar).
+  renderMatrix();
+  renderCanvas();
+  showToast(`desfeito em ${okCount} célula${okCount === 1 ? '' : 's'}`);
 }
 
 // Reverte célula que tinha sido marcada otimisticamente como processando.
@@ -1390,13 +1465,23 @@ document.addEventListener('click', (e) => {
   togglePlay();
 });
 
-// Atalhos de teclado: espaço (play/pause), ← / → (navegar quadros).
+// Atalhos de teclado: espaço (play/pause), ← / → (navegar quadros),
+// Ctrl/Cmd+Z (desfaz ultimo prompt aplicado em celula(s)).
 // Só ativa se a tela do editor está visível e o foco não está num campo de texto.
 document.addEventListener('keydown', (e) => {
   if (!tirinha) return;
   if (document.body.getAttribute('data-screen') !== 'fe-editor') return;
   const tag = (e.target && e.target.tagName) || '';
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+  const foraDeCampo = tag !== 'INPUT' && tag !== 'TEXTAREA' && !(e.target && e.target.isContentEditable);
+  // Ctrl/Cmd+Z desfaz o ultimo prompt aplicado. Bloqueia em INPUT/TEXTAREA
+  // (ex: textarea do modal de prompt aberto) pra n~ao competir com o undo
+  // nativo de texto. Shift+Z e Ctrl+Y (redo) sem suporte por ora.
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey && foraDeCampo) {
+    e.preventDefault();
+    desfazerUltimoPromptAplicado();
+    return;
+  }
+  if (!foraDeCampo) return;
   // Toggle play em K (Espaço fica reservado pra pan do canvas — ver
   // attachCanvasInteraction). Botão visível continua sendo o caminho principal.
   if (e.key === 'k' || e.key === 'K') {
@@ -1841,8 +1926,121 @@ function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
   m.querySelector('[data-bind="fe-prompt-err"]').textContent = '';
   m.querySelector('[data-bind="fe-prompt-title"]').textContent = titulo;
   m.querySelector('[data-bind="fe-prompt-target"]').textContent = alvo;
+  // dropdown de modelo
+  popularDropdownModelos();
+  // enhance-undo escondido ao abrir
+  feLastEnhanceBefore = null;
+  const $undo = m.querySelector('[data-bind="fe-prompt-enhance-undo"]');
+  if ($undo) $undo.setAttribute('hidden', '');
   openModal('fe-prompt');
 }
+
+function popularDropdownModelos() {
+  const $sel = document.querySelector('[data-bind="fe-prompt-model-select"]');
+  const $label = document.querySelector('[data-bind="fe-prompt-model-label"]');
+  const $menu = document.querySelector('[data-bind="fe-prompt-model-menu"]');
+  const $hint = document.querySelector('[data-bind="fe-prompt-model-hint"]');
+  if (!$sel || !$menu || !$label) return;
+  $menu.innerHTML = '';
+  if (!modelosFe.length) {
+    $label.textContent = '— sem modelos —';
+    if ($hint) $hint.textContent = '';
+    return;
+  }
+  for (const m of modelosFe) {
+    const li = document.createElement('li');
+    li.className = 'custom-select-item';
+    li.dataset.modelKey = m.key;
+    li.innerHTML = `<span>${escapeHtmlFe(m.label)}</span><span class="fe-prompt-model-sub">${escapeHtmlFe(m.sub || '')}</span>`;
+    $menu.appendChild(li);
+  }
+  if (!feModeloSelecionado || !modelosFeByKey[feModeloSelecionado]) {
+    feModeloSelecionado = modelosFe[0].key;
+  }
+  const atual = modelosFeByKey[feModeloSelecionado];
+  $label.textContent = atual.label;
+  if ($hint) $hint.textContent = atual.hint || '';
+  $sel.classList.remove('is-open');
+  $menu.setAttribute('hidden', '');
+}
+
+function escapeHtmlFe(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Dropdown de modelo (mesmo padrao do dropdown de publicar tirinha).
+document.addEventListener('click', (e) => {
+  const $sel = document.querySelector('[data-bind="fe-prompt-model-select"]');
+  if (!$sel) return;
+  const $menu = $sel.querySelector('[data-bind="fe-prompt-model-menu"]');
+  const toggleBtn = e.target.closest('[data-action="fe-toggle-model-select"]');
+  if (toggleBtn && $sel.contains(toggleBtn)) {
+    const wasOpen = $sel.classList.contains('is-open');
+    $sel.classList.toggle('is-open');
+    if ($menu) {
+      if (!wasOpen) $menu.removeAttribute('hidden');
+      else $menu.setAttribute('hidden', '');
+    }
+    return;
+  }
+  const item = e.target.closest('[data-bind="fe-prompt-model-menu"] .custom-select-item');
+  if (item) {
+    feModeloSelecionado = item.dataset.modelKey;
+    const m = modelosFeByKey[feModeloSelecionado];
+    const $label = document.querySelector('[data-bind="fe-prompt-model-label"]');
+    const $hint = document.querySelector('[data-bind="fe-prompt-model-hint"]');
+    if ($label && m) $label.textContent = m.label;
+    if ($hint) $hint.textContent = (m && m.hint) || '';
+    $sel.classList.remove('is-open');
+    if ($menu) $menu.setAttribute('hidden', '');
+    return;
+  }
+  if (!$sel.contains(e.target)) {
+    $sel.classList.remove('is-open');
+    if ($menu) $menu.setAttribute('hidden', '');
+  }
+});
+
+// Botao "melhorar prompt" — usa Claude Sonnet 4.6 com receita 'fe-style'.
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-action="fe-enhance-prompt"]');
+  if (!btn) return;
+  const m = document.querySelector('[data-modal="fe-prompt"]');
+  const $text = m.querySelector('[data-bind="fe-prompt-text"]');
+  const $undo = m.querySelector('[data-bind="fe-prompt-enhance-undo"]');
+  const $err = m.querySelector('[data-bind="fe-prompt-err"]');
+  const original = ($text.value || '').trim();
+  if (!original) { $err.textContent = 'escreva o esboço do prompt antes de melhorar'; return; }
+  $err.textContent = '';
+  const labelEl = btn.querySelector('.enhance-label');
+  const orig = labelEl ? labelEl.textContent : null;
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  if (labelEl) labelEl.textContent = 'pensando…';
+  try {
+    const melhorado = await enhancePrompt({ prompt: original, kind: 'fe-style' });
+    feLastEnhanceBefore = original;
+    $text.value = melhorado;
+    if ($undo) $undo.removeAttribute('hidden');
+  } catch (err) {
+    $err.textContent = 'falha ao melhorar — ' + (err.message || 'tente de novo');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+    if (labelEl && orig) labelEl.textContent = orig;
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-bind="fe-prompt-enhance-undo"]')) return;
+  if (feLastEnhanceBefore == null) return;
+  const m = document.querySelector('[data-modal="fe-prompt"]');
+  const $text = m.querySelector('[data-bind="fe-prompt-text"]');
+  const $undo = m.querySelector('[data-bind="fe-prompt-enhance-undo"]');
+  $text.value = feLastEnhanceBefore;
+  feLastEnhanceBefore = null;
+  if ($undo) $undo.setAttribute('hidden', '');
+});
 
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-action="fe-confirm-prompt"]')) return;
@@ -1881,10 +2079,22 @@ document.addEventListener('click', async (e) => {
   showToast(`prompt enviado em ${idsMarcadosLocal.length} célula${idsMarcadosLocal.length === 1 ? '' : 's'}…`);
 
   try {
-    await dispararPrompt({ tirinhaId: tirinha.id, prompt, celulasIds: alvosIds });
+    const resp = await dispararPrompt({
+      tirinhaId: tirinha.id,
+      prompt,
+      celulasIds: alvosIds,
+      modelKey: feModeloSelecionado || undefined,
+    });
     // Sucesso: backend marcou de verdade. Diferenca entre `idsMarcadosLocal`
     // e `celulas_marcadas` (resposta) e' tolerada — polling de 3s reconcilia
     // o estado real (ex: race em que outra sessao marcou alguma alem da nossa).
+    // Empilha pro undo de prompt (Ctrl+Z). Usa a lista que o backend marcou
+    // de verdade — celulas_marcadas — pra n~ao tentar undo em celula intacta.
+    const idsParaUndo = Array.isArray(resp?.celulas_marcadas) && resp.celulas_marcadas.length
+      ? resp.celulas_marcadas
+      : alvosIds;
+    historicoPrompts.push({ celulasIds: idsParaUndo, ts: Date.now() });
+    if (historicoPrompts.length > HISTORICO_MAX) historicoPrompts.shift();
     agendarPollingSeNecessario();
   } catch (err) {
     // Falha: reverte localmente e avisa o user. Copy neutro (sem mensagem

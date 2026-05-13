@@ -13,7 +13,12 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { requireUser } = require('../middleware/auth');
 const { uploadBuffer, PUBLIC_URL_PREFIX } = require('../lib/gcs');
-const { processarLote } = require('../lib/fe-prompts');
+const {
+  processarLote,
+  FE_PROMPT_MODELS,
+  FE_PROMPT_MODELS_BY_KEY,
+  FE_PROMPT_DEFAULT_MODEL,
+} = require('../lib/fe-prompts');
 
 const router = Router();
 
@@ -688,8 +693,71 @@ router.patch('/celulas/:id', requireUser, async (req, res) => {
 // Prompt (IA) — assíncrono desde o MVP (ia.md §1)
 // ============================================================
 
+// GET /api/fe/models — catalogo de modelos disponiveis pra prompts em celula.
+// Resp: { models: [{ key, label, sub, hint }], default: <key> }
+router.get('/models', requireUser, (req, res) => {
+  res.json({ models: FE_PROMPT_MODELS, default: FE_PROMPT_DEFAULT_MODEL });
+});
+
+// POST /api/fe/celulas/:id/undo — desfaz o ultimo prompt aplicado nessa celula.
+// Pega a versao mais recente em fe_celula_versao, copia png_url/largura/altura
+// pra fe_celula, deleta a linha de versao (single-step undo, sem redo).
+// 404 se nao ha historico pra essa celula.
+router.post('/celulas/:id/undo', requireUser, async (req, res) => {
+  const celulaId = req.params.id;
+  const pool = req.app.locals.pool;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [versao] } = await client.query(
+      `SELECT id, png_url, largura, altura
+         FROM fe_celula_versao
+        WHERE celula_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [celulaId]
+    );
+    if (!versao) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'sem historico pra essa celula' });
+    }
+    const { rows: [atualizada] } = await client.query(
+      `UPDATE fe_celula
+          SET png_url = $1,
+              largura = $2,
+              altura = $3,
+              estado = 'idle',
+              estado_erro = NULL,
+              estado_atualizado_em = NOW(),
+              updated_at = NOW()
+        WHERE id = $4
+        RETURNING id, tirinha_id, camada_id, quadro_id, png_url, largura, altura,
+                  estado, estado_erro, estado_atualizado_em, created_at, updated_at`,
+      [versao.png_url, versao.largura, versao.altura, celulaId]
+    );
+    if (!atualizada) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'celula sumiu' });
+    }
+    await client.query(`DELETE FROM fe_celula_versao WHERE id = $1`, [versao.id]);
+    await client.query(
+      `UPDATE fe_tirinha SET updated_at = NOW() WHERE id = $1`,
+      [atualizada.tirinha_id]
+    );
+    await client.query('COMMIT');
+    res.json({ celula: atualizada });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (tratarErroId(e, res)) return;
+    console.error('post celulas/undo:', e);
+    res.status(500).json({ error: 'falha ao desfazer' });
+  } finally {
+    client.release();
+  }
+});
+
 // POST /api/fe/prompts — dispara prompt sobre uma ou mais células.
-// Body: { tirinha_id, prompt, celulas_ids: [uuid, ...] }
+// Body: { tirinha_id, prompt, celulas_ids: [uuid, ...], model_key? }
 // Resp: { job_id, celulas_marcadas } (HTTP 202)
 //
 // Comportamento:
@@ -704,6 +772,10 @@ router.post('/prompts', requireUser, async (req, res) => {
   const tirinhaId = (req.body?.tirinha_id || '').trim();
   const prompt = (req.body?.prompt || '').trim();
   const celulasIds = Array.isArray(req.body?.celulas_ids) ? req.body.celulas_ids : [];
+  const modelKeyRaw = (req.body?.model_key || '').trim();
+  const modelKey = modelKeyRaw && FE_PROMPT_MODELS_BY_KEY[modelKeyRaw]
+    ? modelKeyRaw
+    : FE_PROMPT_DEFAULT_MODEL;
 
   if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
   if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
@@ -738,7 +810,7 @@ router.post('/prompts', requireUser, async (req, res) => {
 
     // Fire-and-forget: dispara o processamento sem esperar.
     if (idsMarcados.length > 0) {
-      processarLote(pool, idsMarcados, prompt).catch((e) => {
+      processarLote(pool, idsMarcados, prompt, modelKey).catch((e) => {
         console.error('fe-prompts lote', jobId, 'falhou:', e);
       });
     }

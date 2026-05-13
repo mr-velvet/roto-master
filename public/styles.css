@@ -3036,6 +3036,33 @@ body[data-screen="atelie-generate"] .screen-atelie-generate { display: block; }
 .enhance-undo:hover { color: var(--copper); }
 .enhance-undo[hidden] { display: none; }
 
+/* Cabecalho de field com label + bot~oes inline (ex: melhorar prompt) */
+.field-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+/* Hint debaixo do dropdown de modelo no modal de prompt do Frames Editor. */
+.fe-prompt-model-hint {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--paper-5);
+  font-style: italic;
+}
+.fe-prompt-model-sub {
+  margin-left: 10px;
+  font-size: 10px;
+  color: var(--paper-5);
+  font-style: italic;
+}
+.custom-select-menu li:hover .fe-prompt-model-sub { color: inherit; }
+
 .generate-refs {
   display: flex;
   gap: 8px;

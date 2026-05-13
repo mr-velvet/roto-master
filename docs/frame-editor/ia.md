@@ -1,6 +1,6 @@
 # Frames Editor — IA
 
-Última atualização: 2026-05-07 (criação) — 2026-05-08 (ajuste pós-implementação: provider escolhido foi Fal.ai nano-banana-pro/edit, não OpenAI Images. Detalhes em §4).
+Última atualização: 2026-05-12 — catálogo de modelos (Nano Banana Pro / Nano Banana) selecionável no modal de prompt; receita `fe-style` no Claude pra botão "melhorar prompt"; **undo de prompts persistido em banco** (`fe_celula_versao`) com atalho Ctrl+Z. Versões anteriores: 2026-05-07 (criação) / 2026-05-08 (Fal.ai nano-banana-pro/edit como provider real, não OpenAI Images).
 
 Mecânica de geração por prompt no Frames Editor. Cobre as duas ações de prompt do MVP ("prompt pra todos os quadros" e "prompt pros quadros selecionados") e como elas operam sobre as células.
 
@@ -35,13 +35,22 @@ Cada célula é processada **independentemente**. Não há contexto compartilhad
 
 ## 4. Provider
 
-**Escolha real (2026-05-08):** Fal.ai **nano-banana-pro/edit** (modelo `fal-ai/nano-banana-pro/edit`). Razão: o resto da plataforma já consome Fal pelo `lib/providers/fal.js` (mesma chave `FAL_KEY` em prod, mesmo wrapper `generateImage({ prompt, ref_image_urls })`), e nano-banana-pro/edit é image-edit nativo (input PNG + prompt → PNG novo). Reusar o que já está em prod evitou superfície nova de chave/lib.
+Provider é Fal.ai (mesmo `lib/providers/fal.js` que serve Kling/PixVerse no resto da plataforma — mesma `FAL_KEY`, mesmo wrapper). A camada `lib/fe-prompts.js` expõe um **catálogo de modelos** (constante `FE_PROMPT_MODELS`) com 2 entradas no MVP:
 
-**Decisão original do doc** (mantida como fallback): OpenAI Images (gpt-image-1) seguia equivalente conceitualmente. A troca pra Fal é configuração do servidor (`lib/fe-prompts.js` chama `fal.generateImage`) — se algum caso ficar melhor em OpenAI, trocar é trocar a função no adapter, não mexer em UI/banco/contrato.
+- **`nano-banana-pro`** — `fal-ai/nano-banana-pro/edit` (Gemini 3 Pro Image). Default. Qualidade alta, ~30s por célula.
+- **`nano-banana`** — `fal-ai/nano-banana/edit` (Gemini 2.5 Flash Image). Mais rápido e barato, ~10s por célula.
+
+O catálogo é exposto via `GET /api/fe/models`. O frontend popula um dropdown no modal de prompt; a escolha vai no body do `POST /api/fe/prompts` como `model_key`. Modelos não listados caem no default — sem erro.
+
+Trocar provider ou adicionar modelo é trabalhar dentro do `lib/providers/fal.js` (função `modelIdParaImagem`) e estender `FE_PROMPT_MODELS`. Nada na UI/banco/contrato muda.
 
 O front nunca fala com o provider direto.
 
-Detalhes de chave de API, biblioteca, parâmetros padrão, política de retry e tratamento de erro de provider ficam em rodada de implementação, não neste doc.
+### Melhorar prompt
+
+O modal de prompt tem um botão "melhorar" que usa **Claude Sonnet 4.6** com a receita `'fe-style'` (`lib/prompt-recipes.js`). A receita é orientada à *estilização de célula 2D*: NÃO redescreve sujeito/pose/composição (a imagem-base já entra como ref pro modelo de imagem), expande apenas dimensão estilística (técnica, paleta, traço, textura, mood). Saída curta (40-100 palavras) pra não inflar custo em lote.
+
+Endpoint compartilhado com o resto da plataforma: `POST /api/generate/enhance-prompt` com `{ prompt, kind: 'fe-style' }`.
 
 ## 5. Estado "processando"
 
@@ -86,6 +95,19 @@ Quando uma célula falha (provider erra, timeout, PNG corrompido):
 - As outras células do mesmo lote continuam — uma falha não aborta o lote.
 
 Política de retry automático fica fora do MVP. User vê a falha, decide se quer tentar de novo manualmente.
+
+## 8.1 Undo de prompts (introduzido em 2026-05-12)
+
+Cada prompt aplicado a uma célula é desfazível em single-step:
+
+- Antes do `UPDATE` que substitui `png_url` em `fe_celula`, a versão anterior (`png_url`, `largura`, `altura`, `prompt` usado, `model_key`) é registrada em `fe_celula_versao` (uma linha por célula × prompt aplicado, ordenadas por `created_at DESC`).
+- `POST /api/fe/celulas/:id/undo` pega a versão mais recente dessa célula, copia de volta pra `fe_celula`, e deleta a linha de versão. Sem redo.
+- 404 se a célula nunca teve prompt aplicado (sem histórico).
+- PNGs antigos no GCS ficam intocados (mesma regra geral de storage — sem varredura automática no MVP).
+
+No frontend, a "sessão de undo" é uma pilha em memória (`historicoPrompts`). Cada disparo bem-sucedido empilha `{ celulasIds }`. Ctrl/Cmd+Z pop o topo e chama `undoCelula` em paralelo pra cada célula. Pilha não persiste entre reloads — o histórico em banco fica disponível pra futuras features ("voltar versão" por célula no menu de contexto), mas isso não está no MVP.
+
+Limites: pilha cap em 50 itens (descarta o mais antigo); Ctrl+Z em INPUT/TEXTAREA não é capturado (textarea do modal de prompt segue usando undo nativo).
 
 ## 9. Custo e quotas
 
