@@ -4507,6 +4507,24 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   border-color: var(--fe-cyan);
   background: var(--fe-cyan-soft);
 }
+/* Quadro inteiro selecionado (todas as celulas dele est~ao em selecionadas) —
+ * distinto de is-active (que indica foco no canvas). is-active+is-selected: combinam. */
+.fe-matrix-col-head.is-selected {
+  color: var(--fe-cyan);
+  border-color: var(--fe-cyan);
+  background: rgba(77, 217, 214, 0.18);
+  box-shadow: inset 0 -2px 0 var(--fe-cyan);
+}
+.fe-matrix-col-head.is-active.is-selected {
+  background: rgba(77, 217, 214, 0.28);
+}
+.fe-matrix-row-head.is-selected {
+  background: rgba(77, 217, 214, 0.10);
+  box-shadow: inset -2px 0 0 var(--fe-cyan);
+}
+.fe-matrix-row-head.is-selected .fe-cam-name {
+  color: var(--fe-cyan);
+}
 
 .fe-matrix-row-head {
   background: var(--fe-graphite-2);

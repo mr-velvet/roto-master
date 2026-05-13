@@ -413,6 +413,12 @@ function renderMatrix() {
     head.type = 'button';
     head.textContent = String(q.indice + 1);
     if (qi === activeQuadroIdx) head.classList.add('is-active');
+    // Coluna inteira selecionada = todas as celulas dela estao em `selecionadas`.
+    // Visual distinto do is-active (foco no canvas) — destaca "quadro selecionado".
+    if (camadasOrdenadas.length > 0 &&
+        camadasOrdenadas.every((c) => selecionadas.has(keyOf(c.id, q.id)))) {
+      head.classList.add('is-selected');
+    }
     const sync = getSync(`quadro:${q.id}`);
     if (sync === 'syncing') head.classList.add('is-syncing');
     if (sync === 'error') head.classList.add('is-sync-error');
@@ -432,6 +438,10 @@ function renderMatrix() {
     // header de linha
     const rowHead = document.createElement('div');
     rowHead.className = 'fe-matrix-row-head';
+    if (quadrosOrdenados.length > 0 &&
+        quadrosOrdenados.every((q) => selecionadas.has(keyOf(cam.id, q.id)))) {
+      rowHead.classList.add('is-selected');
+    }
     const camSync = getSync(`camada:${cam.id}`);
     if (camSync === 'syncing') rowHead.classList.add('is-syncing');
     if (camSync === 'error') rowHead.classList.add('is-sync-error');
@@ -523,15 +533,20 @@ function renderMatrix() {
 function onClickCelula(camId, quadroId, ev) {
   if (isPlaying) stopPlay({ restore: false });
   const k = keyOf(camId, quadroId);
-  if (ev.shiftKey) {
-    selecionadas.add(k);
+  if (ev.shiftKey && activeCelKey) {
+    // Range bbox: do activeCelKey ate (camId, quadroId) — todas as camadas
+    // e quadros entre as duas pontas, inclusive. Substitui a sele~cao
+    // (igual planilha — shift+click define faixa, n~ao adiciona).
+    selecionadas.clear();
+    selecionarRangeCelulas(activeCelKey, k);
   } else if (ev.ctrlKey || ev.metaKey) {
     if (selecionadas.has(k)) selecionadas.delete(k); else selecionadas.add(k);
+    activeCelKey = k;
   } else {
     selecionadas.clear();
     selecionadas.add(k);
+    activeCelKey = k;
   }
-  activeCelKey = k;
   // sincroniza quadro ativo no canvas
   const qIdx = quadrosOrdenados.findIndex((q) => q.id === quadroId);
   if (qIdx >= 0) activeQuadroIdx = qIdx;
@@ -540,28 +555,89 @@ function onClickCelula(camId, quadroId, ev) {
   renderCanvas();
 }
 
+// Preenche `selecionadas` com a bbox entre duas keys "camId:quadroId".
+// Usa os indices em camadasOrdenadas e quadrosOrdenados pra resolver os limites.
+function selecionarRangeCelulas(keyA, keyB) {
+  const [camAId, qAId] = keyA.split(':');
+  const [camBId, qBId] = keyB.split(':');
+  const camAIdx = camadasOrdenadas.findIndex((c) => c.id === camAId);
+  const camBIdx = camadasOrdenadas.findIndex((c) => c.id === camBId);
+  const qAIdx = quadrosOrdenados.findIndex((q) => q.id === qAId);
+  const qBIdx = quadrosOrdenados.findIndex((q) => q.id === qBId);
+  if (camAIdx < 0 || camBIdx < 0 || qAIdx < 0 || qBIdx < 0) return;
+  const camLo = Math.min(camAIdx, camBIdx);
+  const camHi = Math.max(camAIdx, camBIdx);
+  const qLo = Math.min(qAIdx, qBIdx);
+  const qHi = Math.max(qAIdx, qBIdx);
+  for (let ci = camLo; ci <= camHi; ci++) {
+    for (let qi = qLo; qi <= qHi; qi++) {
+      selecionadas.add(keyOf(camadasOrdenadas[ci].id, quadrosOrdenados[qi].id));
+    }
+  }
+}
+
 function selecionarColuna(quadroId, ev) {
   if (isPlaying) stopPlay({ restore: false });
-  const append = ev.shiftKey || ev.ctrlKey || ev.metaKey;
-  if (!append) selecionadas.clear();
-  for (const cam of camadasOrdenadas) {
-    selecionadas.add(keyOf(cam.id, quadroId));
+  // Shift+click no header: range de colunas inteiras entre activeQuadroIdx
+  // atual e a coluna clicada. Substitui a sele~cao (igual ao comportamento
+  // de celulas). Sem modificador: substitui pela coluna clicada (default).
+  // Ctrl/meta: toggle aditivo (coluna inteira entra/sai).
+  const qIdx = quadrosOrdenados.findIndex((q) => q.id === quadroId);
+  if (qIdx < 0) return;
+  if (ev.shiftKey && Number.isFinite(activeQuadroIdx)) {
+    const qLo = Math.min(activeQuadroIdx, qIdx);
+    const qHi = Math.max(activeQuadroIdx, qIdx);
+    selecionadas.clear();
+    for (let i = qLo; i <= qHi; i++) {
+      const q = quadrosOrdenados[i];
+      for (const cam of camadasOrdenadas) selecionadas.add(keyOf(cam.id, q.id));
+    }
+  } else if (ev.ctrlKey || ev.metaKey) {
+    // toggle: se a coluna inteira ja estava selecionada, remove. Senao, adiciona.
+    const todasIn = camadasOrdenadas.every((c) => selecionadas.has(keyOf(c.id, quadroId)));
+    if (todasIn) {
+      for (const cam of camadasOrdenadas) selecionadas.delete(keyOf(cam.id, quadroId));
+    } else {
+      for (const cam of camadasOrdenadas) selecionadas.add(keyOf(cam.id, quadroId));
+    }
+  } else {
+    selecionadas.clear();
+    for (const cam of camadasOrdenadas) selecionadas.add(keyOf(cam.id, quadroId));
   }
   activeCelKey = camadasOrdenadas.length ? keyOf(camadasOrdenadas[0].id, quadroId) : null;
-  const qIdx = quadrosOrdenados.findIndex((q) => q.id === quadroId);
-  if (qIdx >= 0) activeQuadroIdx = qIdx;
+  activeQuadroIdx = qIdx;
   atualizarSelecaoUI();
   renderMatrix();
   renderCanvas();
 }
 
+// Indice da ultima camada selecionada por header — ancora pra shift+click.
+let lastSelectedCamIdx = null;
+
 function selecionarLinha(camId, ev) {
   if (isPlaying) stopPlay({ restore: false });
-  const append = ev.shiftKey || ev.ctrlKey || ev.metaKey;
-  if (!append) selecionadas.clear();
-  for (const q of quadrosOrdenados) {
-    selecionadas.add(keyOf(camId, q.id));
+  const camIdx = camadasOrdenadas.findIndex((c) => c.id === camId);
+  if (camIdx < 0) return;
+  if (ev.shiftKey && Number.isFinite(lastSelectedCamIdx)) {
+    const lo = Math.min(lastSelectedCamIdx, camIdx);
+    const hi = Math.max(lastSelectedCamIdx, camIdx);
+    selecionadas.clear();
+    for (let i = lo; i <= hi; i++) {
+      const cam = camadasOrdenadas[i];
+      for (const q of quadrosOrdenados) selecionadas.add(keyOf(cam.id, q.id));
+    }
+  } else if (ev.ctrlKey || ev.metaKey) {
+    const todasIn = quadrosOrdenados.every((q) => selecionadas.has(keyOf(camId, q.id)));
+    if (todasIn) {
+      for (const q of quadrosOrdenados) selecionadas.delete(keyOf(camId, q.id));
+    } else {
+      for (const q of quadrosOrdenados) selecionadas.add(keyOf(camId, q.id));
+    }
+  } else {
+    selecionadas.clear();
+    for (const q of quadrosOrdenados) selecionadas.add(keyOf(camId, q.id));
   }
+  lastSelectedCamIdx = camIdx;
   if (quadrosOrdenados.length) {
     activeCelKey = keyOf(camId, quadrosOrdenados[activeQuadroIdx]?.id || quadrosOrdenados[0].id);
   }
@@ -1156,7 +1232,9 @@ function abrirMenuCamada(ev, camadaId) {
 
 function abrirMenuQuadro(ev, quadroId) {
   if (!tirinha) return;
-  // Seleciona a coluna inteira se não estava selecionada.
+  // Se o quadro clicado n~ao esta totalmente selecionado, foca s o nele
+  // (substitui sele~cao). Se ja' esta, preserva a sele~cao atual (pode ter
+  // outros quadros selecionados — abre menu pra agir em todos).
   const todasNaSelecao = camadasOrdenadas.every((c) => selecionadas.has(keyOf(c.id, quadroId)));
   if (!todasNaSelecao) {
     selecionadas.clear();
@@ -1167,7 +1245,11 @@ function abrirMenuQuadro(ev, quadroId) {
     renderMatrix();
     renderCanvas();
   }
-  const outrosQuadrosNaSel = [...selecionadas].some((k) => k.split(':')[1] !== quadroId);
+  // Quadros inteiros selecionados = colunas onde todas as celulas estao em selecionadas.
+  const quadrosSelInteiros = quadrosOrdenados.filter((q) =>
+    camadasOrdenadas.every((c) => selecionadas.has(keyOf(c.id, q.id)))
+  ).map((q) => q.id);
+  const multiplos = quadrosSelInteiros.length > 1;
   const idsQuadro = (tirinha.celulas || []).filter((c) => c.quadro_id === quadroId).map((c) => c.id);
   const q = quadrosOrdenados.find((qq) => qq.id === quadroId);
   if (!q) return;
@@ -1175,14 +1257,31 @@ function abrirMenuQuadro(ev, quadroId) {
     { label: '+ quadro à esquerda', onClick: () => addQuadroRelativo(quadroId, 'esquerda') },
     { label: '+ quadro à direita', onClick: () => addQuadroRelativo(quadroId, 'direita') },
     { sep: true },
-    { label: 'prompt pra todas as camadas deste quadro', onClick: () => abrirModalPrompt({ tipo: 'quadro', ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1} × todas as camadas)` }) },
   ];
-  if (outrosQuadrosNaSel) {
+  if (multiplos) {
     const n = selecionadas.size;
-    items.push({ label: `prompt pros selecionados (${n})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+    items.push({ label: `prompt nos ${quadrosSelInteiros.length} quadros selecionados (${n} células)`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+  } else {
+    items.push({ label: 'prompt pra todas as camadas deste quadro', onClick: () => abrirModalPrompt({ tipo: 'quadro', ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1} × todas as camadas)` }) });
+    // Se ha celulas selecionadas em OUTROS quadros mas n~ao a coluna inteira,
+    // ainda da' pra rodar prompt nos selecionados.
+    const outrosNaSel = [...selecionadas].some((k) => k.split(':')[1] !== quadroId);
+    if (outrosNaSel) {
+      const n = selecionadas.size;
+      items.push({ label: `prompt pros selecionados (${n})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+    }
   }
   items.push({ sep: true });
-  items.push({ label: 'deletar quadro', danger: true, disabled: quadrosOrdenados.length <= 1, onClick: () => deletarQuadroConfirm(quadroId) });
+  if (multiplos) {
+    items.push({
+      label: `deletar ${quadrosSelInteiros.length} quadros`,
+      danger: true,
+      disabled: quadrosSelInteiros.length >= quadrosOrdenados.length,
+      onClick: () => deletarMultiplosQuadrosConfirm(quadrosSelInteiros),
+    });
+  } else {
+    items.push({ label: 'deletar quadro', danger: true, disabled: quadrosOrdenados.length <= 1, onClick: () => deletarQuadroConfirm(quadroId) });
+  }
   montarMenuCtx(ev, items);
 }
 
@@ -1366,6 +1465,40 @@ async function deletarQuadroConfirm(quadroId) {
     await reloadAndRender();
     showToast('quadro apagado');
   } catch (err) { showToast('falha ao apagar: ' + err.message); }
+}
+
+// Deleta N quadros em sequencia. Confirma uma vez, dispara em paralelo, fecha
+// com reloadAndRender. Falhas individuais s~o reportadas via toast — backend
+// rejeita se ficar sem quadros, ent~ao o ultimo deletado pode falhar e a
+// tirinha continua viva.
+async function deletarMultiplosQuadrosConfirm(quadroIds) {
+  const n = quadroIds.length;
+  if (n === 0) return;
+  if (n === 1) return deletarQuadroConfirm(quadroIds[0]);
+  if (n >= quadrosOrdenados.length) {
+    showToast('a tirinha precisa ter pelo menos um quadro');
+    return;
+  }
+  const ok = await confirmModal({
+    title: `deletar ${n} quadros`,
+    message: `apagar ${n} quadros e todas as celulas deles? n~ao da' pra desfazer.`,
+    confirmLabel: 'apagar',
+    danger: true,
+  });
+  if (!ok) return;
+  let okCount = 0, failCount = 0;
+  await Promise.all(quadroIds.map(async (id) => {
+    try { await deleteQuadro(id); okCount++; }
+    catch { failCount++; }
+  }));
+  selecionadas.clear();
+  activeCelKey = null;
+  if (activeQuadroIdx >= quadrosOrdenados.length - okCount) {
+    activeQuadroIdx = Math.max(0, activeQuadroIdx - okCount);
+  }
+  await reloadAndRender();
+  if (failCount === 0) showToast(`${okCount} quadros apagados`);
+  else showToast(`${okCount} apagados, ${failCount} falharam`);
 }
 
 async function limparCelulaConfirm(celulaId) {
