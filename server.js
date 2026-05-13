@@ -10,9 +10,12 @@ app.set('query parser', 'simple');
 
 // min:1 mantém uma conexão sempre quente — primeira request do app não
 // paga TLS handshake + auth (em VM com túnel IAP isso era 1-2s só de cold).
+// max:25 cobre paralelismo do fe-prompts (até 15 simultaneas) + job runner
+// de video (concurrency 3) + rotas normais sem starvation. Default eh 10.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   min: 1,
+  max: 25,
   idleTimeoutMillis: 0,
 });
 app.locals.pool = pool;
