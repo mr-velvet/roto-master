@@ -260,6 +260,32 @@ export async function showFeEditor(id) {
 
 // Carrega o cat~alogo de modelos do servidor (apenas uma vez por sess~ao).
 // O modal de prompt usa o estado em mem~oria — n~ao bloqueia a abertura.
+// Mostra erro per-celula quando uma gera~cao terminou com falha. Toast unico
+// agrupa todas (n~ao spam-a 6 toasts), com a mensagem curta do erro mais
+// comum. Em paralelo, classifica a falha pra mensagem amigavel (billing,
+// modelo n~ao encontrado, content policy, timeout).
+function notificarErrosDeGeracao(erros) {
+  const total = erros.length;
+  // Pega o erro mais comum pra mensagem principal.
+  const cont = {};
+  for (const e of erros) cont[e.msg] = (cont[e.msg] || 0) + 1;
+  const principal = Object.entries(cont).sort((a, b) => b[1] - a[1])[0][0] || 'erro desconhecido';
+  const amigavel = classificarErroDeGeracao(principal);
+  console.warn('fe-prompts: erros per-celula', erros);
+  showToast(`falha em ${total} célula${total === 1 ? '' : 's'} · ${amigavel}`, 5000);
+}
+
+function classificarErroDeGeracao(msg) {
+  const m = String(msg || '').toLowerCase();
+  if (m.includes('not found') || m.includes('404')) return 'modelo indisponivel — escolha outro no dropdown';
+  if (m.includes('insufficient') || m.includes('balance') || m.includes('quota') || m.includes('402')) return 'sem creditos no fal.ai — confira billing';
+  if (m.includes('content') && m.includes('polic')) return 'bloqueado pelo content policy';
+  if (m.includes('timeout')) return 'timeout no provider — tente de novo';
+  if (m.includes('401') || m.includes('403') || m.includes('unauth')) return 'auth falhou (FAL_KEY) — confira config';
+  if (m.length > 80) return m.slice(0, 80) + '…';
+  return m || 'erro desconhecido';
+}
+
 async function garantirModelosCarregados() {
   if (modelosFe.length) return;
   try {
@@ -278,12 +304,31 @@ async function aplicarEstadoTirinha(data, opts = {}) {
   if (playTimer) { clearTimeout(playTimer); playTimer = null; }
 
 
+  // Snapshot do estado anterior pra detectar quem terminou com erro (estava
+  // 'processando' e voltou 'idle' com estado_erro preenchido). Sem isso o
+  // erro per-celula do fal/provider some — celula volta a parecer intacta.
+  const estadoAnterior = new Map();
+  for (const c of celulasMap.values()) {
+    estadoAnterior.set(c.id, { estado: c.estado, estado_erro: c.estado_erro });
+  }
+
   tirinha = data;
   camadasOrdenadas = [...(data.camadas || [])].sort((a, b) => b.ordem - a.ordem);
   quadrosOrdenados = [...(data.quadros || [])].sort((a, b) => a.indice - b.indice);
   celulasMap.clear();
+  const errosNovos = [];
   for (const cel of (data.celulas || [])) {
     celulasMap.set(keyOf(cel.camada_id, cel.quadro_id), cel);
+    const ant = estadoAnterior.get(cel.id);
+    if (
+      ant && ant.estado === 'processando' &&
+      cel.estado === 'idle' && cel.estado_erro
+    ) {
+      errosNovos.push({ id: cel.id, msg: cel.estado_erro });
+    }
+  }
+  if (errosNovos.length) {
+    notificarErrosDeGeracao(errosNovos);
   }
   if (activeQuadroIdx >= quadrosOrdenados.length) activeQuadroIdx = quadrosOrdenados.length - 1;
   if (activeQuadroIdx < 0) activeQuadroIdx = 0;
@@ -403,6 +448,16 @@ function renderMatrix() {
         overlay.className = 'fe-cell-processing';
         overlay.textContent = '…';
         $cell.appendChild(overlay);
+      } else if (cel?.estado_erro) {
+        // Cel volta pra idle com erro registrado. Pinta com badge "!" + tooltip
+        // pro user n~ao perder o feedback. Clique no badge limpa o estado_erro.
+        $cell.classList.add('has-gen-error');
+        $cell.title = `falha: ${cel.estado_erro}`;
+        const badge = document.createElement('span');
+        badge.className = 'fe-cell-gen-error';
+        badge.textContent = '!';
+        badge.title = cel.estado_erro;
+        $cell.appendChild(badge);
       }
       // Sync state da célula (raro, mas o slot existe).
       const celSync = cel ? getSync(`celula:${cel.id || k}`) : null;

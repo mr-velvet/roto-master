@@ -4622,6 +4622,31 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   50%      { box-shadow: inset 0 0 0 2px var(--fe-violet), 0 0 0 4px rgba(144, 112, 240, 0.18); }
 }
 
+/* Celula que teve falha na ultima gera~cao. Mantem o png antigo (back nao
+ * sobrescreve em caso de erro), mas exibe badge "!" no canto sup. dir. e
+ * borda vermelha discreta — pra n~ao perder o feedback do erro. */
+.fe-matrix-cell.has-gen-error {
+  box-shadow: inset 0 0 0 1px var(--rust, #c47855);
+}
+.fe-cell-gen-error {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--rust, #c47855);
+  color: var(--ink-0, #07080b);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: help;
+}
+
 /* === Estados otimistas (operações pendentes de sync com backend) === */
 /* Bolinha discreta no canto inferior direito do header de linha/coluna ou da
  * borda do nome da tirinha. Sutil, não bloqueia interação. */
