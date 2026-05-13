@@ -2782,7 +2782,7 @@ document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-action="fe-prompt-history-clear"]')) return;
   const ok = await confirmModal({
     title: 'limpar hist orico',
-    message: 'apagar todos os prompts usados? n~ao da' pra desfazer.',
+    message: 'apagar todos os prompts usados? nao da pra desfazer.',
     confirmLabel: 'limpar',
     danger: true,
   });
