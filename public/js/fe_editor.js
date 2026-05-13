@@ -426,6 +426,7 @@ async function aplicarEstadoTirinha(data, opts = {}) {
     notificarErrosDeGeracao(errosNovos);
   }
   atualizarBotaoLimparAvisos();
+  atualizarBotaoDownload();
   if (activeQuadroIdx >= quadrosOrdenados.length) activeQuadroIdx = quadrosOrdenados.length - 1;
   if (activeQuadroIdx < 0) activeQuadroIdx = 0;
   $name.textContent = data.nome;
@@ -2843,22 +2844,40 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// Download .aseprite
+// Download .aseprite — roda em background, botão fica desabilitado + mostra
+// progresso curto enquanto gera. Marca "desatualizado" via classe CSS quando
+// houve edição depois da última geração (comparando updated_at da tirinha).
+let aseGerandoAgora = false;
+let aseGeradoEmUpdatedAt = null;
+
+function atualizarBotaoDownload() {
+  const $btn = document.querySelector('[data-action="fe-download"]');
+  if (!$btn) return;
+  if (aseGerandoAgora) return; // texto/estado controlados pelo handler
+  const desatualizado = !tirinha || aseGeradoEmUpdatedAt !== tirinha.updated_at;
+  $btn.classList.toggle('is-stale', desatualizado);
+  $btn.disabled = false;
+  $btn.innerHTML = '<span class="fe-btn-icon">↓</span>download';
+}
+
 document.addEventListener('click', async (e) => {
   if (!e.target.closest('[data-action="fe-download"]')) return;
-  if (!tirinha) return;
+  if (!tirinha || aseGerandoAgora) return;
+  const $btn = e.target.closest('[data-action="fe-download"]');
+  aseGerandoAgora = true;
+  $btn.disabled = true;
+  $btn.innerHTML = '<span class="fe-btn-icon">◴</span>gerando…';
+  const updatedAtNoStart = tirinha.updated_at;
   try {
-    showToast('gerando .aseprite…');
-    const blob = await gerarAsepriteBlob();
-    // sobe (atualiza last_aseprite_url) e dispara download
-    let asepriteUrl = null;
+    const blob = await gerarAsepriteBlob((feito, total) => {
+      $btn.innerHTML = `<span class="fe-btn-icon">◴</span>${feito}/${total}`;
+    });
+    $btn.innerHTML = '<span class="fe-btn-icon">◴</span>subindo…';
     try {
-      const out = await uploadAseprite({ tirinhaId: tirinha.id, blob, filename: `${slugify(tirinha.nome)}.aseprite` });
-      asepriteUrl = out.aseprite_url;
+      await uploadAseprite({ tirinhaId: tirinha.id, blob, filename: `${slugify(tirinha.nome)}.aseprite` });
     } catch (err) {
       console.warn('upload-aseprite falhou (segue download local):', err);
     }
-    // download local: prefere blob direto pra evitar CORS
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -2867,10 +2886,13 @@ document.addEventListener('click', async (e) => {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showToast('download iniciado');
+    aseGeradoEmUpdatedAt = updatedAtNoStart;
   } catch (err) {
     console.error('download:', err);
-    showToast('falha no download — tente de novo');
+    showToast(err.message || 'falha no download — tente de novo');
+  } finally {
+    aseGerandoAgora = false;
+    atualizarBotaoDownload();
   }
 });
 
@@ -2952,7 +2974,7 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-async function gerarAsepriteBlob() {
+async function gerarAsepriteBlob(onProgress) {
   // Monta estrutura no formato que buildAsepriteDoFrameEditor espera.
   // Camadas: ordem == índice no array enviado; usamos ordem ASC (de baixo pra cima).
   const camadasAsc = [...camadasOrdenadas].sort((a, b) => a.ordem - b.ordem);
@@ -2968,33 +2990,46 @@ async function gerarAsepriteBlob() {
   // do GCS (canvas tainted = getImageData lança SecurityError).
   const W = tirinha.largura;
   const H = tirinha.altura;
-  const celulasOut = [];
-  const falhas = [];
+
+  // Total real de células não-vazias pra reportar progresso "X/N".
+  const alvo = [];
   for (let ci = 0; ci < camadasAsc.length; ci++) {
     for (let qi = 0; qi < quadrosAsc.length; qi++) {
       const cel = celulasMap.get(keyOf(camadasAsc[ci].id, quadrosAsc[qi].id));
-      if (!cel || !cel.png_url) continue;
-      try {
-        const img = await loadImageForPixels(cel.png_url);
-        const canvas = document.createElement('canvas');
-        canvas.width = W; canvas.height = H;
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
-        ctx.clearRect(0, 0, W, H);
-        ctx.drawImage(img, 0, 0, W, H);
-        const id = ctx.getImageData(0, 0, W, H);
-        celulasOut.push({
-          camada_indice: ci,
-          quadro_indice: qi,
-          pixels_rgba: new Uint8Array(id.data.buffer.slice(0)),
-          largura: W,
-          altura: H,
-        });
-      } catch (e) {
-        falhas.push({ cam: camadasAsc[ci].nome, q: qi + 1, msg: e.message || String(e) });
-      }
+      if (cel && cel.png_url) alvo.push({ ci, qi, cel });
     }
   }
+  const total = alvo.length;
+
+  const celulasOut = [];
+  const falhas = [];
+  for (let i = 0; i < total; i++) {
+    const { ci, qi, cel } = alvo[i];
+    onProgress?.(i, total);
+    try {
+      const img = await loadImageForPixels(cel.png_url);
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(img, 0, 0, W, H);
+      const id = ctx.getImageData(0, 0, W, H);
+      celulasOut.push({
+        camada_indice: ci,
+        quadro_indice: qi,
+        pixels_rgba: new Uint8Array(id.data.buffer.slice(0)),
+        largura: W,
+        altura: H,
+      });
+    } catch (e) {
+      falhas.push({ cam: camadasAsc[ci].nome, q: qi + 1, msg: e.message || String(e) });
+    }
+    // Yield ao main thread pra UI não congelar (clique/scroll/render seguem
+    // respondendo durante a geração).
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  onProgress?.(total, total);
   // Sem tolerância silenciosa: o arquivo precisa ser fiel ao editor. Se qualquer
   // célula não pôde ser carregada, aborta com mensagem clara — antes o catch
   // engolia e gerava .aseprite vazio (cels faltando), confundindo o user.

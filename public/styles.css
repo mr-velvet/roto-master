@@ -4282,6 +4282,8 @@ body[data-space="frame-editor"] .modal-card,
   border-color: var(--fe-cyan-2);
 }
 .fe-btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.fe-btn-ghost.is-stale { color: #c8a45e; border-color: rgba(200, 164, 94, 0.4); }
+.fe-btn-ghost.is-stale:hover:not(:disabled) { color: #e0bf7a; border-color: #c8a45e; }
 .fe-btn-icon { font-size: 13px; }
 
 /* canvas region */
