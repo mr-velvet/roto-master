@@ -1123,6 +1123,23 @@
           </div>
           <span class="fe-prompt-model-hint" data-bind="fe-prompt-model-hint"></span>
         </label>
+        <div class="fe-ratio-info" data-bind="fe-ratio-info" hidden>
+          <div class="fe-ratio-row">
+            <span class="fe-ratio-label">tirinha</span>
+            <span class="fe-ratio-value" data-bind="fe-ratio-tirinha">—</span>
+          </div>
+          <div class="fe-ratio-arrow">→</div>
+          <div class="fe-ratio-row">
+            <span class="fe-ratio-label">modelo cospe</span>
+            <span class="fe-ratio-value" data-bind="fe-ratio-modelo">—</span>
+          </div>
+          <span class="fe-ratio-badge" data-bind="fe-ratio-badge">—</span>
+        </div>
+        <label class="fe-checkbox-field" data-bind="fe-prompt-auto-adapt-wrap">
+          <input type="checkbox" data-bind="fe-prompt-auto-adapt" checked />
+          <span class="fe-checkbox-label">auto-adapt ratio (letterbox se ratios diferentes)</span>
+          <span class="fe-checkbox-hint">preserva proporcao do conteudo gerado, adiciona bordas transparentes em vez de esticar</span>
+        </label>
         <label class="fe-checkbox-field" data-bind="fe-prompt-use-original-wrap">
           <input type="checkbox" data-bind="fe-prompt-use-original" />
           <span class="fe-checkbox-label">aplicar sobre a <strong>imagem original</strong> da célula</span>

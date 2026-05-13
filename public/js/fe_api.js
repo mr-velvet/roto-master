@@ -189,10 +189,11 @@ export async function uploadAseprite({ tirinhaId, blob, filename = 'tirinha.asep
 // Endpoint pode ainda não existir na worktree atual (está sendo escrito em
 // paralelo). Front trata 404 como "back ainda não tem o endpoint" e mostra
 // mensagem amigável.
-export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey, usarOriginal }) {
+export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey, usarOriginal, autoAdaptRatio }) {
   const body = { tirinha_id: tirinhaId, prompt, celulas_ids: celulasIds };
   if (modelKey) body.model_key = modelKey;
   if (usarOriginal) body.usar_original = true;
+  if (autoAdaptRatio) body.auto_adapt_ratio = true;
   const r = await authedFetch('/api/fe/prompts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -222,4 +223,11 @@ export async function undoCelula(celulaId) {
 export async function clearTirinhaErrors(tirinhaId) {
   const r = await authedFetch(`/api/fe/tirinhas/${tirinhaId}/clear-errors`, { method: 'POST' });
   return jsonOrThrow(r, 'limpar avisos');
+}
+
+// Pra UI: descobre que ratio o modelo realmente vai usar dado (w, h) da tirinha.
+// Resp: { model_key, target_w, target_h, ratio_label, ratio_value, exato }.
+export async function planejarRatio(modelKey, w, h) {
+  const r = await authedFetch(`/api/fe/models/${encodeURIComponent(modelKey)}/plan-ratio?w=${w}&h=${h}`);
+  return jsonOrThrow(r, 'planejar ratio');
 }

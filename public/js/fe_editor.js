@@ -17,7 +17,7 @@ import {
   addCamada, patchCamada, deleteCamada,
   addQuadro, deleteQuadro,
   patchCelula,
-  uploadAseprite, dispararPrompt, listFeModels, undoCelula, clearTirinhaErrors,
+  uploadAseprite, dispararPrompt, listFeModels, undoCelula, clearTirinhaErrors, planejarRatio,
   publicarComoAsset,
 } from './fe_api.js';
 import { enhancePrompt } from './generate_api.js';
@@ -2040,8 +2040,9 @@ function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
   m.querySelector('[data-bind="fe-prompt-err"]').textContent = '';
   m.querySelector('[data-bind="fe-prompt-title"]').textContent = titulo;
   m.querySelector('[data-bind="fe-prompt-target"]').textContent = alvo;
-  // dropdown de modelo
+  // dropdown de modelo + bloco informativo de ratio
   popularDropdownModelos();
+  atualizarRatioInfo();
   // checkbox "usar imagem original": reset off; disable se nenhum alvo tem
   // png_url_original (ex: tirinha vazia ou celulas sem importacao).
   const $cbWrap = m.querySelector('[data-bind="fe-prompt-use-original-wrap"]');
@@ -2108,6 +2109,57 @@ function popularDropdownModelos() {
   $menu.setAttribute('hidden', '');
 }
 
+// Atualiza o bloco informativo "tirinha → modelo cospe" no modal de prompt.
+// Pergunta ao backend qual ratio o modelo realmente vai entregar pras dims
+// atuais da tirinha. Compara com o ratio real da tirinha — se difere, badge
+// laranja avisando; se bate, badge verde discreto.
+async function atualizarRatioInfo() {
+  if (!tirinha || !feModeloSelecionado) return;
+  const $info = document.querySelector('[data-bind="fe-ratio-info"]');
+  const $tir = document.querySelector('[data-bind="fe-ratio-tirinha"]');
+  const $mod = document.querySelector('[data-bind="fe-ratio-modelo"]');
+  const $badge = document.querySelector('[data-bind="fe-ratio-badge"]');
+  if (!$info || !$tir || !$mod || !$badge) return;
+
+  const w = tirinha.largura, h = tirinha.altura;
+  $tir.textContent = `${w}×${h} (${formatarRatio(w, h)})`;
+  $mod.textContent = '…';
+  $badge.textContent = '…';
+  $badge.className = 'fe-ratio-badge';
+  $info.removeAttribute('hidden');
+
+  try {
+    const plano = await planejarRatio(feModeloSelecionado, w, h);
+    $mod.textContent = `${plano.ratio_label} (${formatarRatioDecimal(plano.ratio_value)})`;
+    if (plano.exato) {
+      $badge.textContent = 'bate ✓';
+      $badge.classList.add('is-ok');
+    } else {
+      $badge.textContent = 'diferente — ative auto-adapt';
+      $badge.classList.add('is-warn');
+    }
+  } catch (err) {
+    $mod.textContent = '?';
+    $badge.textContent = '—';
+  }
+}
+
+function formatarRatio(w, h) {
+  if (!w || !h) return '—';
+  // Aproxima pra ratio inteiro simpatico quando da, senao decimal.
+  const g = gcd(w, h);
+  const a = w / g, b = h / g;
+  if (a < 50 && b < 50) return `${a}:${b}`;
+  return formatarRatioDecimal(w / h);
+}
+
+function formatarRatioDecimal(v) {
+  if (!Number.isFinite(v) || v <= 0) return '—';
+  return v.toFixed(2);
+}
+
+function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+
 function escapeHtmlFe(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -2137,6 +2189,7 @@ document.addEventListener('click', (e) => {
     if ($hint) $hint.textContent = (m && m.hint) || '';
     $sel.classList.remove('is-open');
     if ($menu) $menu.setAttribute('hidden', '');
+    atualizarRatioInfo();
     return;
   }
   if (!$sel.contains(e.target)) {
@@ -2223,6 +2276,7 @@ document.addEventListener('click', async (e) => {
   showToast(`prompt enviado em ${idsMarcadosLocal.length} célula${idsMarcadosLocal.length === 1 ? '' : 's'}…`);
 
   const usarOriginal = !!m.querySelector('[data-bind="fe-prompt-use-original"]')?.checked;
+  const autoAdaptRatio = !!m.querySelector('[data-bind="fe-prompt-auto-adapt"]')?.checked;
 
   try {
     const resp = await dispararPrompt({
@@ -2231,6 +2285,7 @@ document.addEventListener('click', async (e) => {
       celulasIds: alvosIds,
       modelKey: feModeloSelecionado || undefined,
       usarOriginal,
+      autoAdaptRatio,
     });
     // Sucesso: backend marcou de verdade. Diferenca entre `idsMarcadosLocal`
     // e `celulas_marcadas` (resposta) e' tolerada — polling de 3s reconcilia

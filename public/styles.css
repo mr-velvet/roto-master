@@ -4647,6 +4647,55 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   cursor: help;
 }
 
+/* Bloco informativo no modal de prompt: ratio da tirinha vs ratio que o modelo
+ * vai entregar. Avisa visualmente se sao diferentes (badge amarelo) ou iguais
+ * (badge verde discreto). */
+.fe-ratio-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--fe-graphite-1);
+  border: 1px solid var(--fe-line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.fe-ratio-info[hidden] { display: none; }
+.fe-ratio-row { display: inline-flex; align-items: baseline; gap: 6px; }
+.fe-ratio-label {
+  color: var(--paper-5);
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  text-transform: lowercase;
+}
+.fe-ratio-value {
+  color: var(--paper-2);
+  letter-spacing: 0.04em;
+}
+.fe-ratio-arrow {
+  color: var(--paper-5);
+  margin: 0 4px;
+}
+.fe-ratio-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  border: 1px solid;
+}
+.fe-ratio-badge.is-ok {
+  color: var(--moss, #8aa67d);
+  border-color: var(--moss, #8aa67d);
+  background: rgba(138, 166, 125, 0.08);
+}
+.fe-ratio-badge.is-warn {
+  color: var(--rust, #c47855);
+  border-color: var(--rust, #c47855);
+  background: rgba(196, 120, 85, 0.08);
+}
+
 /* Checkbox custom do Frames Editor — sem visual nativo do SO (regra critica).
  * Input nativo escondido fisicamente (precisa do flow de teclado/screen reader),
  * caixa visual desenhada via ::before. Marcacao com tick cyan. */

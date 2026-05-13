@@ -19,6 +19,7 @@ const {
   FE_PROMPT_MODELS_BY_KEY,
   FE_PROMPT_DEFAULT_MODEL,
 } = require('../lib/fe-prompts');
+const fal = require('../lib/providers/fal');
 
 const router = Router();
 
@@ -719,6 +720,22 @@ router.get('/models', requireUser, (req, res) => {
   res.json({ models: FE_PROMPT_MODELS, default: FE_PROMPT_DEFAULT_MODEL });
 });
 
+// GET /api/fe/models/:key/plan-ratio?w=...&h=... — informativo no modal de
+// prompt. Diz que ratio o modelo realmente vai usar dado o tamanho da tirinha,
+// e se eh exato ou aproximado. UI usa pra mostrar alerta de ratio mismatch.
+router.get('/models/:key/plan-ratio', requireUser, (req, res) => {
+  const w = parseFloat(req.query.w);
+  const h = parseFloat(req.query.h);
+  if (!Number.isFinite(w) || !Number.isFinite(h)) {
+    return res.status(400).json({ error: 'w e h obrigat orios' });
+  }
+  const modelKey = req.params.key && FE_PROMPT_MODELS_BY_KEY[req.params.key]
+    ? req.params.key
+    : FE_PROMPT_DEFAULT_MODEL;
+  const plano = fal.planejarRatio(modelKey, w, h);
+  res.json({ model_key: modelKey, target_w: w, target_h: h, ...plano });
+});
+
 // POST /api/fe/celulas/:id/undo — desfaz o ultimo prompt aplicado nessa celula.
 // Pega a versao mais recente em fe_celula_versao, copia png_url/largura/altura
 // pra fe_celula, deleta a linha de versao (single-step undo, sem redo).
@@ -797,6 +814,7 @@ router.post('/prompts', requireUser, async (req, res) => {
     ? modelKeyRaw
     : FE_PROMPT_DEFAULT_MODEL;
   const usarOriginal = req.body?.usar_original === true;
+  const autoAdaptRatio = req.body?.auto_adapt_ratio === true;
 
   if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
   if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
@@ -831,7 +849,7 @@ router.post('/prompts', requireUser, async (req, res) => {
 
     // Fire-and-forget: dispara o processamento sem esperar.
     if (idsMarcados.length > 0) {
-      processarLote(pool, idsMarcados, prompt, modelKey, usarOriginal).catch((e) => {
+      processarLote(pool, idsMarcados, prompt, modelKey, usarOriginal, autoAdaptRatio).catch((e) => {
         console.error('fe-prompts lote', jobId, 'falhou:', e);
       });
     }
