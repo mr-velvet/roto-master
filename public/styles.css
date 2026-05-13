@@ -4647,6 +4647,73 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   cursor: help;
 }
 
+/* Checkbox custom do Frames Editor — sem visual nativo do SO (regra critica).
+ * Input nativo escondido fisicamente (precisa do flow de teclado/screen reader),
+ * caixa visual desenhada via ::before. Marcacao com tick cyan. */
+.fe-checkbox-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--fe-line);
+  background: var(--fe-graphite-1);
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 12px;
+  transition: border-color 140ms var(--ease), background 140ms var(--ease);
+}
+.fe-checkbox-field:hover { border-color: var(--fe-cyan-2); }
+.fe-checkbox-field input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+.fe-checkbox-field::before {
+  content: '';
+  grid-row: 1;
+  grid-column: 1;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--paper-5);
+  background: var(--fe-graphite-2);
+  display: block;
+  transition: all 140ms var(--ease);
+}
+.fe-checkbox-field:has(input:checked)::before {
+  background: var(--fe-cyan);
+  border-color: var(--fe-cyan);
+  box-shadow: inset 0 0 0 2px var(--fe-graphite-2);
+}
+.fe-checkbox-field:has(input:focus-visible)::before {
+  outline: 2px solid var(--fe-cyan-2);
+  outline-offset: 2px;
+}
+.fe-checkbox-label {
+  grid-row: 1;
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--paper-2);
+}
+.fe-checkbox-hint {
+  grid-row: 2;
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--paper-5);
+  font-style: italic;
+}
+.fe-checkbox-field.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fe-checkbox-field.is-disabled:hover { border-color: var(--fe-line); }
+
 /* Botao "limpar avisos" no topbar — borda rust em vez de cyan pra sinalizar
  * que ha algo a tratar. Contador discreto ao lado do label. */
 .fe-btn-clear-errors {

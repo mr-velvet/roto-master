@@ -2042,6 +2042,36 @@ function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
   m.querySelector('[data-bind="fe-prompt-target"]').textContent = alvo;
   // dropdown de modelo
   popularDropdownModelos();
+  // checkbox "usar imagem original": reset off; disable se nenhum alvo tem
+  // png_url_original (ex: tirinha vazia ou celulas sem importacao).
+  const $cbWrap = m.querySelector('[data-bind="fe-prompt-use-original-wrap"]');
+  const $cb = m.querySelector('[data-bind="fe-prompt-use-original"]');
+  const $cbHint = m.querySelector('[data-bind="fe-prompt-use-original-hint"]');
+  if ($cb && $cbWrap) {
+    $cb.checked = false;
+    const idSet = new Set(promptAlvosIds);
+    let comOriginal = 0;
+    for (const c of celulasMap.values()) {
+      if (!idSet.has(c.id)) continue;
+      if (c.png_url_original) comOriginal++;
+    }
+    if (comOriginal === 0) {
+      $cbWrap.classList.add('is-disabled');
+      $cb.disabled = true;
+      if ($cbHint) $cbHint.textContent = 'nenhuma célula alvo tem imagem original';
+    } else {
+      $cbWrap.classList.remove('is-disabled');
+      $cb.disabled = false;
+      if ($cbHint) {
+        const total = promptAlvosIds.length;
+        if (comOriginal < total) {
+          $cbHint.textContent = `${comOriginal}/${total} células têm original — as outras vão usar o estado atual`;
+        } else {
+          $cbHint.textContent = 'ignora ediçoes anteriores e usa a imagem que veio na importação como base';
+        }
+      }
+    }
+  }
   // enhance-undo escondido ao abrir
   feLastEnhanceBefore = null;
   const $undo = m.querySelector('[data-bind="fe-prompt-enhance-undo"]');
@@ -2192,12 +2222,15 @@ document.addEventListener('click', async (e) => {
   closeModal();
   showToast(`prompt enviado em ${idsMarcadosLocal.length} célula${idsMarcadosLocal.length === 1 ? '' : 's'}…`);
 
+  const usarOriginal = !!m.querySelector('[data-bind="fe-prompt-use-original"]')?.checked;
+
   try {
     const resp = await dispararPrompt({
       tirinhaId: tirinha.id,
       prompt,
       celulasIds: alvosIds,
       modelKey: feModeloSelecionado || undefined,
+      usarOriginal,
     });
     // Sucesso: backend marcou de verdade. Diferenca entre `idsMarcadosLocal`
     // e `celulas_marcadas` (resposta) e' tolerada — polling de 3s reconcilia

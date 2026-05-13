@@ -189,9 +189,10 @@ export async function uploadAseprite({ tirinhaId, blob, filename = 'tirinha.asep
 // Endpoint pode ainda não existir na worktree atual (está sendo escrito em
 // paralelo). Front trata 404 como "back ainda não tem o endpoint" e mostra
 // mensagem amigável.
-export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey }) {
+export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey, usarOriginal }) {
   const body = { tirinha_id: tirinhaId, prompt, celulas_ids: celulasIds };
   if (modelKey) body.model_key = modelKey;
+  if (usarOriginal) body.usar_original = true;
   const r = await authedFetch('/api/fe/prompts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -796,6 +796,7 @@ router.post('/prompts', requireUser, async (req, res) => {
   const modelKey = modelKeyRaw && FE_PROMPT_MODELS_BY_KEY[modelKeyRaw]
     ? modelKeyRaw
     : FE_PROMPT_DEFAULT_MODEL;
+  const usarOriginal = req.body?.usar_original === true;
 
   if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
   if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
@@ -830,7 +831,7 @@ router.post('/prompts', requireUser, async (req, res) => {
 
     // Fire-and-forget: dispara o processamento sem esperar.
     if (idsMarcados.length > 0) {
-      processarLote(pool, idsMarcados, prompt, modelKey).catch((e) => {
+      processarLote(pool, idsMarcados, prompt, modelKey, usarOriginal).catch((e) => {
         console.error('fe-prompts lote', jobId, 'falhou:', e);
       });
     }
