@@ -28,6 +28,11 @@ import { buildAsepriteDoFrameEditor } from './aseprite_io.js';
 import { initFeEdits, abrirModalEdits } from './fe_edits.js';
 import { authedFetch } from './auth.js';
 
+// SVG inline pros icones de visibilidade da camada (olho aberto/fechado).
+// Inline pra herdar `currentColor` via CSS e nao depender de fonte com glyph.
+const SVG_EYE_OPEN = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
+const SVG_EYE_CLOSED = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5s2.5 4 6 4 6-4 6-4"/><path d="M3.5 8.5l-1 1.5"/><path d="M12.5 8.5l1 1.5"/><path d="M8 9.5v2"/></svg>';
+
 // === Estado local da tirinha em edição ===
 //
 // Otimismo: operações da Tela 2 mutam o estado local imediato e disparam
@@ -509,7 +514,7 @@ function renderMatrix() {
     if (camSync === 'syncing') rowHead.classList.add('is-syncing');
     if (camSync === 'error') rowHead.classList.add('is-sync-error');
     rowHead.innerHTML = `
-      <button class="fe-cam-vis" data-cam-id="${cam.id}" type="button" title="alternar visibilidade">${cam.visivel ? '◉' : '○'}</button>
+      <button class="fe-cam-vis ${cam.visivel ? 'is-on' : 'is-off'}" data-cam-id="${cam.id}" type="button" title="${cam.visivel ? 'esconder camada' : 'mostrar camada'}" aria-label="${cam.visivel ? 'esconder camada' : 'mostrar camada'}">${cam.visivel ? SVG_EYE_OPEN : SVG_EYE_CLOSED}</button>
       <button class="fe-cam-name" data-cam-id="${cam.id}" type="button" title="clique pra selecionar linha · duplo-clique pra renomear · botão direito pra apagar">${escapeHtml(cam.nome)}</button>
     `;
     if (camSync) {
@@ -2269,11 +2274,15 @@ function idsParaEdicaoContexto() {
 }
 
 // Dispara remocao de fundo nas celulas via fal.ai (BiRefNet v2).
+// Abre modal pra escolher "usar imagem original" antes de executar.
 // Se novaCamada=true: cria camada nova com mesmo nome+' (sem fundo)', copia
 // os pngs das celulas origem pras correspondentes da nova camada (mesmos
 // quadros), e dispara bg-remove la'. Celulas origem ficam intactas.
 // Se false: aplica in-place nas celulas passadas.
-async function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
+let bgrPendingOrigens = null;
+let bgrPendingOpts = null;
+
+function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
   if (!tirinha) return;
   if (!idsOrigem || !idsOrigem.length) return;
   // Filtra ids invalidos / processando / sem png.
@@ -2291,6 +2300,60 @@ async function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
     return;
   }
 
+  // Abre modal pra escolher entre "usar imagem original" e estado atual.
+  bgrPendingOrigens = origens;
+  bgrPendingOpts = { novaCamada };
+  const m = document.querySelector('[data-modal="fe-bg-remove"]');
+  const $target = m.querySelector('[data-bind="fe-bgr-target"]');
+  const $cbWrap = m.querySelector('[data-bind="fe-bgr-use-original-wrap"]');
+  const $cb = m.querySelector('[data-bind="fe-bgr-use-original"]');
+  const $cbHint = m.querySelector('[data-bind="fe-bgr-use-original-hint"]');
+  const $err = m.querySelector('[data-bind="fe-bgr-err"]');
+  if ($err) $err.textContent = '';
+
+  const n = origens.length;
+  const sufixo = novaCamada ? ' (em camada nova)' : '';
+  $target.textContent = `vai aplicar em ${n} célula${n === 1 ? '' : 's'}${sufixo}`;
+
+  // Checkbox "usar original": desliga e desabilita se nenhuma celula alvo
+  // tem png_url_original. Default ligado quando ha originals (use case mais
+  // comum eh recom~ecar a partir da original).
+  const comOriginal = origens.filter((c) => c.png_url_original).length;
+  if (comOriginal === 0) {
+    $cb.checked = false;
+    $cb.disabled = true;
+    $cbWrap.classList.add('is-disabled');
+    if ($cbHint) $cbHint.textContent = 'nenhuma célula alvo tem imagem original';
+  } else {
+    $cb.checked = true;
+    $cb.disabled = false;
+    $cbWrap.classList.remove('is-disabled');
+    if ($cbHint) {
+      if (comOriginal < n) {
+        $cbHint.textContent = `${comOriginal}/${n} células têm original — as outras vão usar o estado atual`;
+      } else {
+        $cbHint.textContent = 'ignora ediçoes anteriores e usa a imagem que veio na importação como base';
+      }
+    }
+  }
+  openModal('fe-bg-remove');
+}
+
+// Confirma do modal — executa a remocao com a opcao escolhida.
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="fe-confirm-bg-remove"]')) return;
+  if (!bgrPendingOrigens) return;
+  const m = document.querySelector('[data-modal="fe-bg-remove"]');
+  const usarOriginal = !!m.querySelector('[data-bind="fe-bgr-use-original"]')?.checked;
+  const origens = bgrPendingOrigens;
+  const { novaCamada } = bgrPendingOpts || {};
+  bgrPendingOrigens = null;
+  bgrPendingOpts = null;
+  closeModal();
+  await executarBgRemove(origens, { novaCamada, usarOriginal });
+});
+
+async function executarBgRemove(origens, { novaCamada = false, usarOriginal = false } = {}) {
   if (!novaCamada) {
     // Aplica in-place: feedback otimista igual ao prompt.
     const ids = origens.map((c) => c.id);
@@ -2298,7 +2361,7 @@ async function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
     renderMatrix();
     showToast(`removendo fundo de ${marcados.length} célula${marcados.length === 1 ? '' : 's'}…`);
     try {
-      await removerBackground({ tirinhaId: tirinha.id, celulasIds: ids });
+      await removerBackground({ tirinhaId: tirinha.id, celulasIds: ids, usarOriginal });
       agendarPollingSeNecessario();
     } catch (err) {
       console.warn('bg-remove falhou:', err);
@@ -2332,15 +2395,17 @@ async function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
     await reloadAndRender();
 
     // Pra cada celula origem, acha a celula correspondente (mesmo quadro_id)
-    // na nova camada e patcha com o png_url da origem.
+    // na nova camada e patcha com o png_url da origem. Quando usarOriginal=true
+    // e houver png_url_original, copia a original (e nao o estado atual).
     const idsDestino = [];
     for (const orig of origens) {
       const destino = (tirinha.celulas || []).find((c) =>
         c.camada_id === novaCam.id && c.quadro_id === orig.quadro_id
       );
       if (!destino) continue;
+      const fonteUrl = (usarOriginal && orig.png_url_original) ? orig.png_url_original : orig.png_url;
       await patchCelula(destino.id, {
-        png_url: orig.png_url,
+        png_url: fonteUrl,
         largura: orig.largura,
         altura: orig.altura,
       });
@@ -2358,6 +2423,9 @@ async function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
     renderMatrix();
     showToast(`removendo fundo em ${idsDestino.length} célula${idsDestino.length === 1 ? '' : 's'} (camada nova)…`);
 
+    // Aqui passamos usarOriginal=false: as celulas-destino ja foram pre-populadas
+    // com a fonte certa acima, entao o backend so' precisa rodar em cima do png_url
+    // delas (que e' a copia da fonte escolhida).
     await removerBackground({ tirinhaId: tirinha.id, celulasIds: idsDestino });
     agendarPollingSeNecessario();
   } catch (err) {

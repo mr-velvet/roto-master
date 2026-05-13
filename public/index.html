@@ -1366,6 +1366,32 @@
     </div>
   </div>
 
+  <!-- modal: remover fundo -->
+  <div class="modal" data-modal="fe-bg-remove" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Frames Editor</div>
+        <h3>Remover fundo</h3>
+        <p class="modal-sub" data-bind="fe-bgr-target">—</p>
+      </div>
+      <div class="modal-body">
+        <label class="fe-checkbox-field" data-bind="fe-bgr-use-original-wrap">
+          <input type="checkbox" data-bind="fe-bgr-use-original" />
+          <span class="fe-checkbox-label">aplicar sobre a <strong>imagem original</strong> da célula</span>
+          <span class="fe-checkbox-hint" data-bind="fe-bgr-use-original-hint">ignora ediçoes anteriores e usa a imagem que veio na importação como base</span>
+        </label>
+        <div class="modal-err" data-bind="fe-bgr-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary fe-btn-primary" data-action="fe-confirm-bg-remove">
+          remover fundo
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- modal: preview de vídeo gerado (vindo da bandeja) -->
   <div class="modal modal-wide" data-modal="job-video-preview" hidden>
     <div class="modal-backdrop" data-action="modal-close"></div>

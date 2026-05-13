@@ -998,6 +998,7 @@ router.post('/edits', requireUser, async (req, res) => {
 router.post('/bg-remove', requireUser, async (req, res) => {
   const tirinhaId = (req.body?.tirinha_id || '').trim();
   const celulasIds = Array.isArray(req.body?.celulas_ids) ? req.body.celulas_ids : [];
+  const usarOriginal = req.body?.usar_original === true;
 
   if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
   if (!celulasIds.length) return res.status(400).json({ error: 'celulas_ids obrigatório' });
@@ -1026,7 +1027,7 @@ router.post('/bg-remove', requireUser, async (req, res) => {
     const jobId = crypto.randomUUID();
 
     if (idsMarcados.length > 0) {
-      processarBgRemoveLote(pool, idsMarcados).catch((e) => {
+      processarBgRemoveLote(pool, idsMarcados, { usarOriginal }).catch((e) => {
         console.error('fe-bg-remove lote', jobId, 'falhou:', e);
       });
     }

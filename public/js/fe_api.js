@@ -250,11 +250,13 @@ export async function dispararEdicao({ tirinhaId, celulasIds, opType, opParams, 
 // Remove fundo das celulas via fal.ai BiRefNet v2. Marca processando, retorna
 // {job_id, celulas_marcadas, price_usd_estimate} em 202. Usa polling normal.
 // Celulas vazias (sem png_url) sao filtradas pelo backend silenciosamente.
-export async function removerBackground({ tirinhaId, celulasIds }) {
+export async function removerBackground({ tirinhaId, celulasIds, usarOriginal = false }) {
+  const body = { tirinha_id: tirinhaId, celulas_ids: celulasIds };
+  if (usarOriginal) body.usar_original = true;
   const r = await authedFetch('/api/fe/bg-remove', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tirinha_id: tirinhaId, celulas_ids: celulasIds }),
+    body: JSON.stringify(body),
   });
   if (r.status === 404) throw new Error('endpoint de bg-remove ainda nao disponivel');
   return jsonOrThrow(r, 'remover background');

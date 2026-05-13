@@ -4599,8 +4599,12 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   place-items: center;
   flex-shrink: 0;
   transition: all 140ms var(--ease);
+  padding: 0;
 }
-.fe-cam-vis:hover { color: var(--fe-cyan); border-color: var(--fe-cyan-2); }
+.fe-cam-vis svg { display: block; }
+.fe-cam-vis.is-on { color: var(--paper-2); }
+.fe-cam-vis.is-off { color: var(--paper-3); opacity: 0.5; }
+.fe-cam-vis:hover { color: var(--fe-cyan); border-color: var(--fe-cyan-2); opacity: 1; }
 .fe-cam-name {
   flex: 1;
   background: transparent;
