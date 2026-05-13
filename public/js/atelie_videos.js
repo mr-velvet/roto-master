@@ -1,6 +1,8 @@
-// Ateliê → Vídeos. Lista vídeos do user, ação criar vídeo, abre editor.
+// Atelie -> Videos. Lista videos, organiza em pastas, multi-selecao
+// tipo planilha (ctrl/shift+click), menu de contexto custom.
 
-import { listVideos, createVideo, deleteVideo, duplicateVideo, previewUrl, createVideoFromUrl } from './videos_api.js';
+import { listVideos, createVideo, deleteVideo, duplicateVideo, previewUrl, createVideoFromUrl, moveVideos } from './videos_api.js';
+import { listFolders, createFolder, renameFolder, deleteFolder } from './folders_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
 import { navigateEditor, navigateProject, navigateGenerate, navigateTextVideo } from './router.js';
 
@@ -8,38 +10,62 @@ const $grid = document.querySelector('[data-bind="video-grid"]');
 const $empty = document.querySelector('[data-bind="videos-empty"]');
 const $countVideos = document.querySelector('[data-bind="count-videos"]');
 
-const $multiToggle = document.querySelector('[data-action="toggle-multi-select"]');
-const $multiToggleLabel = document.querySelector('[data-bind="multi-select-toggle-label"]');
+const $foldersList = document.querySelector('[data-bind="folders-list"]');
+const $videosEyebrow = document.querySelector('[data-bind="videos-eyebrow"]');
+const $videosTitle = document.querySelector('[data-bind="videos-title"]');
+const $videosSub = document.querySelector('[data-bind="videos-sub"]');
+
 const $multiBar = document.querySelector('[data-bind="multi-select-bar"]');
 const $multiCount = document.querySelector('[data-bind="multi-select-count"]');
 const $multiTrashLabel = document.querySelector('[data-bind="multi-select-trash-label"]');
+const $multiMoveLabel = document.querySelector('[data-bind="multi-select-move-label"]');
 
+const $ctxMenu = document.querySelector('[data-bind="atelie-ctx-menu"]');
+
+// Estado
 let videos = [];
+let folders = [];
+let rootCount = 0;
 let pendingFlow = null;
-let multiMode = false;
-let selected = new Set();  // ids selecionados
+// activeFolderId: undefined = todas as pastas; null = raiz; <uuid> = pasta.
+let activeFolderId;
+try {
+  const stored = localStorage.getItem('atelie-active-folder');
+  if (stored === 'null') activeFolderId = null;
+  else if (stored && stored !== 'undefined') activeFolderId = stored;
+} catch (e) { /* ignore */ }
+
+let selected = new Set();
+let anchorId = null;  // ultimo video clicado sem shift — ancora pro shift+click
+let pendingMoveTargets = null;  // ids pra mover automatico apos criar pasta nova
 
 export async function showAtelieVideos() {
   await refresh();
 }
 
-// refresh quando vídeo é deletado em outro lugar (modal preview da bandeja)
 window.addEventListener('video-deleted', () => { refresh().catch(() => {}); });
 
 async function refresh() {
-  // Esqueleto pulsante se a API demorar mais que 150ms (não pisca em rede boa).
-  // 6 cards é o suficiente pra preencher a primeira fileira sem parecer vazio.
   const skeletonTimer = setTimeout(() => renderSkeleton(6), 150);
   try {
-    videos = await listVideos();
+    const [vids, fold] = await Promise.all([
+      listVideos(activeFolderId),
+      listFolders(),
+    ]);
+    videos = vids;
+    folders = fold.folders || [];
+    rootCount = fold.root_count || 0;
   } catch (e) {
     clearTimeout(skeletonTimer);
-    console.error('list videos:', e);
-    showToast('falha ao listar vídeos');
+    console.error('refresh atelie:', e);
+    showToast('falha ao listar');
     return;
   }
   clearTimeout(skeletonTimer);
-  $countVideos.textContent = String(videos.length);
+  const totalGeral = rootCount + folders.reduce((acc, f) => acc + (f.video_count || 0), 0);
+  $countVideos.textContent = String(totalGeral);
+  renderFoldersSide();
+  renderHeader();
   render();
 }
 
@@ -60,9 +86,62 @@ function renderSkeleton(n) {
   }
 }
 
+function renderFoldersSide() {
+  if (!$foldersList) return;
+  $foldersList.innerHTML = '';
+  const itens = [
+    { kind: 'all', label: 'Todos', icon: '▦', count: rootCount + folders.reduce((a, f) => a + (f.video_count || 0), 0), key: 'all' },
+    { kind: 'root', label: 'Raiz (sem pasta)', icon: '◇', count: rootCount, key: 'root' },
+  ];
+  for (const it of itens) {
+    const li = document.createElement('li');
+    li.className = 'atelie-folders-item';
+    if (it.kind === 'all' && activeFolderId === undefined) li.classList.add('is-active');
+    if (it.kind === 'root' && activeFolderId === null) li.classList.add('is-active');
+    li.dataset.kind = it.kind;
+    li.innerHTML = `
+      <span class="atelie-folders-icon">${it.icon}</span>
+      <span class="atelie-folders-name">${escapeHtml(it.label)}</span>
+      <span class="atelie-folders-count">${it.count}</span>
+    `;
+    $foldersList.appendChild(li);
+  }
+  const sep = document.createElement('div');
+  sep.className = 'atelie-folders-sep';
+  $foldersList.appendChild(sep);
+  for (const f of folders) {
+    const li = document.createElement('li');
+    li.className = 'atelie-folders-item';
+    if (activeFolderId === f.id) li.classList.add('is-active');
+    li.dataset.kind = 'folder';
+    li.dataset.folderId = f.id;
+    li.innerHTML = `
+      <span class="atelie-folders-icon">▦</span>
+      <span class="atelie-folders-name">${escapeHtml(f.nome)}</span>
+      <span class="atelie-folders-count">${f.video_count || 0}</span>
+    `;
+    $foldersList.appendChild(li);
+  }
+}
+
+function renderHeader() {
+  let nome = 'Todos os vídeos';
+  if (activeFolderId === null) nome = 'Raiz (sem pasta)';
+  else if (typeof activeFolderId === 'string') {
+    const f = folders.find((x) => x.id === activeFolderId);
+    nome = f ? f.nome : 'Pasta';
+  }
+  if ($videosEyebrow) $videosEyebrow.textContent = `Ateliê / Vídeos / ${nome}`;
+  if ($videosTitle) $videosTitle.innerHTML = `<em>${escapeHtml(nome)}</em>`;
+  if ($videosSub) {
+    if (activeFolderId === undefined) $videosSub.textContent = 'Matéria-prima da rotoscopia.';
+    else if (activeFolderId === null) $videosSub.textContent = 'Vídeos sem pasta atribuída.';
+    else $videosSub.textContent = 'Botão direito num vídeo pra trocar de pasta.';
+  }
+}
+
 function render() {
   $grid.innerHTML = '';
-  $grid.classList.toggle('is-multi-select', multiMode);
   if (!videos.length) {
     $empty.removeAttribute('hidden');
     updateMultiBar();
@@ -73,16 +152,9 @@ function render() {
   for (const v of videos) {
     const card = document.createElement('div');
     card.className = 'video-card';
-    if (multiMode && selected.has(v.id)) card.classList.add('is-selected');
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.video-card-hover-actions')) return;
-      if (e.target.closest('[data-action="goto-published-project"]')) return;
-      if (multiMode) {
-        toggleSelection(v.id);
-        return;
-      }
-      navigateEditor(v.id);
-    });
+    card.dataset.videoId = v.id;
+    if (selected.has(v.id)) card.classList.add('is-multi-selected');
+    card.addEventListener('click', (e) => onCardClick(e, v));
 
     const origin = v.origin || 'uploaded';
     const originMap = {
@@ -93,27 +165,16 @@ function render() {
       'generated-from-character': { label: 'personagem', cls: 'tag-origin-character', icon: '☻' },
     };
     const o = originMap[origin] || { label: origin, cls: '', icon: '·' };
-    // "publicado" = tem asset ATIVO em algum projeto. Backend já filtra
-    // assets na lixeira no LEFT JOIN — published_project_id só vem se há
-    // asset ativo. Vídeo independente do ciclo de vida do asset.
     const isPublished = !!v.published_project_id;
     const dur = v.duration_s ? `${v.duration_s.toFixed(1)}s` : '';
     const projName = v.published_project_name || '';
     const publishedTag = isPublished
       ? `<button class="tag tag-published video-card-published-link" data-action="goto-published-project" data-project-id="${v.published_project_id}" type="button" title="abrir projeto na Galeria">◆ publicado em <em>${escapeHtml(projName)}</em></button>`
       : `<span class="tag tag-draft">◇ rascunho</span>`;
-
-    // Custo: soma de todos os attempts em generation_meta.attempts[].cost.
-    // Aplica só pra vídeos gerados (origin='generated-*'). Mostra "$X.XX · N×"
-    // quando houve mais de uma tentativa, pra deixar visível que rolou descarte.
     const costTag = renderCostTag(v);
-
     const thumbUrl = v.thumb_url;
-    const checkbox = multiMode
-      ? `<span class="video-card-check" aria-hidden="true"><span class="video-card-check-mark">✓</span></span>`
-      : '';
+
     card.innerHTML = `
-      ${checkbox}
       <div class="video-card-thumb${thumbUrl ? ' has-thumb' : ''}"${thumbUrl ? ` style="background-image:url('${thumbUrl}')"` : ''}>
         <span class="play-mark">▶</span>
         ${dur ? `<span class="video-card-duration">${dur}</span>` : ''}
@@ -127,7 +188,7 @@ function render() {
         </div>
       </div>
       <div class="video-card-hover-actions">
-        <button class="video-card-hover-btn" data-action="duplicate-video" title="duplicar (cria cópia independente, sem vínculo a projeto)" type="button">⎘</button>
+        <button class="video-card-hover-btn" data-action="duplicate-video" title="duplicar" type="button">⎘</button>
         <button class="video-card-hover-btn video-card-hover-btn-danger" data-action="delete-video" title="apagar" type="button">×</button>
       </div>
     `;
@@ -164,17 +225,444 @@ function render() {
         showToast('falha ao apagar: ' + err.message);
       }
     });
+    // Botao direito no card: menu de contexto custom.
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Se o video clicado nao ta selecionado, ele vira a unica selecao.
+      if (!selected.has(v.id)) {
+        selected.clear();
+        selected.add(v.id);
+        anchorId = v.id;
+        renderSelectionVisuals();
+        updateMultiBar();
+      }
+      abrirMenuContextoVideo(e.clientX, e.clientY);
+    });
     $grid.appendChild(card);
+  }
+  updateMultiBar();
+}
+
+// Click no card: ctrl/cmd toggle, shift range, simples = navega ou seleciona unica.
+function onCardClick(e, v) {
+  if (e.target.closest('.video-card-hover-actions')) return;
+  if (e.target.closest('[data-action="goto-published-project"]')) return;
+  const isToggle = e.ctrlKey || e.metaKey;
+  const isRange = e.shiftKey;
+  if (isToggle) {
+    e.preventDefault();
+    if (selected.has(v.id)) selected.delete(v.id);
+    else { selected.add(v.id); anchorId = v.id; }
+    renderSelectionVisuals();
+    updateMultiBar();
+    return;
+  }
+  if (isRange && anchorId && anchorId !== v.id) {
+    e.preventDefault();
+    const ids = videos.map((x) => x.id);
+    const a = ids.indexOf(anchorId);
+    const b = ids.indexOf(v.id);
+    if (a >= 0 && b >= 0) {
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      selected.clear();
+      for (let i = lo; i <= hi; i++) selected.add(ids[i]);
+    }
+    renderSelectionVisuals();
+    updateMultiBar();
+    return;
+  }
+  // Click simples: se ja tem selecao multipla, limpa primeiro e navega.
+  if (selected.size > 0) {
+    selected.clear();
+    renderSelectionVisuals();
+    updateMultiBar();
+  }
+  anchorId = v.id;
+  navigateEditor(v.id);
+}
+
+function renderSelectionVisuals() {
+  for (const card of $grid.querySelectorAll('.video-card')) {
+    card.classList.toggle('is-multi-selected', selected.has(card.dataset.videoId));
   }
 }
 
-// botão "criar vídeo" abre seletor de fluxo
+function updateMultiBar() {
+  if (!$multiBar) return;
+  const n = selected.size;
+  if (n === 0) {
+    $multiBar.setAttribute('hidden', '');
+    return;
+  }
+  $multiBar.removeAttribute('hidden');
+  $multiCount.textContent = n === 1 ? '1 vídeo selecionado' : `${n} vídeos selecionados`;
+  if ($multiMoveLabel) $multiMoveLabel.textContent = n === 1 ? 'jogar para pasta…' : `jogar ${n} para pasta…`;
+  if ($multiTrashLabel) $multiTrashLabel.textContent = n === 1 ? 'jogar na lixeira' : `jogar ${n} na lixeira`;
+}
+
+// ====== Sidebar de pastas ======
+
+$foldersList?.addEventListener('click', (e) => {
+  const li = e.target.closest('.atelie-folders-item');
+  if (!li) return;
+  const kind = li.dataset.kind;
+  if (kind === 'all') setActiveFolder(undefined);
+  else if (kind === 'root') setActiveFolder(null);
+  else if (kind === 'folder') setActiveFolder(li.dataset.folderId);
+});
+
+$foldersList?.addEventListener('contextmenu', (e) => {
+  const li = e.target.closest('.atelie-folders-item');
+  if (!li || li.dataset.kind !== 'folder') return;
+  e.preventDefault();
+  e.stopPropagation();
+  abrirMenuContextoPasta(e.clientX, e.clientY, li.dataset.folderId);
+});
+
+function setActiveFolder(id) {
+  activeFolderId = id;
+  try {
+    if (id === undefined) localStorage.removeItem('atelie-active-folder');
+    else if (id === null) localStorage.setItem('atelie-active-folder', 'null');
+    else localStorage.setItem('atelie-active-folder', id);
+  } catch (e) { /* ignore */ }
+  selected.clear();
+  anchorId = null;
+  refresh();
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="folder-new"]')) return;
+  openModalFolderNew();
+});
+
+function openModalFolderNew() {
+  const m = document.querySelector('[data-modal="folder-new"]');
+  const $i = m.querySelector('[data-bind="folder-new-input"]');
+  const $err = m.querySelector('[data-bind="folder-new-err"]');
+  $i.value = '';
+  $err.textContent = '';
+  openModal('folder-new');
+  setTimeout(() => $i.focus(), 50);
+}
+
+// Se o modal folder-new for fechado sem criar (cancel/Esc/backdrop), zera o
+// pending pra nao mover videos pra uma pasta que nao foi criada.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="modal-close"]')) return;
+  const m = document.querySelector('[data-modal="folder-new"]');
+  if (m && !m.hasAttribute('hidden')) pendingMoveTargets = null;
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const m = document.querySelector('[data-modal="folder-new"]');
+  if (m && !m.hasAttribute('hidden')) pendingMoveTargets = null;
+});
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="folder-new-confirm"]')) return;
+  const m = document.querySelector('[data-modal="folder-new"]');
+  const $i = m.querySelector('[data-bind="folder-new-input"]');
+  const $err = m.querySelector('[data-bind="folder-new-err"]');
+  const nome = $i.value.trim();
+  if (!nome) { $err.textContent = 'preencha o nome'; return; }
+  try {
+    const f = await createFolder(nome);
+    closeModal();
+    // Se o user criou a pasta via "nova pasta…" no modal de mover, ja move
+    // os videos pra ela e nao troca de pasta ativa (so renderiza).
+    if (pendingMoveTargets && pendingMoveTargets.length) {
+      const targets = pendingMoveTargets;
+      pendingMoveTargets = null;
+      await moverSelecionadosPara(targets, f.id);
+    } else {
+      await refresh();
+      setActiveFolder(f.id);
+      showToast(`pasta "${f.nome}" criada`);
+    }
+  } catch (err) {
+    $err.textContent = err.message;
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const m = document.querySelector('[data-modal="folder-new"]');
+  if (!m || m.hasAttribute('hidden')) return;
+  if (e.target !== m.querySelector('[data-bind="folder-new-input"]')) return;
+  e.preventDefault();
+  m.querySelector('[data-action="folder-new-confirm"]').click();
+});
+
+// Renomear pasta
+function openModalRenameFolder(folderId) {
+  const folder = folders.find((f) => f.id === folderId);
+  if (!folder) return;
+  const m = document.querySelector('[data-modal="folder-rename"]');
+  const $i = m.querySelector('[data-bind="folder-rename-input"]');
+  const $err = m.querySelector('[data-bind="folder-rename-err"]');
+  $i.value = folder.nome;
+  $err.textContent = '';
+  m.dataset.folderId = folderId;
+  openModal('folder-rename');
+  setTimeout(() => { $i.focus(); $i.select(); }, 50);
+}
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="folder-rename-confirm"]')) return;
+  const m = document.querySelector('[data-modal="folder-rename"]');
+  const $i = m.querySelector('[data-bind="folder-rename-input"]');
+  const $err = m.querySelector('[data-bind="folder-rename-err"]');
+  const folderId = m.dataset.folderId;
+  const nome = $i.value.trim();
+  if (!nome) { $err.textContent = 'preencha o nome'; return; }
+  try {
+    await renameFolder(folderId, nome);
+    closeModal();
+    await refresh();
+    showToast('pasta renomeada');
+  } catch (err) {
+    $err.textContent = err.message;
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const m = document.querySelector('[data-modal="folder-rename"]');
+  if (!m || m.hasAttribute('hidden')) return;
+  if (e.target !== m.querySelector('[data-bind="folder-rename-input"]')) return;
+  e.preventDefault();
+  m.querySelector('[data-action="folder-rename-confirm"]').click();
+});
+
+async function apagarPasta(folderId) {
+  const folder = folders.find((f) => f.id === folderId);
+  if (!folder) return;
+  const n = folder.video_count || 0;
+  const msg = n === 0
+    ? `Apagar pasta "${folder.nome}"?`
+    : `Apagar pasta "${folder.nome}"? Os ${n} vídeos voltam pra raiz, nada é deletado.`;
+  const ok = await confirmModal({ title: 'apagar pasta', message: msg, confirmLabel: 'apagar pasta', danger: true });
+  if (!ok) return;
+  try {
+    await deleteFolder(folderId);
+    if (activeFolderId === folderId) setActiveFolder(undefined);
+    else await refresh();
+    showToast('pasta apagada');
+  } catch (err) {
+    showToast('falha: ' + err.message);
+  }
+}
+
+// ====== Modal "jogar para pasta" ======
+
+function abrirModalEscolherPasta(videoIds) {
+  const m = document.querySelector('[data-modal="folder-pick"]');
+  const $list = m.querySelector('[data-bind="folder-pick-list"]');
+  const $sub = m.querySelector('[data-bind="folder-pick-sub"]');
+  const $title = m.querySelector('[data-bind="folder-pick-title"]');
+  $title.textContent = videoIds.length === 1 ? 'Jogar vídeo para pasta' : `Jogar ${videoIds.length} vídeos para pasta`;
+  $sub.textContent = 'Escolha o destino.';
+  $list.innerHTML = '';
+  // pasta atual dos videos selecionados — se todos compartilham, marca como is-current
+  const currentFolderIds = new Set(videos.filter((v) => videoIds.includes(v.id)).map((v) => v.folder_id || null));
+  const isAllInSame = currentFolderIds.size === 1;
+  const currentFolderId = isAllInSame ? [...currentFolderIds][0] : 'mixed';
+  // raiz
+  const liRoot = document.createElement('li');
+  liRoot.className = 'is-special';
+  if (currentFolderId === null) liRoot.classList.add('is-current');
+  liRoot.innerHTML = `<span>◇</span><span>Raiz (sem pasta)</span><span class="folder-pick-count">${currentFolderId === null ? 'aqui' : ''}</span>`;
+  liRoot.addEventListener('click', () => moverSelecionadosPara(videoIds, null));
+  $list.appendChild(liRoot);
+  // pastas existentes
+  for (const f of folders) {
+    const li = document.createElement('li');
+    if (currentFolderId === f.id) li.classList.add('is-current');
+    li.innerHTML = `<span>▦</span><span>${escapeHtml(f.nome)}</span><span class="folder-pick-count">${currentFolderId === f.id ? 'aqui' : (f.video_count || 0)}</span>`;
+    li.addEventListener('click', () => moverSelecionadosPara(videoIds, f.id));
+    $list.appendChild(li);
+  }
+  // criar nova: fecha esse modal, abre o de nova pasta, e ao criar move os
+  // videos pra ela automaticamente via flag pendingMoveTargets.
+  const liNew = document.createElement('li');
+  liNew.className = 'is-special';
+  liNew.style.borderTop = '1px solid var(--copper-soft)';
+  liNew.innerHTML = `<span>+</span><span><em>nova pasta…</em></span>`;
+  liNew.addEventListener('click', () => {
+    pendingMoveTargets = [...videoIds];
+    closeModal();
+    openModalFolderNew();
+  });
+  $list.appendChild(liNew);
+  openModal('folder-pick');
+}
+
+async function moverSelecionadosPara(videoIds, folderId) {
+  try {
+    await moveVideos(videoIds, folderId);
+    closeModal();
+    selected.clear();
+    await refresh();
+    const dest = folderId === null ? 'raiz' : (folders.find((f) => f.id === folderId)?.nome || 'pasta');
+    showToast(`${videoIds.length} ${videoIds.length === 1 ? 'vídeo movido' : 'vídeos movidos'} pra ${dest}`);
+  } catch (err) {
+    showToast('falha ao mover: ' + err.message);
+  }
+}
+
+// ====== Bottom bar: mover/lixeira ======
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="multi-select-clear"]')) return;
+  selected.clear();
+  renderSelectionVisuals();
+  updateMultiBar();
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="multi-select-move"]')) return;
+  if (!selected.size) return;
+  abrirModalEscolherPasta([...selected]);
+});
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="multi-select-trash"]')) return;
+  if (!selected.size) return;
+  const ids = [...selected];
+  const ok = await confirmModal({
+    title: 'mandar pra lixeira',
+    message: `Mandar ${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} pra lixeira? Você pode restaurar depois.`,
+    confirmLabel: `mandar ${ids.length} pra lixeira`,
+    danger: true,
+  });
+  if (!ok) return;
+  videos = videos.filter((v) => !selected.has(v.id));
+  render();
+  const failed = [];
+  await Promise.all(ids.map(async (id) => {
+    try { await deleteVideo(id); }
+    catch (err) { console.error('bulk-delete falhou', id, err); failed.push(id); }
+  }));
+  if (failed.length) showToast(`falha em ${failed.length} de ${ids.length}`);
+  else showToast(`${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} na lixeira`);
+  selected.clear();
+  refresh();
+});
+
+// ====== Menu de contexto ======
+
+function fecharCtxMenu() {
+  if (!$ctxMenu) return;
+  $ctxMenu.setAttribute('hidden', '');
+  $ctxMenu.innerHTML = '';
+}
+
+function abrirCtxMenu(x, y, items) {
+  if (!$ctxMenu) return;
+  $ctxMenu.innerHTML = '';
+  for (const it of items) {
+    if (it.sep) {
+      const d = document.createElement('div');
+      d.className = 'ctx-menu-sep';
+      $ctxMenu.appendChild(d);
+      continue;
+    }
+    const d = document.createElement('div');
+    d.className = 'ctx-menu-item';
+    if (it.danger) d.classList.add('is-danger');
+    if (it.disabled) d.classList.add('is-disabled');
+    d.textContent = it.label;
+    if (!it.disabled && it.onClick) {
+      d.addEventListener('click', () => {
+        fecharCtxMenu();
+        it.onClick();
+      });
+    }
+    $ctxMenu.appendChild(d);
+  }
+  $ctxMenu.style.left = `${x}px`;
+  $ctxMenu.style.top = `${y}px`;
+  $ctxMenu.removeAttribute('hidden');
+  // ajusta se sair da tela
+  requestAnimationFrame(() => {
+    const r = $ctxMenu.getBoundingClientRect();
+    if (r.right > window.innerWidth - 8) $ctxMenu.style.left = `${window.innerWidth - r.width - 8}px`;
+    if (r.bottom > window.innerHeight - 8) $ctxMenu.style.top = `${window.innerHeight - r.height - 8}px`;
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!$ctxMenu || $ctxMenu.hasAttribute('hidden')) return;
+  if (e.target.closest('.ctx-menu')) return;
+  fecharCtxMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') fecharCtxMenu();
+});
+window.addEventListener('blur', fecharCtxMenu);
+
+function abrirMenuContextoVideo(x, y) {
+  const ids = [...selected];
+  const n = ids.length;
+  const items = [
+    { label: n === 1 ? 'jogar para pasta…' : `jogar ${n} para pasta…`, onClick: () => abrirModalEscolherPasta(ids) },
+    { label: n === 1 ? 'tirar da pasta (mandar pra raiz)' : `tirar ${n} da pasta`, onClick: () => moverSelecionadosPara(ids, null) },
+    { sep: true },
+  ];
+  if (n === 1) {
+    items.push({
+      label: 'duplicar',
+      onClick: async () => {
+        try {
+          const dup = await duplicateVideo(ids[0]);
+          showToast('vídeo duplicado');
+          await refresh();
+          navigateEditor(dup.id);
+        } catch (err) { showToast('falha: ' + err.message); }
+      },
+    });
+  }
+  items.push({
+    label: n === 1 ? 'apagar' : `apagar ${n} vídeos`,
+    danger: true,
+    onClick: async () => {
+      const ok = await confirmModal({
+        title: 'apagar',
+        message: n === 1 ? 'Apagar este vídeo?' : `Apagar ${n} vídeos? Eles vão pra lixeira.`,
+        confirmLabel: n === 1 ? 'apagar' : `apagar ${n}`,
+        danger: true,
+      });
+      if (!ok) return;
+      const failed = [];
+      await Promise.all(ids.map(async (id) => {
+        try { await deleteVideo(id); }
+        catch (err) { failed.push(id); }
+      }));
+      if (failed.length) showToast(`falha em ${failed.length} de ${ids.length}`);
+      else showToast(n === 1 ? 'vídeo apagado' : `${n} apagados`);
+      selected.clear();
+      refresh();
+    },
+  });
+  abrirCtxMenu(x, y, items);
+}
+
+function abrirMenuContextoPasta(x, y, folderId) {
+  abrirCtxMenu(x, y, [
+    { label: 'renomear', onClick: () => openModalRenameFolder(folderId) },
+    { label: 'apagar pasta', danger: true, onClick: () => apagarPasta(folderId) },
+  ]);
+}
+
+// ====== Criar video (fluxo original preservado) ======
+
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="new-video"]')) return;
   openModal('new-video');
 });
 
-// fluxo escolhido
 document.addEventListener('click', (e) => {
   const card = e.target.closest('[data-action="pick-flow"]');
   if (!card) return;
@@ -198,7 +686,6 @@ function openStartVideoModal(flow) {
   m.querySelector('[data-bind="name-video-err"]').textContent = '';
   m.querySelector('[data-bind="url-preview"]').setAttribute('hidden', '');
   m.querySelector('[data-bind="url-preview-status"]').setAttribute('hidden', '');
-  // título adapta-se ao fluxo, mas o input aceita texto OU URL nos dois.
   if (flow === 'B') {
     m.querySelector('[data-bind="name-video-title"]').textContent = 'Vídeo de URL';
     m.querySelector('[data-bind="name-video-sub"]').textContent = 'Cole a URL do YouTube. O vídeo fica como referência — você corta trechos no editor.';
@@ -213,7 +700,6 @@ function openStartVideoModal(flow) {
   openModal('name-video');
 }
 
-// Detecção de URL no input do "criar vídeo" — debounced 500ms.
 const URL_RE = /^https?:\/\/\S+$/i;
 let urlDebounce = null;
 let urlPreviewedFor = null;
@@ -239,7 +725,7 @@ function wireUrlDetection() {
       urlPreviewedFor = null;
       return;
     }
-    if (v === urlPreviewedFor) return; // já temos preview
+    if (v === urlPreviewedFor) return;
     $preview.setAttribute('hidden', '');
     $status.removeAttribute('hidden');
     $status.textContent = 'buscando informações…';
@@ -261,7 +747,6 @@ function wireUrlDetection() {
     }, 500);
   });
 }
-// roda 1x quando o módulo carrega
 wireUrlDetection();
 
 document.addEventListener('click', async (e) => {
@@ -295,9 +780,6 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// Tag de custo no card de vídeo. Backend agrega cost_total e cost_attempts
-// no SQL pra evitar trafegar generation_meta inteiro na listagem.
-// Só aparece pra vídeos gerados via IA — uploads e URL não têm custo.
 function renderCostTag(v) {
   if (!v.origin || !v.origin.startsWith('generated-')) return '';
   const total = Number(v.cost_total);
@@ -311,88 +793,3 @@ function renderCostTag(v) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-
-// === multi-select ===
-function setMultiMode(on) {
-  multiMode = on;
-  selected.clear();
-  if ($multiToggle) $multiToggle.classList.toggle('is-active', on);
-  if ($multiToggleLabel) $multiToggleLabel.textContent = on ? 'sair da seleção' : 'selecionar';
-  render();
-  updateMultiBar();
-}
-
-function toggleSelection(id) {
-  if (selected.has(id)) selected.delete(id);
-  else selected.add(id);
-  render();
-  updateMultiBar();
-}
-
-function updateMultiBar() {
-  if (!$multiBar) return;
-  if (!multiMode) {
-    $multiBar.setAttribute('hidden', '');
-    return;
-  }
-  $multiBar.removeAttribute('hidden');
-  const n = selected.size;
-  $multiCount.textContent = n === 1 ? '1 selecionado' : `${n} selecionados`;
-  $multiTrashLabel.textContent = n
-    ? `jogar ${n} ${n === 1 ? 'vídeo' : 'vídeos'} na lixeira`
-    : 'jogar na lixeira';
-  // botão lixeira disabled se nenhum selecionado
-  const $trash = document.querySelector('[data-action="multi-select-trash"]');
-  if ($trash) $trash.disabled = n === 0;
-}
-
-document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-action="toggle-multi-select"]')) {
-    setMultiMode(!multiMode);
-    return;
-  }
-  if (e.target.closest('[data-action="multi-select-clear"]')) {
-    selected.clear();
-    render();
-    updateMultiBar();
-    return;
-  }
-  if (e.target.closest('[data-action="multi-select-all"]')) {
-    videos.forEach((v) => selected.add(v.id));
-    render();
-    updateMultiBar();
-    return;
-  }
-});
-
-document.addEventListener('click', async (e) => {
-  if (!e.target.closest('[data-action="multi-select-trash"]')) return;
-  if (!selected.size) return;
-  const ids = [...selected];
-  const ok = await confirmModal({
-    title: 'mandar pra lixeira',
-    message: `Mandar ${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} pra lixeira? Você pode restaurar depois.`,
-    confirmLabel: `mandar ${ids.length} pra lixeira`,
-    danger: true,
-  });
-  if (!ok) return;
-  // otimista: remove da lista local + executa em paralelo
-  videos = videos.filter((v) => !selected.has(v.id));
-  $countVideos.textContent = String(videos.length);
-  render();
-  const failed = [];
-  await Promise.all(ids.map(async (id) => {
-    try { await deleteVideo(id); }
-    catch (err) {
-      console.error('bulk-delete falhou pro id', id, err);
-      failed.push(id);
-    }
-  }));
-  if (failed.length) {
-    showToast(`falha em ${failed.length} de ${ids.length} — veja console pra detalhes`);
-  } else {
-    showToast(`${ids.length} ${ids.length === 1 ? 'vídeo' : 'vídeos'} na lixeira`);
-  }
-  setMultiMode(false);
-  refresh();
-});

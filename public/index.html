@@ -206,36 +206,46 @@
       </aside>
 
       <div class="atelie-stage">
-        <div class="atelie-sub" data-sub="videos">
-          <div class="page-head">
-            <div class="page-head-meta">
-              <div class="page-head-eyebrow">Ateliê / Vídeos</div>
-              <h2 class="page-head-title"><em>Vídeos</em> em fabricação</h2>
-              <p class="page-head-sub">Matéria-prima da rotoscopia. Cada vídeo é seu até você publicar como asset.</p>
+        <div class="atelie-sub atelie-sub-videos" data-sub="videos">
+          <aside class="atelie-folders" data-bind="folders-side">
+            <div class="atelie-folders-head">
+              <span class="atelie-folders-title">Pastas</span>
+              <button class="atelie-folders-new" data-action="folder-new" type="button" title="nova pasta">+</button>
             </div>
-            <div class="page-head-actions">
-              <button class="btn btn-ghost" data-action="toggle-multi-select" data-bind="multi-select-toggle">
-                <span class="btn-icon">▢</span>
-                <span data-bind="multi-select-toggle-label">selecionar</span>
+            <ul class="atelie-folders-list" data-bind="folders-list">
+              <!-- preenchida por folders_side.js -->
+            </ul>
+          </aside>
+          <div class="atelie-videos-main">
+            <div class="page-head">
+              <div class="page-head-meta">
+                <div class="page-head-eyebrow" data-bind="videos-eyebrow">Ateliê / Vídeos</div>
+                <h2 class="page-head-title" data-bind="videos-title"><em>Vídeos</em> em fabricação</h2>
+                <p class="page-head-sub" data-bind="videos-sub">Matéria-prima da rotoscopia. Cada vídeo é seu até você publicar como asset.</p>
+              </div>
+              <div class="page-head-actions">
+                <button class="btn btn-primary btn-lg" data-action="new-video">
+                  <span class="btn-icon">+</span>
+                  criar vídeo
+                </button>
+              </div>
+            </div>
+            <div class="multi-select-bar" data-bind="multi-select-bar" hidden>
+              <span class="multi-select-count" data-bind="multi-select-count">0 selecionados</span>
+              <button class="btn btn-ghost btn-sm" data-action="multi-select-clear">desmarcar</button>
+              <button class="btn btn-ghost btn-sm" data-action="multi-select-move">
+                <span class="btn-icon">▦</span>
+                <span data-bind="multi-select-move-label">jogar para pasta…</span>
               </button>
-              <button class="btn btn-primary btn-lg" data-action="new-video">
-                <span class="btn-icon">+</span>
-                criar vídeo
+              <button class="btn btn-ghost btn-sm btn-danger" data-action="multi-select-trash">
+                <span class="btn-icon">🗑</span>
+                <span data-bind="multi-select-trash-label">jogar na lixeira</span>
               </button>
             </div>
-          </div>
-          <div class="multi-select-bar" data-bind="multi-select-bar" hidden>
-            <span class="multi-select-count" data-bind="multi-select-count">0 selecionados</span>
-            <button class="btn btn-ghost btn-sm" data-action="multi-select-all">selecionar todos</button>
-            <button class="btn btn-ghost btn-sm" data-action="multi-select-clear">desmarcar</button>
-            <button class="btn btn-ghost btn-sm btn-danger" data-action="multi-select-trash">
-              <span class="btn-icon">🗑</span>
-              <span data-bind="multi-select-trash-label">jogar na lixeira</span>
-            </button>
-          </div>
-          <div class="video-grid" data-bind="video-grid"></div>
-          <div class="empty-state" data-bind="videos-empty" hidden>
-            <p>Nenhum vídeo ainda. Crie o primeiro pra começar a editar.</p>
+            <div class="video-grid" data-bind="video-grid"></div>
+            <div class="empty-state" data-bind="videos-empty" hidden>
+              <p>Nenhum vídeo ainda. Crie o primeiro pra começar a editar.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -1300,6 +1310,72 @@
       </div>
     </div>
   </div>
+
+  <!-- modal: nova pasta -->
+  <div class="modal" data-modal="folder-new" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Vídeos</div>
+        <h3>Nova pasta</h3>
+        <p class="modal-sub">Pasta global — todo mundo vê.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>nome</span>
+          <input type="text" data-bind="folder-new-input" placeholder="ex: skate, takes do gabriel, refs" maxlength="80" />
+        </label>
+        <div class="modal-err" data-bind="folder-new-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="folder-new-confirm">criar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: renomear pasta -->
+  <div class="modal" data-modal="folder-rename" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Vídeos</div>
+        <h3>Renomear pasta</h3>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>novo nome</span>
+          <input type="text" data-bind="folder-rename-input" maxlength="80" />
+        </label>
+        <div class="modal-err" data-bind="folder-rename-err" style="color:var(--rust); font-size:11px; min-height:14px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary" data-action="folder-rename-confirm">renomear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: escolher pasta destino (mover videos) -->
+  <div class="modal" data-modal="folder-pick" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Ateliê / Vídeos</div>
+        <h3 data-bind="folder-pick-title">Jogar para pasta</h3>
+        <p class="modal-sub" data-bind="folder-pick-sub">—</p>
+      </div>
+      <div class="modal-body">
+        <ul class="folder-pick-list" data-bind="folder-pick-list"></ul>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- menu de contexto compartilhado (videos + pastas) -->
+  <div class="ctx-menu" data-bind="atelie-ctx-menu" hidden></div>
 
   <!-- modal: confirmar (deletar) -->
   <div class="modal" data-modal="confirm" hidden>

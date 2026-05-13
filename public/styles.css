@@ -4937,3 +4937,208 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   50%      { opacity: 0.45; }
 }
 
+/* ----------------------------------------------------------------------------
+   Atelie - Sidebar de pastas + menu de contexto
+   ---------------------------------------------------------------------------- */
+
+.atelie-sub-videos {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1;
+}
+.atelie-sub-videos .atelie-videos-main {
+  flex: 1;
+  min-width: 0;
+  padding: 0 32px 32px;
+  display: flex;
+  flex-direction: column;
+}
+
+.atelie-folders {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--copper-soft);
+  background: rgba(217, 122, 58, 0.02);
+  padding: 24px 0 32px;
+  display: flex;
+  flex-direction: column;
+}
+.atelie-folders-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px 14px;
+  border-bottom: 1px solid var(--copper-soft);
+  margin-bottom: 8px;
+}
+.atelie-folders-title {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--copper);
+  font-weight: 500;
+}
+.atelie-folders-new {
+  background: transparent;
+  border: 1px solid var(--copper-soft);
+  color: var(--copper);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.atelie-folders-new:hover {
+  background: var(--copper-soft);
+  border-color: var(--copper);
+}
+.atelie-folders-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+.atelie-folders-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--paper);
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  user-select: none;
+}
+.atelie-folders-item:hover {
+  background: rgba(217, 122, 58, 0.06);
+}
+.atelie-folders-item.is-active {
+  border-left-color: var(--copper);
+  background: rgba(217, 122, 58, 0.10);
+  color: var(--copper);
+}
+.atelie-folders-item.is-drop-target {
+  background: var(--copper-soft);
+  border-left-color: var(--copper);
+}
+.atelie-folders-icon {
+  font-size: 11px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.atelie-folders-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.atelie-folders-count {
+  font-size: 10px;
+  color: var(--paper-3);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+.atelie-folders-sep {
+  height: 1px;
+  background: var(--copper-soft);
+  margin: 6px 12px;
+}
+
+/* Menu de contexto custom (anti-padrao: nunca menu nativo) */
+.ctx-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 180px;
+  background: var(--ink-1, #0c0c10);
+  border: 1px solid var(--copper-soft);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  user-select: none;
+}
+.ctx-menu[hidden] { display: none; }
+.ctx-menu-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--paper);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.ctx-menu-item:hover {
+  background: var(--copper-soft);
+  color: var(--copper);
+}
+.ctx-menu-item.is-danger:hover {
+  background: rgba(170, 60, 60, 0.15);
+  color: var(--rust, #c44);
+}
+.ctx-menu-item.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.ctx-menu-sep {
+  height: 1px;
+  background: var(--copper-soft);
+  margin: 4px 0;
+}
+.ctx-menu-submenu-mark {
+  margin-left: auto;
+  opacity: 0.5;
+  font-size: 10px;
+}
+
+/* Modal lista de pastas pra escolher destino */
+.folder-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.folder-pick-list li {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--copper-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--paper);
+  transition: background 0.12s;
+}
+.folder-pick-list li:hover {
+  background: var(--copper-soft);
+  color: var(--copper);
+}
+.folder-pick-list li.is-current {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.folder-pick-list li.is-special {
+  font-style: italic;
+}
+.folder-pick-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--paper-3);
+  font-family: var(--font-mono);
+}
+
+/* Video card selecionado via ctrl/shift+click (sem modo multi explicito) */
+.video-card.is-multi-selected {
+  outline: 2px solid var(--copper);
+  outline-offset: -2px;
+}
+

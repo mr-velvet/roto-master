@@ -92,6 +92,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/config', require('./routes/config'));
 app.use('/api/videos', require('./routes/videos'));
+app.use('/api/folders', require('./routes/folders'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/assets', require('./routes/assets').router);
 app.use('/api/models', require('./routes/models'));

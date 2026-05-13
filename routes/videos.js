@@ -12,7 +12,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, thumb_url, size_bytes, duration_s, width, height,
-                    edit_state, share_id, published_asset_id,
+                    edit_state, share_id, published_asset_id, folder_id,
                     source_aparencia_id, source_enquadramento_id, source_enquadramento_kind,
                     source_motion_prompt, source_model_key,
                     source_url, source_segment_in_s, source_segment_out_s,
@@ -23,10 +23,22 @@ const VIDEO_COLS = `id, name, origin, gcs_path, gcs_url, thumb_url, size_bytes, 
 // precisa pra renderizar. Custo dos attempts é agregado em SQL pra evitar
 // trafegar a coluna `generation_meta` inteira (JSONB pode ser gordo).
 router.get('/', requireUser, async (req, res) => {
+  // ?folder_id=<uuid> filtra videos daquela pasta.
+  // ?folder_id=root|null filtra videos sem pasta (raiz do Atelie).
+  // Sem param = lista tudo (comportamento original).
+  const folderRaw = typeof req.query.folder_id === 'string' ? req.query.folder_id.trim() : '';
+  let folderFilter = '';
+  const params = [];
+  if (folderRaw === 'root' || folderRaw === 'null') {
+    folderFilter = ' WHERE v.folder_id IS NULL';
+  } else if (folderRaw) {
+    folderFilter = ' WHERE v.folder_id = $1';
+    params.push(folderRaw);
+  }
   try {
     const { rows } = await req.app.locals.pool.query(
       `SELECT v.id, v.name, v.origin, v.thumb_url, v.duration_s,
-              v.created_at, v.updated_at,
+              v.folder_id, v.created_at, v.updated_at,
               a.project_id AS published_project_id,
               p.name       AS published_project_name,
               COALESCE((
@@ -38,12 +50,47 @@ router.get('/', requireUser, async (req, res) => {
          FROM videos v
          LEFT JOIN assets a   ON a.id = v.published_asset_id AND a.deleted_at IS NULL
          LEFT JOIN projects p ON p.id = a.project_id
-        ORDER BY v.updated_at DESC`
+        ${folderFilter}
+        ORDER BY v.updated_at DESC`,
+      params
     );
     res.json({ videos: rows });
   } catch (e) {
+    if (e.code === '22P02') return res.status(400).json({ error: 'folder_id inválido' });
     console.error('list videos:', e);
     res.status(500).json({ error: 'list failed' });
+  }
+});
+
+// POST /api/videos/move { video_ids: [...], folder_id: <uuid> | null }
+// Move N videos pra uma pasta (ou pra raiz se folder_id=null). Lote em uma
+// query. Devolve quantos foram efetivamente movidos.
+router.post('/move', requireUser, async (req, res) => {
+  const ids = Array.isArray(req.body?.video_ids) ? req.body.video_ids.filter((x) => typeof x === 'string') : [];
+  const folderIdRaw = req.body?.folder_id;
+  const folderId = folderIdRaw === null || folderIdRaw === undefined || folderIdRaw === '' ? null : String(folderIdRaw);
+  if (!ids.length) return res.status(400).json({ error: 'video_ids obrigatório' });
+  if (ids.length > 500) return res.status(400).json({ error: 'lote muito grande (máx 500)' });
+  try {
+    // Se folderId nao for null, valida que a pasta existe — caso contrario
+    // o UPDATE falharia silenciosamente com FK violation pouco amigavel.
+    if (folderId) {
+      const { rows } = await req.app.locals.pool.query(
+        `SELECT 1 FROM video_folders WHERE id = $1`,
+        [folderId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'pasta não encontrada' });
+    }
+    const { rowCount } = await req.app.locals.pool.query(
+      `UPDATE videos SET folder_id = $1, updated_at = NOW()
+        WHERE id = ANY($2::uuid[])`,
+      [folderId, ids]
+    );
+    res.json({ moved: rowCount });
+  } catch (e) {
+    if (e.code === '22P02') return res.status(400).json({ error: 'id inválido' });
+    console.error('move videos:', e);
+    res.status(500).json({ error: 'move failed' });
   }
 });
 

@@ -1775,6 +1775,20 @@ document.addEventListener('keydown', (e) => {
     togglePlay();
     return;
   }
+  // P: abre modal de prompt. Se ha celulas selecionadas → modo 'selected';
+  // senao, se ha celula ativa com cel valida → 'cell'. Sem alvo viavel = no-op.
+  if ((e.key === 'p' || e.key === 'P') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    if (selecionadas && selecionadas.size > 0) {
+      abrirModalPrompt({ tipo: 'selected' });
+    } else if (activeCelKey) {
+      const cel = celulasMap.get(activeCelKey);
+      if (cel && cel.estado !== 'processando') {
+        abrirModalPrompt({ tipo: 'cell', ids: [cel.id], contexto: 'vai aplicar em 1 célula' });
+      }
+    }
+    return;
+  }
   if (isPlaying) return; // setas só navegam quando pausado
   if (e.key === 'ArrowLeft') {
     if (activeQuadroIdx > 0) {

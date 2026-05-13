@@ -2,11 +2,29 @@
 
 import { authedFetch } from './auth.js';
 
-export async function listVideos() {
-  const r = await authedFetch('/api/videos');
+// folderId: undefined = todos; null = so raiz; <uuid> = pasta especifica.
+export async function listVideos(folderId) {
+  let url = '/api/videos';
+  if (folderId === null) url += '?folder_id=root';
+  else if (typeof folderId === 'string' && folderId) url += `?folder_id=${encodeURIComponent(folderId)}`;
+  const r = await authedFetch(url);
   if (!r.ok) throw new Error('list videos: ' + r.status);
   const { videos } = await r.json();
   return videos;
+}
+
+// folderId: null = mover pra raiz; <uuid> = mover pra pasta.
+export async function moveVideos(videoIds, folderId) {
+  const r = await authedFetch('/api/videos/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_ids: videoIds, folder_id: folderId }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || 'move videos: ' + r.status);
+  }
+  return r.json();
 }
 
 export async function createVideo(name) {
