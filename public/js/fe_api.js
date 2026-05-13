@@ -216,3 +216,9 @@ export async function undoCelula(celulaId) {
   if (r.status === 404) return null;
   return jsonOrThrow(r, 'desfazer celula');
 }
+
+// Limpa avisos de erro (estado_erro) de todas celulas da tirinha.
+export async function clearTirinhaErrors(tirinhaId) {
+  const r = await authedFetch(`/api/fe/tirinhas/${tirinhaId}/clear-errors`, { method: 'POST' });
+  return jsonOrThrow(r, 'limpar avisos');
+}

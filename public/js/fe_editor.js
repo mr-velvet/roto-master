@@ -17,7 +17,7 @@ import {
   addCamada, patchCamada, deleteCamada,
   addQuadro, deleteQuadro,
   patchCelula,
-  uploadAseprite, dispararPrompt, listFeModels, undoCelula,
+  uploadAseprite, dispararPrompt, listFeModels, undoCelula, clearTirinhaErrors,
   publicarComoAsset,
 } from './fe_api.js';
 import { enhancePrompt } from './generate_api.js';
@@ -55,6 +55,11 @@ const ZOOM_FACTOR = 1.15;
 // Vira true no primeiro zoom/pan/wheel do user. Enquanto false, o ResizeObserver
 // recalcula fit-to-canvas em resize. Depois disso, preserva o que o user escolheu.
 let userAdjustedView = false;
+
+// True enquanto a tecla O esta segurada — renderCanvas pinta png_url_original
+// no lugar de png_url. Sem feedback adicional (sem badge, sem tooltip) — o
+// proprio canvas mudando ja' eh o feedback.
+let mostrandoOriginal = false;
 
 // Cache de imagens carregadas pelo canvas
 const imgCache = new Map(); // png_url → HTMLImageElement (decoded)
@@ -234,6 +239,7 @@ export async function showFeEditor(id) {
   syncState.clear();
   historicoPrompts.length = 0;
   feLastEnhanceBefore = null;
+  mostrandoOriginal = false;
   stopPolling();
   stopPlay({ restore: false });
   resetView();
@@ -274,6 +280,35 @@ function notificarErrosDeGeracao(erros) {
   console.warn('fe-prompts: erros per-celula', erros);
   showToast(`falha em ${total} célula${total === 1 ? '' : 's'} · ${amigavel}`, 5000);
 }
+
+function atualizarBotaoLimparAvisos() {
+  const $btn = document.querySelector('[data-bind="fe-btn-clear-errors"]');
+  if (!$btn) return;
+  let n = 0;
+  for (const c of celulasMap.values()) if (c.estado_erro) n++;
+  if (n > 0) {
+    $btn.removeAttribute('hidden');
+    const $count = $btn.querySelector('[data-bind="fe-clear-errors-count"]');
+    if ($count) $count.textContent = String(n);
+  } else {
+    $btn.setAttribute('hidden', '');
+  }
+}
+
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="fe-clear-errors"]')) return;
+  if (!tirinha) return;
+  try {
+    const { cleared } = await clearTirinhaErrors(tirinha.id);
+    // Limpa local pra UI nao esperar polling.
+    for (const c of celulasMap.values()) if (c.estado_erro) c.estado_erro = null;
+    renderMatrix();
+    atualizarBotaoLimparAvisos();
+    showToast(cleared ? `${cleared} aviso${cleared === 1 ? '' : 's'} limpo${cleared === 1 ? '' : 's'}` : 'nada pra limpar');
+  } catch (err) {
+    showToast('falha ao limpar avisos');
+  }
+});
 
 function classificarErroDeGeracao(msg) {
   const m = String(msg || '').toLowerCase();
@@ -330,6 +365,7 @@ async function aplicarEstadoTirinha(data, opts = {}) {
   if (errosNovos.length) {
     notificarErrosDeGeracao(errosNovos);
   }
+  atualizarBotaoLimparAvisos();
   if (activeQuadroIdx >= quadrosOrdenados.length) activeQuadroIdx = quadrosOrdenados.length - 1;
   if (activeQuadroIdx < 0) activeQuadroIdx = 0;
   $name.textContent = data.nome;
@@ -755,9 +791,14 @@ async function renderCanvas() {
   for (const cam of camadasParaPintar) {
     if (!cam.visivel) continue;
     const cel = celulasMap.get(keyOf(cam.id, quadroAtivo.id));
-    if (!cel || !cel.png_url) continue;
+    if (!cel) continue;
+    // Segurando tecla O: mostra a imagem ORIGINAL da celula (a que veio na
+    // importacao, antes de qualquer prompt/edicao). Se nao tem original, pula
+    // a celula — sem fallback pra atual, sem feedback. Comportamento do user.
+    const urlAlvo = mostrandoOriginal ? cel.png_url_original : cel.png_url;
+    if (!urlAlvo) continue;
     try {
-      const img = await loadImage(cel.png_url);
+      const img = await loadImage(urlAlvo);
       ctx.drawImage(img, 0, 0, w, h);
     } catch (e) {
       // imagem ainda carregando ou cors; ignora
@@ -1537,6 +1578,14 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (!foraDeCampo) return;
+  // Segurando O: mostra a imagem original da celula (antes de edicoes).
+  // keydown dispara repetidamente — repinta so na primeira borda (transicao).
+  if ((e.key === 'o' || e.key === 'O') && !e.repeat) {
+    e.preventDefault();
+    mostrandoOriginal = true;
+    renderCanvas();
+    return;
+  }
   // Toggle play em K (Espaço fica reservado pra pan do canvas — ver
   // attachCanvasInteraction). Botão visível continua sendo o caminho principal.
   if (e.key === 'k' || e.key === 'K') {
@@ -1557,6 +1606,16 @@ document.addEventListener('keydown', (e) => {
       renderMatrix();
       renderCanvas();
     }
+  }
+});
+
+// Soltar O: volta pra imagem atual. Independente do foco — se soltou, volta.
+document.addEventListener('keyup', (e) => {
+  if (!tirinha) return;
+  if (document.body.getAttribute('data-screen') !== 'fe-editor') return;
+  if ((e.key === 'o' || e.key === 'O') && mostrandoOriginal) {
+    mostrandoOriginal = false;
+    renderCanvas();
   }
 });
 

@@ -4647,6 +4647,21 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   cursor: help;
 }
 
+/* Botao "limpar avisos" no topbar — borda rust em vez de cyan pra sinalizar
+ * que ha algo a tratar. Contador discreto ao lado do label. */
+.fe-btn-clear-errors {
+  border-color: var(--rust, #c47855) !important;
+  color: var(--rust, #c47855) !important;
+}
+.fe-btn-clear-errors:hover:not(:disabled) {
+  background: rgba(196, 120, 85, 0.10);
+}
+.fe-clear-errors-count {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
 /* === Estados otimistas (operações pendentes de sync com backend) === */
 /* Bolinha discreta no canto inferior direito do header de linha/coluna ou da
  * borda do nome da tirinha. Sutil, não bloqueia interação. */

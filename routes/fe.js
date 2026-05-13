@@ -34,8 +34,8 @@ const TIRINHA_COLS = `id, nome, largura, altura, origem, origem_meta,
                        last_aseprite_url, created_at, updated_at`;
 const CAMADA_COLS = `id, tirinha_id, nome, ordem, visivel, created_at`;
 const QUADRO_COLS = `id, tirinha_id, indice, created_at`;
-const CELULA_COLS = `id, tirinha_id, camada_id, quadro_id, png_url, largura, altura,
-                     estado, estado_erro, estado_atualizado_em, updated_at`;
+const CELULA_COLS = `id, tirinha_id, camada_id, quadro_id, png_url, png_url_original,
+                     largura, altura, estado, estado_erro, estado_atualizado_em, updated_at`;
 
 function gcsPathParaPng(tirinhaId, celulaId) {
   const dia = new Date().toISOString().slice(0, 10);
@@ -213,8 +213,8 @@ router.post('/tirinhas', requireUser, async (req, res) => {
         for (let qi = 0; qi < quadrosIds.length; qi++) {
           const dados = matriz.get(`${ci}:${qi}`) || { png_url: null, largura: null, altura: null };
           const { rows: [novaCel] } = await client.query(
-            `INSERT INTO fe_celula (tirinha_id, camada_id, quadro_id, png_url, largura, altura)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${CELULA_COLS}`,
+            `INSERT INTO fe_celula (tirinha_id, camada_id, quadro_id, png_url, png_url_original, largura, altura)
+             VALUES ($1, $2, $3, $4, $4, $5, $6) RETURNING ${CELULA_COLS}`,
             [tirinha.id, camadasIds[ci], quadrosIds[qi], dados.png_url, dados.largura, dados.altura]
           );
           celulas.push(novaCel);
@@ -692,6 +692,26 @@ router.patch('/celulas/:id', requireUser, async (req, res) => {
 // ============================================================
 // Prompt (IA) — assíncrono desde o MVP (ia.md §1)
 // ============================================================
+
+// POST /api/fe/tirinhas/:id/clear-errors — limpa estado_erro de todas as
+// celulas da tirinha (alvo: avisos visuais residuais de geracoes passadas).
+// Resp: { cleared: <count> }.
+router.post('/tirinhas/:id/clear-errors', requireUser, async (req, res) => {
+  try {
+    const { rowCount } = await req.app.locals.pool.query(
+      `UPDATE fe_celula
+          SET estado_erro = NULL
+        WHERE tirinha_id = $1
+          AND estado_erro IS NOT NULL`,
+      [req.params.id]
+    );
+    res.json({ cleared: rowCount });
+  } catch (e) {
+    if (tratarErroId(e, res)) return;
+    console.error('clear-errors:', e);
+    res.status(500).json({ error: 'falha ao limpar avisos' });
+  }
+});
 
 // GET /api/fe/models — catalogo de modelos disponiveis pra prompts em celula.
 // Resp: { models: [{ key, label, sub, hint }], default: <key> }
