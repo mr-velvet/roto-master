@@ -1188,6 +1188,106 @@
     </div>
   </div>
 
+  <!-- modal: edicao local (dither / ajustes) — Frames Editor -->
+  <div class="modal modal-wide" data-modal="fe-edits" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Frames Editor</div>
+        <h3 data-bind="fe-edits-title">Editar celula(s)</h3>
+        <p class="modal-sub">Edicoes locais, sem IA. Entram no historico igual prompts.</p>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>operacao</span>
+          <div class="custom-select" data-bind="fe-edits-op-select">
+            <button class="custom-select-btn" data-action="fe-edits-toggle-op-select" type="button">
+              <span data-bind="fe-edits-op-label">—</span>
+              <span class="caret">▾</span>
+            </button>
+            <ul class="custom-select-menu" data-bind="fe-edits-op-menu" hidden></ul>
+          </div>
+          <span class="field-hint" data-bind="fe-edits-op-hint">—</span>
+        </label>
+
+        <label class="fe-checkbox-field">
+          <input type="checkbox" data-bind="fe-edits-use-original" checked />
+          <span class="fe-checkbox-label">aplicar sobre a <strong>imagem original</strong> da celula</span>
+          <span class="fe-checkbox-hint">ignora edicoes anteriores e usa a imagem que veio na importacao como base</span>
+        </label>
+
+        <!-- params de DITHER -->
+        <div data-bind="fe-edits-params-dither" hidden>
+          <label class="fe-checkbox-field">
+            <input type="checkbox" data-bind="fe-edits-pixelate-on" />
+            <span class="fe-checkbox-label">pixelizar antes</span>
+            <span class="fe-checkbox-hint">reduz detalhe via blocos de N px antes de quantizar a cor</span>
+          </label>
+          <label class="field" data-bind="fe-edits-pixelate-wrap" hidden>
+            <span>tamanho do bloco (px) — <span data-bind="fe-edits-pixelate-val">8</span></span>
+            <input type="range" min="2" max="64" value="8" data-bind="fe-edits-pixelate-size" />
+          </label>
+          <label class="field">
+            <span>algoritmo</span>
+            <div class="custom-select" data-bind="fe-edits-algo-select">
+              <button class="custom-select-btn" data-action="fe-edits-toggle-algo-select" type="button">
+                <span data-bind="fe-edits-algo-label">Floyd-Steinberg</span>
+                <span class="caret">▾</span>
+              </button>
+              <ul class="custom-select-menu" data-bind="fe-edits-algo-menu" hidden>
+                <li class="custom-select-item" data-algo="floyd-steinberg"><span>Floyd-Steinberg</span><span class="fe-prompt-model-sub">propagacao de erro classica</span></li>
+                <li class="custom-select-item" data-algo="atkinson"><span>Atkinson</span><span class="fe-prompt-model-sub">propagacao parcial — visual Mac classico</span></li>
+                <li class="custom-select-item" data-algo="bayer4"><span>Bayer 4x4</span><span class="fe-prompt-model-sub">padrao ordenado, baixo ruido</span></li>
+                <li class="custom-select-item" data-algo="bayer8"><span>Bayer 8x8</span><span class="fe-prompt-model-sub">padrao ordenado, mais detalhe</span></li>
+                <li class="custom-select-item" data-algo="none"><span>Quantize sem dither</span><span class="fe-prompt-model-sub">so reduz cor, sem propagacao</span></li>
+              </ul>
+            </div>
+          </label>
+          <label class="field">
+            <span>paleta</span>
+            <div class="custom-select" data-bind="fe-edits-paleta-select">
+              <button class="custom-select-btn" data-action="fe-edits-toggle-paleta-select" type="button">
+                <span data-bind="fe-edits-paleta-label">—</span>
+                <span class="caret">▾</span>
+              </button>
+              <ul class="custom-select-menu" data-bind="fe-edits-paleta-menu" hidden></ul>
+            </div>
+          </label>
+          <label class="field" data-bind="fe-edits-niveis-wrap" hidden>
+            <span>niveis — <span data-bind="fe-edits-niveis-val">4</span></span>
+            <input type="range" min="2" max="32" value="4" data-bind="fe-edits-niveis" />
+          </label>
+        </div>
+
+        <!-- params de ADJUST -->
+        <div data-bind="fe-edits-params-adjust" hidden>
+          <label class="field">
+            <span>brilho — <span data-bind="fe-edits-brilho-val">0</span></span>
+            <input type="range" min="-100" max="100" value="0" data-bind="fe-edits-brilho" />
+          </label>
+          <label class="field">
+            <span>contraste — <span data-bind="fe-edits-contraste-val">0</span></span>
+            <input type="range" min="-100" max="100" value="0" data-bind="fe-edits-contraste" />
+          </label>
+          <label class="field">
+            <span>saturacao — <span data-bind="fe-edits-saturacao-val">0</span></span>
+            <input type="range" min="-100" max="100" value="0" data-bind="fe-edits-saturacao" />
+          </label>
+        </div>
+
+        <div class="fe-prompt-target" data-bind="fe-edits-target">—</div>
+        <div class="modal-err" data-bind="fe-edits-err"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="modal-close">cancelar</button>
+        <button class="btn btn-primary fe-btn-primary" data-action="fe-confirm-edits">
+          <span class="btn-icon">▦</span>
+          aplicar edicao
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- modal: historico de prompts ja usados (Frames Editor) -->
   <div class="modal modal-wide" data-modal="fe-prompt-history" hidden>
     <div class="modal-backdrop" data-action="modal-close"></div>

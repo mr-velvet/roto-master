@@ -25,6 +25,7 @@ import { listProjects } from './projects_api.js';
 import { openModal, closeModal, showToast, confirmModal } from './modals.js';
 import { navigateFeHome } from './router.js';
 import { buildAsepriteDoFrameEditor } from './aseprite_io.js';
+import { initFeEdits, abrirModalEdits } from './fe_edits.js';
 
 // === Estado local da tirinha em edição ===
 //
@@ -272,6 +273,7 @@ const $cm = document.querySelector('[data-bind="fe-context-menu"]');
 
 // === Entry point ===
 export async function showFeEditor(id) {
+  window._feTirinhaIdAtual = id;
   selecionadas.clear();
   activeCelKey = null;
   activeQuadroIdx = 0;
@@ -303,6 +305,7 @@ export async function showFeEditor(id) {
   }
   await aplicarEstadoTirinha(data, { recenter: true });
   await garantirModelosCarregados();
+  garantirEditsInicializado();
 }
 
 // Carrega o cat~alogo de modelos do servidor (apenas uma vez por sess~ao).
@@ -372,6 +375,21 @@ async function garantirModelosCarregados() {
   } catch (e) {
     console.warn('listFeModels falhou:', e);
   }
+}
+
+let feEditsInicializado = false;
+function garantirEditsInicializado() {
+  if (feEditsInicializado) return;
+  feEditsInicializado = true;
+  initFeEdits({
+    onConfirm: async () => {
+      // refresca estado da tirinha apos disparar edicao
+      try {
+        const data = await getTirinha(tirinha.id);
+        await aplicarEstadoTirinha(data);
+      } catch (e) { /* polling pega depois */ }
+    },
+  });
 }
 
 async function aplicarEstadoTirinha(data, opts = {}) {
@@ -1264,9 +1282,11 @@ function abrirMenuCamada(ev, camadaId) {
     { label: cam.visivel ? 'ocultar' : 'mostrar', onClick: () => alternarVisibilidade(camadaId) },
     { sep: true },
     { label: 'prompt pra todos os quadros desta camada', onClick: () => abrirModalPrompt({ tipo: 'camada', ids: idsCamada, contexto: `vai aplicar em ${idsCamada.length} célula${idsCamada.length === 1 ? '' : 's'} (camada "${cam.nome}" × todos os quadros)` }) },
+    { label: 'editar célula(s) desta camada (sem IA)', onClick: () => abrirModalEdits({ ids: idsCamada, contexto: `vai aplicar em ${idsCamada.length} célula${idsCamada.length === 1 ? '' : 's'} (camada "${cam.nome}")` }) },
   ];
   if (outrasCamadasNaSel) {
     items.push({ label: `prompt pros selecionados (${idsSelecionados.length})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+    items.push({ label: `editar selecionados (${idsSelecionados.length})`, onClick: () => abrirModalEdits({ ids: idsSelecionados }) });
   }
   items.push({ sep: true });
   items.push({ label: 'deletar camada', danger: true, disabled: camadasOrdenadas.length <= 1, onClick: () => deletarCamadaConfirm(camadaId) });
@@ -1304,8 +1324,10 @@ function abrirMenuQuadro(ev, quadroId) {
   if (multiplos) {
     const n = selecionadas.size;
     items.push({ label: `prompt nos ${quadrosSelInteiros.length} quadros selecionados (${n} células)`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+    items.push({ label: `editar nos ${quadrosSelInteiros.length} quadros selecionados (${n} células)`, onClick: () => abrirModalEdits({ ids: idsParaEdicaoContexto() }) });
   } else {
     items.push({ label: 'prompt pra todas as camadas deste quadro', onClick: () => abrirModalPrompt({ tipo: 'quadro', ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1} × todas as camadas)` }) });
+    items.push({ label: 'editar todas as camadas deste quadro (sem IA)', onClick: () => abrirModalEdits({ ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1})` }) });
     // Se ha celulas selecionadas em OUTROS quadros mas n~ao a coluna inteira,
     // ainda da' pra rodar prompt nos selecionados.
     const outrosNaSel = [...selecionadas].some((k) => k.split(':')[1] !== quadroId);
@@ -1346,9 +1368,12 @@ function abrirMenuCelula(ev, camadaId, quadroId) {
   const temPng = !!(cel && cel.png_url);
   const items = [
     { label: 'prompt nesta célula', disabled: !cel || cel.estado === 'processando', onClick: () => abrirModalPrompt({ tipo: 'cell', ids: cel ? [cel.id] : [], contexto: `vai aplicar em 1 célula` }) },
+    { label: 'editar célula (sem IA)', disabled: !cel || cel.estado === 'processando' || !temPng, onClick: () => abrirModalEdits({ ids: cel ? [cel.id] : [] }) },
   ];
   if (selecionadas.size > 1) {
+    items.push({ sep: true });
     items.push({ label: `prompt pros selecionados (${selecionadas.size})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+    items.push({ label: `editar selecionados (${selecionadas.size})`, onClick: () => abrirModalEdits({ ids: idsParaEdicaoContexto() }) });
   }
   if (temPng) {
     items.push({ sep: true });
@@ -1789,6 +1814,13 @@ document.addEventListener('keydown', (e) => {
     }
     return;
   }
+  // E: abre modal de edicao local (dither / ajustes). Mesma logica de alvos do P.
+  if ((e.key === 'e' || e.key === 'E') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    const ids = idsParaEdicaoContexto();
+    if (ids.length) abrirModalEdits({ ids });
+    return;
+  }
   if (isPlaying) return; // setas só navegam quando pausado
   if (e.key === 'ArrowLeft') {
     if (activeQuadroIdx > 0) {
@@ -2201,6 +2233,24 @@ document.addEventListener('click', (e) => {
   if (!tirinha || !selecionadas.size || dispararEmCurso) return;
   abrirModalPrompt({ tipo: 'selected' });
 });
+
+// Resolve ids de celula pra acoes contextuais (atalho P/E, item de menu sem
+// celula especifica). Selecionadas tem prioridade; senao usa celula ativa.
+function idsParaEdicaoContexto() {
+  if (selecionadas && selecionadas.size > 0) {
+    const ids = [];
+    for (const k of selecionadas) {
+      const c = celulasMap.get(k);
+      if (c && c.estado !== 'processando') ids.push(c.id);
+    }
+    return ids;
+  }
+  if (activeCelKey) {
+    const c = celulasMap.get(activeCelKey);
+    if (c && c.estado !== 'processando') return [c.id];
+  }
+  return [];
+}
 
 // Modal de prompt — alvos resolvidos antes de abrir, salvos em `promptAlvosIds`.
 // promptModoAtual fica pra retrocompat com handlers que ainda lêem ('all'/'selected').

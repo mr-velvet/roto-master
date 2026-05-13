@@ -19,6 +19,11 @@ const {
   FE_PROMPT_MODELS_BY_KEY,
   FE_PROMPT_DEFAULT_MODEL,
 } = require('../lib/fe-prompts');
+const {
+  processarEdicaoLote,
+  FE_EDIT_OPS,
+  PALETTES_LIST,
+} = require('../lib/fe-edits');
 const fal = require('../lib/providers/fal');
 
 const router = Router();
@@ -863,6 +868,69 @@ router.post('/prompts', requireUser, async (req, res) => {
     if (tratarErroId(e, res)) return;
     console.error('post prompts:', e);
     res.status(500).json({ error: 'falha ao disparar prompt' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/fe/edits/ops — catalogo de operacoes de edicao local (dither, adjust).
+// Inclui tambem PALETTES_LIST pro modal popular o dropdown de paleta.
+router.get('/edits/ops', requireUser, (req, res) => {
+  res.json({ ops: FE_EDIT_OPS, palettes: PALETTES_LIST });
+});
+
+// POST /api/fe/edits — dispara edicao local (dither/adjust) em uma ou mais celulas.
+// Body: { tirinha_id, celulas_ids, op_type: 'dither'|'adjust', op_params, usar_original? }
+// Resp: { job_id, celulas_marcadas } (HTTP 202)
+//
+// Espelha /api/fe/prompts: marca processando, 202 imediato, fire-and-forget.
+// Sem provider externo — roda CPU local via lib/fe-edits.
+router.post('/edits', requireUser, async (req, res) => {
+  const tirinhaId = (req.body?.tirinha_id || '').trim();
+  const celulasIds = Array.isArray(req.body?.celulas_ids) ? req.body.celulas_ids : [];
+  const opType = (req.body?.op_type || '').trim();
+  const opParams = (req.body?.op_params && typeof req.body.op_params === 'object') ? req.body.op_params : {};
+  const usarOriginal = req.body?.usar_original === true;
+
+  if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
+  if (!celulasIds.length) return res.status(400).json({ error: 'celulas_ids obrigatório' });
+  if (celulasIds.length > 500) return res.status(400).json({ error: 'lote muito grande (máx 500)' });
+  if (!FE_EDIT_OPS.some((o) => o.key === opType)) {
+    return res.status(400).json({ error: `op_type inválido: '${opType}'` });
+  }
+
+  const pool = req.app.locals.pool;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: marcadas } = await client.query(
+      `UPDATE fe_celula
+          SET estado = 'processando',
+              estado_erro = NULL,
+              estado_atualizado_em = NOW()
+        WHERE id = ANY($1::uuid[])
+          AND tirinha_id = $2
+          AND estado = 'idle'
+        RETURNING id`,
+      [celulasIds, tirinhaId]
+    );
+    await client.query('COMMIT');
+
+    const idsMarcados = marcadas.map((r) => r.id);
+    const jobId = crypto.randomUUID();
+
+    if (idsMarcados.length > 0) {
+      processarEdicaoLote(pool, idsMarcados, opType, opParams, usarOriginal).catch((e) => {
+        console.error('fe-edits lote', jobId, 'falhou:', e);
+      });
+    }
+
+    res.status(202).json({ job_id: jobId, celulas_marcadas: idsMarcados });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (tratarErroId(e, res)) return;
+    console.error('post edits:', e);
+    res.status(500).json({ error: 'falha ao disparar edição' });
   } finally {
     client.release();
   }

@@ -5142,3 +5142,17 @@ body[data-space="frame-editor"] .fe-editor-canvas { cursor: default; }
   outline-offset: -2px;
 }
 
+/* Modal fe-edits — hint inline + sliders */
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--paper-3);
+  font-family: var(--font-mono);
+  font-style: italic;
+}
+[data-modal="fe-edits"] input[type="range"] {
+  width: 100%;
+  margin-top: 6px;
+}
+

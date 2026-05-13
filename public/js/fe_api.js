@@ -211,6 +211,30 @@ export async function listFeModels() {
   return jsonOrThrow(r, 'listar modelos');
 }
 
+// Catalogo de operacoes de edicao local (dither/adjust) + paletas.
+export async function listFeEditOps() {
+  const r = await authedFetch('/api/fe/edits/ops');
+  return jsonOrThrow(r, 'listar operacoes de edicao');
+}
+
+// Dispara edicao local em N celulas. opType: 'dither' | 'adjust'.
+export async function dispararEdicao({ tirinhaId, celulasIds, opType, opParams, usarOriginal }) {
+  const body = {
+    tirinha_id: tirinhaId,
+    celulas_ids: celulasIds,
+    op_type: opType,
+    op_params: opParams || {},
+  };
+  if (usarOriginal) body.usar_original = true;
+  const r = await authedFetch('/api/fe/edits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (r.status === 404) throw new Error('endpoint de edicao ainda nao disponivel');
+  return jsonOrThrow(r, 'disparar edicao');
+}
+
 // Single-step undo de uma celula: backend pop a versao mais recente e
 // devolve a celula atualizada. 404 se nao ha historico.
 export async function undoCelula(celulaId) {
