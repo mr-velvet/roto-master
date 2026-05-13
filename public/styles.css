@@ -1535,6 +1535,38 @@ button.tag {
 }
 .modal-wide .modal-card { width: 760px; }
 
+/* Modal de prompt cresceu (style-ref + bg-remove + ratio info). Em telas
+ * baixas estoura — vira coluna scrollavel no body, mantendo head/foot fixos.
+ * .has-scroll-body permite reusar em outros modais grandes. */
+.has-scroll-body .modal-card,
+[data-modal="fe-prompt"] .modal-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+}
+.has-scroll-body .modal-head,
+[data-modal="fe-prompt"] .modal-head,
+.has-scroll-body .modal-foot,
+[data-modal="fe-prompt"] .modal-foot { flex: 0 0 auto; }
+.has-scroll-body .modal-body,
+[data-modal="fe-prompt"] .modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* scrollbar fina/minimalista — regra global proibe scrollbar nativa. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--paper-5) transparent;
+}
+.has-scroll-body .modal-body::-webkit-scrollbar,
+[data-modal="fe-prompt"] .modal-body::-webkit-scrollbar { width: 8px; }
+.has-scroll-body .modal-body::-webkit-scrollbar-thumb,
+[data-modal="fe-prompt"] .modal-body::-webkit-scrollbar-thumb {
+  background: var(--paper-5);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.has-scroll-body .modal-body::-webkit-scrollbar-track,
+[data-modal="fe-prompt"] .modal-body::-webkit-scrollbar-track { background: transparent; }
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

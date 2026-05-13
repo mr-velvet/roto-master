@@ -2435,6 +2435,27 @@ document.addEventListener('change', (e) => {
     e.target.value = ''; // reset pra permitir re-escolher o mesmo arquivo
   }
 });
+// Ctrl+V / Cmd+V de imagem no modal de prompt: pega o primeiro item do
+// clipboard que seja imagem e sobe como style ref. So' age quando o modal
+// estiver aberto. Texto colado no textarea segue funcionando normal — quando
+// clipboard tem imagem o paste do textarea naturalmente ignora.
+document.addEventListener('paste', (e) => {
+  const m = document.querySelector('[data-modal="fe-prompt"]');
+  if (!m || m.hasAttribute('hidden')) return;
+  const items = e.clipboardData?.items;
+  if (!items || !items.length) return;
+  for (const it of items) {
+    if (it.kind === 'file' && /^image\//i.test(it.type)) {
+      const file = it.getAsFile();
+      if (file) {
+        e.preventDefault();
+        carregarStyleRefArquivo(file);
+        return;
+      }
+    }
+  }
+});
+
 // Drag & drop direto no botao de drop.
 document.addEventListener('dragover', (e) => {
   const drop = e.target.closest('[data-action="fe-style-ref-pick"]');
