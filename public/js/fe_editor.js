@@ -18,7 +18,7 @@ import {
   addQuadro, deleteQuadro,
   patchCelula,
   uploadAseprite, dispararPrompt, listFeModels, undoCelula, clearTirinhaErrors, planejarRatio,
-  publicarComoAsset,
+  publicarComoAsset, removerBackground, uploadStyleRef,
 } from './fe_api.js';
 import { enhancePrompt } from './generate_api.js';
 import { listProjects } from './projects_api.js';
@@ -1283,10 +1283,13 @@ function abrirMenuCamada(ev, camadaId) {
     { sep: true },
     { label: 'prompt pra todos os quadros desta camada', onClick: () => abrirModalPrompt({ tipo: 'camada', ids: idsCamada, contexto: `vai aplicar em ${idsCamada.length} célula${idsCamada.length === 1 ? '' : 's'} (camada "${cam.nome}" × todos os quadros)` }) },
     { label: 'editar célula(s) desta camada (sem IA)', onClick: () => abrirModalEdits({ ids: idsCamada, contexto: `vai aplicar em ${idsCamada.length} célula${idsCamada.length === 1 ? '' : 's'} (camada "${cam.nome}")` }) },
+    { label: 'remover fundo nesta camada inteira', onClick: () => dispararBgRemove(idsCamada) },
+    { label: 'remover fundo → nova camada', onClick: () => dispararBgRemove(idsCamada, { novaCamada: true }) },
   ];
   if (outrasCamadasNaSel) {
     items.push({ label: `prompt pros selecionados (${idsSelecionados.length})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
     items.push({ label: `editar selecionados (${idsSelecionados.length})`, onClick: () => abrirModalEdits({ ids: idsSelecionados }) });
+    items.push({ label: `remover fundo dos selecionados (${idsSelecionados.length})`, onClick: () => dispararBgRemove(idsSelecionados) });
   }
   items.push({ sep: true });
   items.push({ label: 'deletar camada', danger: true, disabled: camadasOrdenadas.length <= 1, onClick: () => deletarCamadaConfirm(camadaId) });
@@ -1325,15 +1328,18 @@ function abrirMenuQuadro(ev, quadroId) {
     const n = selecionadas.size;
     items.push({ label: `prompt nos ${quadrosSelInteiros.length} quadros selecionados (${n} células)`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
     items.push({ label: `editar nos ${quadrosSelInteiros.length} quadros selecionados (${n} células)`, onClick: () => abrirModalEdits({ ids: idsParaEdicaoContexto() }) });
+    items.push({ label: `remover fundo (${n} células)`, onClick: () => dispararBgRemove(idsParaEdicaoContexto()) });
   } else {
     items.push({ label: 'prompt pra todas as camadas deste quadro', onClick: () => abrirModalPrompt({ tipo: 'quadro', ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1} × todas as camadas)` }) });
     items.push({ label: 'editar todas as camadas deste quadro (sem IA)', onClick: () => abrirModalEdits({ ids: idsQuadro, contexto: `vai aplicar em ${idsQuadro.length} célula${idsQuadro.length === 1 ? '' : 's'} (quadro ${q.indice + 1})` }) });
+    items.push({ label: 'remover fundo neste quadro inteiro', onClick: () => dispararBgRemove(idsQuadro) });
     // Se ha celulas selecionadas em OUTROS quadros mas n~ao a coluna inteira,
     // ainda da' pra rodar prompt nos selecionados.
     const outrosNaSel = [...selecionadas].some((k) => k.split(':')[1] !== quadroId);
     if (outrosNaSel) {
       const n = selecionadas.size;
       items.push({ label: `prompt pros selecionados (${n})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
+      items.push({ label: `remover fundo dos selecionados (${n})`, onClick: () => dispararBgRemove(idsParaEdicaoContexto()) });
     }
   }
   items.push({ sep: true });
@@ -1374,6 +1380,12 @@ function abrirMenuCelula(ev, camadaId, quadroId) {
     items.push({ sep: true });
     items.push({ label: `prompt pros selecionados (${selecionadas.size})`, onClick: () => abrirModalPrompt({ tipo: 'selected' }) });
     items.push({ label: `editar selecionados (${selecionadas.size})`, onClick: () => abrirModalEdits({ ids: idsParaEdicaoContexto() }) });
+    items.push({ label: `remover fundo dos selecionados (${selecionadas.size})`, onClick: () => dispararBgRemove(idsParaEdicaoContexto()) });
+    items.push({ label: `remover fundo → nova camada (${selecionadas.size})`, onClick: () => dispararBgRemove(idsParaEdicaoContexto(), { novaCamada: true }) });
+  } else if (temPng) {
+    items.push({ sep: true });
+    items.push({ label: 'remover fundo', disabled: cel.estado === 'processando', onClick: () => dispararBgRemove([cel.id]) });
+    items.push({ label: 'remover fundo → nova camada', disabled: cel.estado === 'processando', onClick: () => dispararBgRemove([cel.id], { novaCamada: true }) });
   }
   if (temPng) {
     items.push({ sep: true });
@@ -2252,10 +2264,196 @@ function idsParaEdicaoContexto() {
   return [];
 }
 
+// Dispara remocao de fundo nas celulas via fal.ai (BiRefNet v2).
+// Se novaCamada=true: cria camada nova com mesmo nome+' (sem fundo)', copia
+// os pngs das celulas origem pras correspondentes da nova camada (mesmos
+// quadros), e dispara bg-remove la'. Celulas origem ficam intactas.
+// Se false: aplica in-place nas celulas passadas.
+async function dispararBgRemove(idsOrigem, { novaCamada = false } = {}) {
+  if (!tirinha) return;
+  if (!idsOrigem || !idsOrigem.length) return;
+  // Filtra ids invalidos / processando / sem png.
+  const idSet = new Set(idsOrigem);
+  const origens = [];
+  for (const cel of celulasMap.values()) {
+    if (!idSet.has(cel.id)) continue;
+    if (cel.estado === 'processando') continue;
+    if (isTmpId(cel.id)) continue;
+    if (!cel.png_url) continue;
+    origens.push(cel);
+  }
+  if (!origens.length) {
+    showToast('nenhuma célula com imagem pra remover fundo');
+    return;
+  }
+
+  if (!novaCamada) {
+    // Aplica in-place: feedback otimista igual ao prompt.
+    const ids = origens.map((c) => c.id);
+    const marcados = marcarLocalProcessando(ids);
+    renderMatrix();
+    showToast(`removendo fundo de ${marcados.length} célula${marcados.length === 1 ? '' : 's'}…`);
+    try {
+      await removerBackground({ tirinhaId: tirinha.id, celulasIds: ids });
+      agendarPollingSeNecessario();
+    } catch (err) {
+      console.warn('bg-remove falhou:', err);
+      reverterLocalProcessando(marcados);
+      renderMatrix();
+      showToast('falha ao remover fundo — tente de novo');
+    }
+    return;
+  }
+
+  // Nova camada: cria, copia pngs, dispara bg-remove. Sem otimismo local —
+  // depende de respostas da API pra existir, entao toast informa e ao final
+  // reloadAndRender pega tudo.
+  showToast('criando camada e copiando…');
+  try {
+    // Nome da nova camada: pega o nome da camada origem mais comum + " (sem fundo)".
+    // Se varias camadas envolvidas, usa nome generico.
+    const nomesCamada = new Set(origens.map((c) => {
+      const cam = camadasOrdenadas.find((cc) => cc.id === c.camada_id);
+      return cam ? cam.nome : null;
+    }).filter(Boolean));
+    let nomeNovo;
+    if (nomesCamada.size === 1) {
+      nomeNovo = `${[...nomesCamada][0]} (sem fundo)`;
+    } else {
+      nomeNovo = 'sem fundo';
+    }
+
+    const novaCam = await addCamada(tirinha.id, { nome: nomeNovo });
+    // Reload pra pegar as celulas vazias da nova camada.
+    await reloadAndRender();
+
+    // Pra cada celula origem, acha a celula correspondente (mesmo quadro_id)
+    // na nova camada e patcha com o png_url da origem.
+    const idsDestino = [];
+    for (const orig of origens) {
+      const destino = (tirinha.celulas || []).find((c) =>
+        c.camada_id === novaCam.id && c.quadro_id === orig.quadro_id
+      );
+      if (!destino) continue;
+      await patchCelula(destino.id, {
+        png_url: orig.png_url,
+        largura: orig.largura,
+        altura: orig.altura,
+      });
+      idsDestino.push(destino.id);
+    }
+
+    if (!idsDestino.length) {
+      showToast('camada criada mas nenhuma célula correspondente encontrada');
+      return;
+    }
+
+    // Reload pra ver os pngs copiados antes do processamento comecar.
+    await reloadAndRender();
+    marcarLocalProcessando(idsDestino);
+    renderMatrix();
+    showToast(`removendo fundo em ${idsDestino.length} célula${idsDestino.length === 1 ? '' : 's'} (camada nova)…`);
+
+    await removerBackground({ tirinhaId: tirinha.id, celulasIds: idsDestino });
+    agendarPollingSeNecessario();
+  } catch (err) {
+    console.error('bg-remove (nova camada):', err);
+    showToast('falha — ' + (err.message || 'tente de novo'));
+    await reloadAndRender();
+  }
+}
+
 // Modal de prompt — alvos resolvidos antes de abrir, salvos em `promptAlvosIds`.
 // promptModoAtual fica pra retrocompat com handlers que ainda lêem ('all'/'selected').
 let promptModoAtual = 'selected';
 let promptAlvosIds = [];
+// URL da imagem de referencia de estilo anexada no modal de prompt. null se
+// nenhuma. Persiste entre aberturas do modal (mesma sessao) — reset acontece
+// em fechar/cancelar nao em abrir, pra permitir reusar a mesma ref em varios
+// prompts seguidos. Reset explicito via clearStyleRef().
+let styleRefUrlAtual = null;
+
+function setStyleRef(url) {
+  styleRefUrlAtual = url || null;
+  renderStyleRef();
+}
+function clearStyleRef() { setStyleRef(null); }
+
+function renderStyleRef() {
+  const m = document.querySelector('[data-modal="fe-prompt"]');
+  if (!m) return;
+  const $empty = m.querySelector('[data-bind="fe-style-ref-empty"]');
+  const $loaded = m.querySelector('[data-bind="fe-style-ref-loaded"]');
+  const $thumb = m.querySelector('[data-bind="fe-style-ref-thumb"]');
+  if (!$empty || !$loaded || !$thumb) return;
+  if (styleRefUrlAtual) {
+    $thumb.src = styleRefUrlAtual;
+    $empty.setAttribute('hidden', '');
+    $loaded.removeAttribute('hidden');
+  } else {
+    $thumb.removeAttribute('src');
+    $loaded.setAttribute('hidden', '');
+    $empty.removeAttribute('hidden');
+  }
+}
+
+async function carregarStyleRefArquivo(file) {
+  if (!file) return;
+  if (!/^image\/(png|jpeg|webp)$/i.test(file.type)) {
+    showToast('formato não suportado (use PNG, JPG ou WebP)');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('imagem muito grande (máx 10MB)');
+    return;
+  }
+  showToast('subindo referência…');
+  try {
+    const { url } = await uploadStyleRef({ blob: file, filename: file.name });
+    setStyleRef(url);
+    showToast('referência anexada');
+  } catch (err) {
+    console.warn('upload style-ref falhou:', err);
+    showToast('falha ao subir referência');
+  }
+}
+
+// Handlers da style ref — registrados uma vez no load.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-action="fe-style-ref-pick"]')) {
+    const $input = document.querySelector('[data-bind="fe-style-ref-input"]');
+    if ($input) $input.click();
+  }
+  if (e.target.closest('[data-action="fe-style-ref-remove"]')) {
+    clearStyleRef();
+  }
+});
+document.addEventListener('change', (e) => {
+  if (e.target?.matches('[data-bind="fe-style-ref-input"]')) {
+    const f = e.target.files?.[0];
+    if (f) carregarStyleRefArquivo(f);
+    e.target.value = ''; // reset pra permitir re-escolher o mesmo arquivo
+  }
+});
+// Drag & drop direto no botao de drop.
+document.addEventListener('dragover', (e) => {
+  const drop = e.target.closest('[data-action="fe-style-ref-pick"]');
+  if (!drop) return;
+  e.preventDefault();
+  drop.classList.add('is-dragover');
+});
+document.addEventListener('dragleave', (e) => {
+  const drop = e.target.closest('[data-action="fe-style-ref-pick"]');
+  if (drop) drop.classList.remove('is-dragover');
+});
+document.addEventListener('drop', (e) => {
+  const drop = e.target.closest('[data-action="fe-style-ref-pick"]');
+  if (!drop) return;
+  e.preventDefault();
+  drop.classList.remove('is-dragover');
+  const f = e.dataTransfer?.files?.[0];
+  if (f) carregarStyleRefArquivo(f);
+});
 function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
   // tipo: 'all' | 'selected' | 'cell' | 'camada' | 'quadro'
   promptModoAtual = tipo;
@@ -2333,6 +2531,11 @@ function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
       }
     }
   }
+  // checkbox bg-remove: reset desligado a cada abertura.
+  const $bg = m.querySelector('[data-bind="fe-prompt-bg-remove"]');
+  if ($bg) $bg.checked = false;
+  // style-ref: persiste entre aberturas, so renderiza estado atual.
+  renderStyleRef();
   // enhance-undo escondido ao abrir
   feLastEnhanceBefore = null;
   const $undo = m.querySelector('[data-bind="fe-prompt-enhance-undo"]');
@@ -2376,6 +2579,8 @@ function popularDropdownModelos() {
 // Preview de gasto: estimativa baseada em price_usd_estimate do catalogo de
 // modelos (vem de GET /api/fe/models). Eh estimativa — Fal cobra ao receber
 // com base no que processou. Tooltip avisa.
+const BG_REMOVE_PRICE_ESTIMATE = 0.01; // BiRefNet v2 por celula
+
 function atualizarCustoEstimado() {
   const $cost = document.querySelector('[data-bind="fe-prompt-cost"]');
   if (!$cost) return;
@@ -2388,13 +2593,23 @@ function atualizarCustoEstimado() {
     $cost.removeAttribute('title');
     return;
   }
-  const total = n * preco;
+  const bg = !!document.querySelector('[data-bind="fe-prompt-bg-remove"]')?.checked;
+  const unit = preco + (bg ? BG_REMOVE_PRICE_ESTIMATE : 0);
+  const total = n * unit;
   const totalFmt = total < 0.01 ? '<$0.01' : `$${total.toFixed(2)}`;
-  const unitFmt = `$${preco.toFixed(3)}/célula`;
+  const unitFmt = `$${unit.toFixed(3)}/célula`;
+  const detalhe = bg
+    ? `prompt $${preco.toFixed(3)} + bg-remove $${BG_REMOVE_PRICE_ESTIMATE.toFixed(3)}`
+    : '';
   $cost.removeAttribute('hidden');
   $cost.innerHTML = `≈ ${escapeHtmlFe(totalFmt)} <span class="fe-prompt-cost-sub">${escapeHtmlFe(unitFmt)}</span>`;
-  $cost.title = `estimativa: ${n} × ${unitFmt} = ${totalFmt}. valor real cobrado pelo provider pode variar.`;
+  $cost.title = `estimativa: ${n} × ${unitFmt}${detalhe ? ` (${detalhe})` : ''} = ${totalFmt}. valor real cobrado pelo provider pode variar.`;
 }
+
+// Atualiza custo quando checkbox bg-remove muda.
+document.addEventListener('change', (e) => {
+  if (e.target?.matches('[data-bind="fe-prompt-bg-remove"]')) atualizarCustoEstimado();
+});
 
 async function atualizarRatioInfo() {
   if (!tirinha || !feModeloSelecionado) return;
@@ -2532,7 +2747,9 @@ document.addEventListener('click', async (e) => {
   const $text = m.querySelector('[data-bind="fe-prompt-text"]');
   const prompt = $text.value.trim();
   $err.textContent = '';
-  if (!prompt) { $err.textContent = 'escreva um prompt'; return; }
+  // Prompt vazio so' eh permitido se houver style ref anexada — backend usa
+  // default 'stylize as reference image'.
+  if (!prompt && !styleRefUrlAtual) { $err.textContent = 'escreva um prompt'; return; }
 
   // Filtra alvos resolvidos por abrirModalPrompt: ignora células em estado
   // processando (backend filtra do mesmo jeito, então a contagem bate com
@@ -2561,6 +2778,8 @@ document.addEventListener('click', async (e) => {
 
   const usarOriginal = !!m.querySelector('[data-bind="fe-prompt-use-original"]')?.checked;
   const autoAdaptRatio = !!m.querySelector('[data-bind="fe-prompt-auto-adapt"]')?.checked;
+  const bgRemoveAfter = !!m.querySelector('[data-bind="fe-prompt-bg-remove"]')?.checked;
+  const styleRefUrl = styleRefUrlAtual || undefined;
 
   try {
     const resp = await dispararPrompt({
@@ -2570,6 +2789,8 @@ document.addEventListener('click', async (e) => {
       modelKey: feModeloSelecionado || undefined,
       usarOriginal,
       autoAdaptRatio,
+      bgRemoveAfter,
+      styleRefUrl,
     });
     // Sucesso: backend marcou de verdade. Diferenca entre `idsMarcadosLocal`
     // e `celulas_marcadas` (resposta) e' tolerada — polling de 3s reconcilia
@@ -2582,8 +2803,9 @@ document.addEventListener('click', async (e) => {
     historicoPrompts.push({ celulasIds: idsParaUndo, ts: Date.now() });
     if (historicoPrompts.length > HISTORICO_MAX) historicoPrompts.shift();
     // Hist orico universal de prompts (localStorage) — pro user reaproveitar
-    // textos depois. Sa'lva soh em caso de sucesso.
-    adicionarAoHistoricoPrompts(prompt);
+    // textos depois. Sa'lva soh em caso de sucesso. Inclui ref de estilo (URL)
+    // quando anexada, pra reusar junto.
+    adicionarAoHistoricoPrompts(prompt, styleRefUrl);
     agendarPollingSeNecessario();
   } catch (err) {
     // Falha: reverte localmente e avisa o user. Copy neutro (sem mensagem
@@ -2816,6 +3038,7 @@ function lerHistoricoPrompts() {
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
+    // Tolera registros antigos sem style_ref_url — campo opcional.
     return arr.filter((it) => it && typeof it.text === 'string');
   } catch { return []; }
 }
@@ -2825,13 +3048,16 @@ function gravarHistoricoPrompts(arr) {
   catch {}
 }
 
-function adicionarAoHistoricoPrompts(text) {
+function adicionarAoHistoricoPrompts(text, styleRefUrl) {
   const t = (text || '').trim();
-  if (!t) return;
+  const ref = styleRefUrl || null;
+  if (!t && !ref) return;
   const arr = lerHistoricoPrompts();
-  // Dedup: remove ocorrencia existente, push no topo com ts novo.
-  const filtered = arr.filter((it) => it.text !== t);
-  filtered.unshift({ text: t, ts: Date.now() });
+  // Dedup: mesma combinacao texto + ref conta como mesma entrada.
+  const filtered = arr.filter((it) => !(it.text === t && (it.style_ref_url || null) === ref));
+  const novo = { text: t, ts: Date.now() };
+  if (ref) novo.style_ref_url = ref;
+  filtered.unshift(novo);
   gravarHistoricoPrompts(filtered);
 }
 
@@ -2854,10 +3080,20 @@ function renderizarListaHistorico() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'fe-prompt-history-item';
+    if (item.style_ref_url) btn.classList.add('has-ref');
     btn.dataset.text = item.text;
+    if (item.style_ref_url) btn.dataset.styleRefUrl = item.style_ref_url;
+    if (item.style_ref_url) {
+      const img = document.createElement('img');
+      img.className = 'fe-prompt-history-item-thumb';
+      img.src = item.style_ref_url;
+      img.alt = 'ref estilo';
+      btn.appendChild(img);
+    }
     const tx = document.createElement('span');
     tx.className = 'fe-prompt-history-item-text';
-    tx.textContent = item.text;
+    tx.textContent = item.text || '(prompt vazio — usa "stylize as reference image")';
+    if (!item.text) tx.classList.add('is-placeholder');
     const ts = document.createElement('span');
     ts.className = 'fe-prompt-history-item-ts';
     ts.textContent = formatarTimestampRelativo(item.ts);
@@ -2887,12 +3123,14 @@ function formatarTimestampRelativo(ts) {
 // texto atual do textarea pra repor quando voltar ao prompt.
 let promptTextoSalvoAntesDoHistorico = null;
 let textoEscolhidoNoHistorico = null;
+let styleRefEscolhidoNoHistorico = null; // undefined = nao mexer; null = remover; string = setar
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-action="fe-prompt-history-open"]')) return;
   const $ta = document.querySelector('[data-modal="fe-prompt"] [data-bind="fe-prompt-text"]');
   promptTextoSalvoAntesDoHistorico = $ta ? $ta.value : '';
   textoEscolhidoNoHistorico = null;
+  styleRefEscolhidoNoHistorico = undefined;
   renderizarListaHistorico();
   openModal('fe-prompt-history', { onClose: voltarAoModalDePrompt });
 });
@@ -2906,6 +3144,7 @@ function voltarAoModalDePrompt() {
   promptTextoSalvoAntesDoHistorico = null;
   // Reabre prompt — popularDropdownModelos e ratio info preservam estado da
   // selecao porque vem do feModeloSelecionado em mem oria.
+  const refEscolhida = styleRefEscolhidoNoHistorico;
   setTimeout(() => {
     openModal('fe-prompt');
     const $ta = document.querySelector('[data-modal="fe-prompt"] [data-bind="fe-prompt-text"]');
@@ -2915,7 +3154,11 @@ function voltarAoModalDePrompt() {
       const $undo = document.querySelector('[data-bind="fe-prompt-enhance-undo"]');
       if ($undo) $undo.setAttribute('hidden', '');
     }
+    // Se escolheu item do hist: aplica style ref do item (pode ser null se
+    // o item nao tinha ref — remove a ref atual pra refletir o estado salvo).
+    if (refEscolhida !== undefined) setStyleRef(refEscolhida);
     textoEscolhidoNoHistorico = null;
+    styleRefEscolhidoNoHistorico = undefined;
   }, 0);
 }
 
@@ -2925,6 +3168,7 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest('.fe-prompt-history-item');
   if (!btn) return;
   textoEscolhidoNoHistorico = btn.dataset.text || '';
+  styleRefEscolhidoNoHistorico = btn.dataset.styleRefUrl || null;
   closeModal();
 });
 

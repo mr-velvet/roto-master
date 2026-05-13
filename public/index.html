@@ -1155,6 +1155,11 @@
           <span class="fe-checkbox-label">aplicar sobre a <strong>imagem original</strong> da célula</span>
           <span class="fe-checkbox-hint" data-bind="fe-prompt-use-original-hint">ignora ediçoes anteriores e usa a imagem que veio na importação como base</span>
         </label>
+        <label class="fe-checkbox-field" data-bind="fe-prompt-bg-remove-wrap">
+          <input type="checkbox" data-bind="fe-prompt-bg-remove" />
+          <span class="fe-checkbox-label">remover fundo depois (BiRefNet)</span>
+          <span class="fe-checkbox-hint">após o prompt rodar, remove o fundo da imagem gerada (~$0.01/célula). Cada novo prompt sobrescreve esse fundo removido.</span>
+        </label>
         <label class="field">
           <div class="field-row-head">
             <span>prompt</span>
@@ -1172,6 +1177,23 @@
           <textarea data-bind="fe-prompt-text" rows="6" placeholder="ex: pinta com traço de bico-de-pena, fundo limpo, cores vivas"></textarea>
         </label>
         <button class="enhance-undo" data-bind="fe-prompt-enhance-undo" type="button" hidden>↶ desfazer melhoria</button>
+        <div class="fe-style-ref" data-bind="fe-style-ref">
+          <div class="fe-style-ref-empty" data-bind="fe-style-ref-empty">
+            <input type="file" data-bind="fe-style-ref-input" accept="image/png,image/jpeg,image/webp" hidden />
+            <button type="button" class="fe-style-ref-drop" data-action="fe-style-ref-pick">
+              <span class="fe-style-ref-drop-icon">+</span>
+              <span class="fe-style-ref-drop-label">arrastar ou clicar — imagem de referência de estilo</span>
+              <span class="fe-style-ref-drop-hint">PNG/JPG/WebP até 10MB. opcional. prompt vazio vira "stylize as reference image".</span>
+            </button>
+          </div>
+          <div class="fe-style-ref-loaded" data-bind="fe-style-ref-loaded" hidden>
+            <img data-bind="fe-style-ref-thumb" alt="referência de estilo" />
+            <div class="fe-style-ref-info">
+              <span class="fe-style-ref-info-label">referência de estilo anexada</span>
+              <button type="button" class="fe-style-ref-remove" data-action="fe-style-ref-remove">remover</button>
+            </div>
+          </div>
+        </div>
         <div class="fe-prompt-target">
           <span data-bind="fe-prompt-target">—</span>
           <span class="fe-prompt-cost" data-bind="fe-prompt-cost" hidden></span>

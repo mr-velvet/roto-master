@@ -24,6 +24,10 @@ const {
   FE_EDIT_OPS,
   PALETTES_LIST,
 } = require('../lib/fe-edits');
+const {
+  processarLote: processarBgRemoveLote,
+  PRICE_USD_ESTIMATE: BG_REMOVE_PRICE,
+} = require('../lib/fe-bg-remove');
 const fal = require('../lib/providers/fal');
 
 const router = Router();
@@ -635,6 +639,47 @@ router.post('/upload-png', requireUser, upload.single('file'), async (req, res) 
   }
 });
 
+// POST /api/fe/upload-style-ref — upload de imagem pra usar como referencia de
+// estilo no modal de prompt. Aceita PNG/JPG/WebP. Vai pro GCS sob path
+// frame-editor/style-refs/. Sem vinculo a tirinha/celula — eh global.
+// Multipart: file (image/*).
+router.post('/upload-style-ref', requireUser, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file obrigatório (multipart)' });
+  const buf = req.file.buffer;
+  if (!buf || buf.length < 8) return res.status(400).json({ error: 'arquivo vazio' });
+
+  // Detecta tipo pelos magic bytes — n~ao confia no content-type do cliente.
+  let contentType = null;
+  let ext = null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+    contentType = 'image/png'; ext = 'png';
+  } else if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) {
+    contentType = 'image/jpeg'; ext = 'jpg';
+  } else if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+             buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
+    contentType = 'image/webp'; ext = 'webp';
+  } else {
+    return res.status(400).json({ error: 'formato não suportado (use PNG, JPG ou WebP)' });
+  }
+
+  // Limite de tamanho — fal aceita ate' ~20MB mas refs grandes nao agregam
+  // qualidade. 10MB sobra.
+  if (buf.length > 10 * 1024 * 1024) {
+    return res.status(400).json({ error: 'imagem muito grande (máx 10MB)' });
+  }
+
+  try {
+    const dia = new Date().toISOString().slice(0, 10);
+    const hash = crypto.randomBytes(4).toString('hex');
+    const path = `frame-editor/style-refs/${dia}-${hash}.${ext}`;
+    const { gcs_url } = await uploadBuffer(path, buf, contentType);
+    res.json({ url: gcs_url, content_type: contentType });
+  } catch (e) {
+    console.error('upload-style-ref:', e);
+    res.status(500).json({ error: 'upload failed' });
+  }
+});
+
 // POST /api/fe/upload-aseprite — upload de .aseprite gerado pelo front.
 // Multipart: file (.aseprite), tirinha_id.
 // Atualiza last_aseprite_url da tirinha (storage.md §4.2 — só o último é mantido em referência).
@@ -820,10 +865,18 @@ router.post('/prompts', requireUser, async (req, res) => {
     : FE_PROMPT_DEFAULT_MODEL;
   const usarOriginal = req.body?.usar_original === true;
   const autoAdaptRatio = req.body?.auto_adapt_ratio === true;
+  const bgRemoveAfter = req.body?.bg_remove_after === true;
+  const styleRefUrlRaw = (req.body?.style_ref_url || '').trim();
+  // Sanidade: aceita so' https. Vazio = sem ref.
+  const styleRefUrl = styleRefUrlRaw && /^https:\/\//i.test(styleRefUrlRaw) ? styleRefUrlRaw : null;
+  // Se user mandou ref vazia e nao escreveu prompt, backend usa default.
+  // Se mandou ref mas prompt vazio: usa default 'stylize as reference image'.
+  let promptFinal = prompt;
+  if (!promptFinal && styleRefUrl) promptFinal = 'stylize as reference image';
 
   if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
-  if (!prompt) return res.status(400).json({ error: 'prompt obrigatório' });
-  if (prompt.length > 4000) return res.status(400).json({ error: 'prompt muito longo (máx 4000)' });
+  if (!promptFinal) return res.status(400).json({ error: 'prompt obrigatório' });
+  if (promptFinal.length > 4000) return res.status(400).json({ error: 'prompt muito longo (máx 4000)' });
   if (!celulasIds.length) return res.status(400).json({ error: 'celulas_ids obrigatório' });
   if (celulasIds.length > 500) return res.status(400).json({ error: 'lote muito grande (máx 500)' });
 
@@ -854,7 +907,7 @@ router.post('/prompts', requireUser, async (req, res) => {
 
     // Fire-and-forget: dispara o processamento sem esperar.
     if (idsMarcados.length > 0) {
-      processarLote(pool, idsMarcados, prompt, modelKey, usarOriginal, autoAdaptRatio).catch((e) => {
+      processarLote(pool, idsMarcados, promptFinal, modelKey, usarOriginal, autoAdaptRatio, bgRemoveAfter, styleRefUrl).catch((e) => {
         console.error('fe-prompts lote', jobId, 'falhou:', e);
       });
     }
@@ -931,6 +984,63 @@ router.post('/edits', requireUser, async (req, res) => {
     if (tratarErroId(e, res)) return;
     console.error('post edits:', e);
     res.status(500).json({ error: 'falha ao disparar edição' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/fe/bg-remove — remove fundo das celulas via fal.ai (BiRefNet v2).
+// Body: { tirinha_id, celulas_ids: [uuid, ...] }
+// Resp: { job_id, celulas_marcadas, price_usd_estimate } (HTTP 202)
+//
+// Espelha /api/fe/edits: marca processando, 202 imediato, fire-and-forget.
+// Custo ~$0.01 por celula (estimativa do BiRefNet v2 no fal).
+router.post('/bg-remove', requireUser, async (req, res) => {
+  const tirinhaId = (req.body?.tirinha_id || '').trim();
+  const celulasIds = Array.isArray(req.body?.celulas_ids) ? req.body.celulas_ids : [];
+
+  if (!tirinhaId) return res.status(400).json({ error: 'tirinha_id obrigatório' });
+  if (!celulasIds.length) return res.status(400).json({ error: 'celulas_ids obrigatório' });
+  if (celulasIds.length > 500) return res.status(400).json({ error: 'lote muito grande (máx 500)' });
+
+  const pool = req.app.locals.pool;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // So' marca celulas que tem png_url — bg-remove em celula vazia nao faz sentido.
+    const { rows: marcadas } = await client.query(
+      `UPDATE fe_celula
+          SET estado = 'processando',
+              estado_erro = NULL,
+              estado_atualizado_em = NOW()
+        WHERE id = ANY($1::uuid[])
+          AND tirinha_id = $2
+          AND estado = 'idle'
+          AND png_url IS NOT NULL
+        RETURNING id`,
+      [celulasIds, tirinhaId]
+    );
+    await client.query('COMMIT');
+
+    const idsMarcados = marcadas.map((r) => r.id);
+    const jobId = crypto.randomUUID();
+
+    if (idsMarcados.length > 0) {
+      processarBgRemoveLote(pool, idsMarcados).catch((e) => {
+        console.error('fe-bg-remove lote', jobId, 'falhou:', e);
+      });
+    }
+
+    res.status(202).json({
+      job_id: jobId,
+      celulas_marcadas: idsMarcados,
+      price_usd_estimate: BG_REMOVE_PRICE * idsMarcados.length,
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    if (tratarErroId(e, res)) return;
+    console.error('post bg-remove:', e);
+    res.status(500).json({ error: 'falha ao disparar remoção de fundo' });
   } finally {
     client.release();
   }

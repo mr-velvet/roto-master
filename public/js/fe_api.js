@@ -173,6 +173,16 @@ export async function patchCelula(id, { png_url, largura, altura }) {
   return data.celula;
 }
 
+// Upload de imagem de referencia de estilo (PNG/JPG/WebP). Devolve { url }.
+// Sem vinculo a tirinha/celula — eh global, pra reusar entre prompts.
+export async function uploadStyleRef({ blob, filename = 'style-ref' }) {
+  const fd = new FormData();
+  const fileBlob = blob instanceof Blob ? blob : new Blob([blob]);
+  fd.append('file', fileBlob, filename);
+  const r = await authedFetch('/api/fe/upload-style-ref', { method: 'POST', body: fd });
+  return jsonOrThrow(r, 'upload style ref');
+}
+
 // === Aseprite (export) ===
 
 export async function uploadAseprite({ tirinhaId, blob, filename = 'tirinha.aseprite' }) {
@@ -189,11 +199,13 @@ export async function uploadAseprite({ tirinhaId, blob, filename = 'tirinha.asep
 // Endpoint pode ainda não existir na worktree atual (está sendo escrito em
 // paralelo). Front trata 404 como "back ainda não tem o endpoint" e mostra
 // mensagem amigável.
-export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey, usarOriginal, autoAdaptRatio }) {
+export async function dispararPrompt({ tirinhaId, prompt, celulasIds, modelKey, usarOriginal, autoAdaptRatio, bgRemoveAfter, styleRefUrl }) {
   const body = { tirinha_id: tirinhaId, prompt, celulas_ids: celulasIds };
   if (modelKey) body.model_key = modelKey;
   if (usarOriginal) body.usar_original = true;
   if (autoAdaptRatio) body.auto_adapt_ratio = true;
+  if (bgRemoveAfter) body.bg_remove_after = true;
+  if (styleRefUrl) body.style_ref_url = styleRefUrl;
   const r = await authedFetch('/api/fe/prompts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -233,6 +245,19 @@ export async function dispararEdicao({ tirinhaId, celulasIds, opType, opParams, 
   });
   if (r.status === 404) throw new Error('endpoint de edicao ainda nao disponivel');
   return jsonOrThrow(r, 'disparar edicao');
+}
+
+// Remove fundo das celulas via fal.ai BiRefNet v2. Marca processando, retorna
+// {job_id, celulas_marcadas, price_usd_estimate} em 202. Usa polling normal.
+// Celulas vazias (sem png_url) sao filtradas pelo backend silenciosamente.
+export async function removerBackground({ tirinhaId, celulasIds }) {
+  const r = await authedFetch('/api/fe/bg-remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tirinha_id: tirinhaId, celulas_ids: celulasIds }),
+  });
+  if (r.status === 404) throw new Error('endpoint de bg-remove ainda nao disponivel');
+  return jsonOrThrow(r, 'remover background');
 }
 
 // Single-step undo de uma celula: backend pop a versao mais recente e
