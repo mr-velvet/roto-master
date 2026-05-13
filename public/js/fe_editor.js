@@ -2241,18 +2241,21 @@ function abrirModalPrompt({ tipo, ids = null, contexto = null }) {
   const $cb = m.querySelector('[data-bind="fe-prompt-use-original"]');
   const $cbHint = m.querySelector('[data-bind="fe-prompt-use-original-hint"]');
   if ($cb && $cbWrap) {
-    $cb.checked = false;
     const idSet = new Set(promptAlvosIds);
     let comOriginal = 0;
     for (const c of celulasMap.values()) {
       if (!idSet.has(c.id)) continue;
       if (c.png_url_original) comOriginal++;
     }
+    // Default ligado (use case mais comum eh recom~ecar a partir da original).
+    // Se nenhuma celula alvo tem original, desabilita e desmarca.
     if (comOriginal === 0) {
+      $cb.checked = false;
       $cbWrap.classList.add('is-disabled');
       $cb.disabled = true;
       if ($cbHint) $cbHint.textContent = 'nenhuma célula alvo tem imagem original';
     } else {
+      $cb.checked = true;
       $cbWrap.classList.remove('is-disabled');
       $cb.disabled = false;
       if ($cbHint) {
