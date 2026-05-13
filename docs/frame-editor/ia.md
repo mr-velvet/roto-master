@@ -35,10 +35,11 @@ Cada célula é processada **independentemente**. Não há contexto compartilhad
 
 ## 4. Provider
 
-Provider é Fal.ai (mesmo `lib/providers/fal.js` que serve Kling/PixVerse no resto da plataforma — mesma `FAL_KEY`, mesmo wrapper). A camada `lib/fe-prompts.js` expõe um **catálogo de modelos** (constante `FE_PROMPT_MODELS`) com 2 entradas no MVP:
+Provider é Fal.ai (mesmo `lib/providers/fal.js` que serve Kling/PixVerse no resto da plataforma — mesma `FAL_KEY`, mesmo wrapper). A camada `lib/fe-prompts.js` expõe um **catálogo de modelos** (constante `FE_PROMPT_MODELS`):
 
-- **`nano-banana-pro`** — `fal-ai/nano-banana-pro/edit` (Gemini 3 Pro Image). Default. Qualidade alta, ~30s por célula.
-- **`nano-banana`** — `fal-ai/nano-banana/edit` (Gemini 2.5 Flash Image). Mais rápido e barato, ~10s por célula.
+- **`nano-banana-pro`** — `fal-ai/nano-banana-pro/edit` (Google Gemini 3 Pro Image). Default. Qualidade alta, ~30s por célula.
+- **`nano-banana`** — `fal-ai/nano-banana/edit` (Google Gemini 2.5 Flash Image). Mais rápido e barato, ~10s por célula.
+- **`gpt-image-2`** — `fal-ai/openai/gpt-image-2/edit` (OpenAI, abr/2026). Modelo de imagem mais recente da OpenAI; edição context-aware com até 16 refs, render de texto quase perfeito, output até 4K. Lider do Image Arena na data de lançamento. ~30s por célula.
 
 O catálogo é exposto via `GET /api/fe/models`. O frontend popula um dropdown no modal de prompt; a escolha vai no body do `POST /api/fe/prompts` como `model_key`. Modelos não listados caem no default — sem erro.
 
