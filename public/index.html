@@ -1148,10 +1148,16 @@
         <label class="field">
           <div class="field-row-head">
             <span>prompt</span>
-            <button class="enhance-btn" data-action="fe-enhance-prompt" type="button" title="melhorar prompt com IA (Claude Sonnet 4.6)">
-              <span class="enhance-icon">✧</span>
-              <span class="enhance-label">melhorar</span>
-            </button>
+            <div class="field-row-head-actions">
+              <button class="enhance-btn" data-action="fe-prompt-history-open" type="button" title="ver prompts ja usados">
+                <span class="enhance-icon">⏲</span>
+                <span class="enhance-label">histórico</span>
+              </button>
+              <button class="enhance-btn" data-action="fe-enhance-prompt" type="button" title="melhorar prompt com IA (Claude Sonnet 4.6)">
+                <span class="enhance-icon">✧</span>
+                <span class="enhance-label">melhorar</span>
+              </button>
+            </div>
           </div>
           <textarea data-bind="fe-prompt-text" rows="6" placeholder="ex: pinta com traço de bico-de-pena, fundo limpo, cores vivas"></textarea>
         </label>
@@ -1165,6 +1171,26 @@
           <span class="btn-icon">✦</span>
           aplicar prompt
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal: historico de prompts ja usados (Frames Editor) -->
+  <div class="modal modal-wide" data-modal="fe-prompt-history" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">Frames Editor</div>
+        <h3>Histórico de prompts</h3>
+        <p class="modal-sub">Prompts ja' usados nesta máquina. Clique pra reaproveitar.</p>
+      </div>
+      <div class="modal-body">
+        <ul class="fe-prompt-history-list" data-bind="fe-prompt-history-list"></ul>
+        <p class="fe-prompt-history-empty" data-bind="fe-prompt-history-empty" hidden>Nenhum prompt usado ainda.</p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-action="fe-prompt-history-clear" data-bind="fe-prompt-history-clear-btn">limpar tudo</button>
+        <button class="btn btn-ghost" data-action="modal-close">fechar</button>
       </div>
     </div>
   </div>

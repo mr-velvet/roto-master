@@ -2297,6 +2297,9 @@ document.addEventListener('click', async (e) => {
       : alvosIds;
     historicoPrompts.push({ celulasIds: idsParaUndo, ts: Date.now() });
     if (historicoPrompts.length > HISTORICO_MAX) historicoPrompts.shift();
+    // Hist orico universal de prompts (localStorage) — pro user reaproveitar
+    // textos depois. Sa'lva soh em caso de sucesso.
+    adicionarAoHistoricoPrompts(prompt);
     agendarPollingSeNecessario();
   } catch (err) {
     // Falha: reverte localmente e avisa o user. Copy neutro (sem mensagem
@@ -2512,6 +2515,148 @@ document.addEventListener('click', (e) => {
   } else if (e.target.closest('[data-action="fe-toggle-matrix"]')) {
     toggleColapso('.fe-matrix-wrap', 'fe-toggle-matrix', LS_MATRIX);
   }
+});
+
+// === Hist orico de prompts (localStorage, universal) ===
+//
+// Sobrevive entre tirinhas e reloads — eh por maquina, n~ao por tirinha. Cap
+// 50 entradas. Dedup: se o user escreve o mesmo prompt de novo, atualiza o ts
+// e move pro topo (n~ao duplica).
+
+const LS_PROMPT_HISTORY = 'fe-prompt-history';
+const PROMPT_HISTORY_CAP = 50;
+
+function lerHistoricoPrompts() {
+  try {
+    const raw = localStorage.getItem(LS_PROMPT_HISTORY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((it) => it && typeof it.text === 'string');
+  } catch { return []; }
+}
+
+function gravarHistoricoPrompts(arr) {
+  try { localStorage.setItem(LS_PROMPT_HISTORY, JSON.stringify(arr.slice(0, PROMPT_HISTORY_CAP))); }
+  catch {}
+}
+
+function adicionarAoHistoricoPrompts(text) {
+  const t = (text || '').trim();
+  if (!t) return;
+  const arr = lerHistoricoPrompts();
+  // Dedup: remove ocorrencia existente, push no topo com ts novo.
+  const filtered = arr.filter((it) => it.text !== t);
+  filtered.unshift({ text: t, ts: Date.now() });
+  gravarHistoricoPrompts(filtered);
+}
+
+function renderizarListaHistorico() {
+  const $list = document.querySelector('[data-bind="fe-prompt-history-list"]');
+  const $empty = document.querySelector('[data-bind="fe-prompt-history-empty"]');
+  const $clearBtn = document.querySelector('[data-bind="fe-prompt-history-clear-btn"]');
+  if (!$list || !$empty) return;
+  const arr = lerHistoricoPrompts();
+  $list.innerHTML = '';
+  if (!arr.length) {
+    $empty.removeAttribute('hidden');
+    if ($clearBtn) $clearBtn.setAttribute('disabled', '');
+    return;
+  }
+  $empty.setAttribute('hidden', '');
+  if ($clearBtn) $clearBtn.removeAttribute('disabled');
+  for (const item of arr) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fe-prompt-history-item';
+    btn.dataset.text = item.text;
+    const tx = document.createElement('span');
+    tx.className = 'fe-prompt-history-item-text';
+    tx.textContent = item.text;
+    const ts = document.createElement('span');
+    ts.className = 'fe-prompt-history-item-ts';
+    ts.textContent = formatarTimestampRelativo(item.ts);
+    btn.appendChild(tx);
+    btn.appendChild(ts);
+    li.appendChild(btn);
+    $list.appendChild(li);
+  }
+}
+
+function formatarTimestampRelativo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min}min atrás`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h atrás`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d atrás`;
+  const date = new Date(ts);
+  return date.toLocaleDateString();
+}
+
+// Abrir modal: clique no botao "hist orico" do modal de prompt. Como o
+// modals.js fecha o modal ativo antes de abrir o pr oximo, preservamos o
+// texto atual do textarea pra repor quando voltar ao prompt.
+let promptTextoSalvoAntesDoHistorico = null;
+let textoEscolhidoNoHistorico = null;
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-action="fe-prompt-history-open"]')) return;
+  const $ta = document.querySelector('[data-modal="fe-prompt"] [data-bind="fe-prompt-text"]');
+  promptTextoSalvoAntesDoHistorico = $ta ? $ta.value : '';
+  textoEscolhidoNoHistorico = null;
+  renderizarListaHistorico();
+  openModal('fe-prompt-history', { onClose: voltarAoModalDePrompt });
+});
+
+// Quando o modal de hist orico fecha (escolha de item, click fora, ESC ou
+// botao fechar), reabre o modal de prompt com o texto certo.
+function voltarAoModalDePrompt() {
+  const textoFinal = textoEscolhidoNoHistorico !== null
+    ? textoEscolhidoNoHistorico
+    : promptTextoSalvoAntesDoHistorico;
+  promptTextoSalvoAntesDoHistorico = null;
+  // Reabre prompt — popularDropdownModelos e ratio info preservam estado da
+  // selecao porque vem do feModeloSelecionado em mem oria.
+  setTimeout(() => {
+    openModal('fe-prompt');
+    const $ta = document.querySelector('[data-modal="fe-prompt"] [data-bind="fe-prompt-text"]');
+    if ($ta) $ta.value = textoFinal || '';
+    if (textoEscolhidoNoHistorico !== null) {
+      feLastEnhanceBefore = null;
+      const $undo = document.querySelector('[data-bind="fe-prompt-enhance-undo"]');
+      if ($undo) $undo.setAttribute('hidden', '');
+    }
+    textoEscolhidoNoHistorico = null;
+  }, 0);
+}
+
+// Clique num item: salva o texto e fecha — voltarAoModalDePrompt() reabre o
+// modal de prompt e aplica o texto escolhido.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.fe-prompt-history-item');
+  if (!btn) return;
+  textoEscolhidoNoHistorico = btn.dataset.text || '';
+  closeModal();
+});
+
+// Botao "limpar tudo": confirma e zera localStorage.
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-action="fe-prompt-history-clear"]')) return;
+  const ok = await confirmModal({
+    title: 'limpar hist orico',
+    message: 'apagar todos os prompts usados? n~ao da' pra desfazer.',
+    confirmLabel: 'limpar',
+    danger: true,
+  });
+  if (!ok) return;
+  try { localStorage.removeItem(LS_PROMPT_HISTORY); } catch {}
+  renderizarListaHistorico();
+  showToast('hist orico limpo');
 });
 
 export function restaurarColapsoFeEditor() {
