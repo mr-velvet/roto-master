@@ -388,7 +388,14 @@ function garantirEditsInicializado() {
   if (feEditsInicializado) return;
   feEditsInicializado = true;
   initFeEdits({
-    onConfirm: async () => {
+    onConfirm: async (resp) => {
+      // Empilha pro undo (Ctrl+Z): cada edicao local cria uma versao no
+      // banco (op_type 'dither'|'adjust'), entao o mesmo undoCelula serve.
+      const idsParaUndo = Array.isArray(resp?.celulas_marcadas) ? resp.celulas_marcadas : [];
+      if (idsParaUndo.length) {
+        historicoPrompts.push({ celulasIds: idsParaUndo, ts: Date.now() });
+        if (historicoPrompts.length > HISTORICO_MAX) historicoPrompts.shift();
+      }
       // refresca estado da tirinha apos disparar edicao
       try {
         const data = await getTirinha(tirinha.id);
@@ -2361,7 +2368,13 @@ async function executarBgRemove(origens, { novaCamada = false, usarOriginal = fa
     renderMatrix();
     showToast(`removendo fundo de ${marcados.length} célula${marcados.length === 1 ? '' : 's'}…`);
     try {
-      await removerBackground({ tirinhaId: tirinha.id, celulasIds: ids, usarOriginal });
+      const resp = await removerBackground({ tirinhaId: tirinha.id, celulasIds: ids, usarOriginal });
+      // Empilha pro undo (Ctrl+Z): bg-remove versiona no banco (op_type='bg-remove').
+      const idsParaUndo = Array.isArray(resp?.celulas_marcadas) && resp.celulas_marcadas.length
+        ? resp.celulas_marcadas
+        : ids;
+      historicoPrompts.push({ celulasIds: idsParaUndo, ts: Date.now() });
+      if (historicoPrompts.length > HISTORICO_MAX) historicoPrompts.shift();
       agendarPollingSeNecessario();
     } catch (err) {
       console.warn('bg-remove falhou:', err);
