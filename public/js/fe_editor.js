@@ -3013,10 +3013,18 @@ document.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  // Toggle do dropdown
+  const $sel = document.querySelector('[data-bind="fe-publish-project-select"]');
+  if (!$sel) return;
+  const $menu = $sel.querySelector('[data-bind="fe-publish-project-menu"]');
+  // Toggle do dropdown — atualiza .is-open no pai (que controla display do menu via CSS)
+  // E o atributo hidden do <ul> em paralelo.
   if (e.target.closest('[data-action="fe-toggle-project-select"]')) {
-    const $menu = document.querySelector('[data-bind="fe-publish-project-menu"]');
-    if ($menu) $menu.toggleAttribute('hidden');
+    const wasOpen = $sel.classList.contains('is-open');
+    $sel.classList.toggle('is-open');
+    if ($menu) {
+      if (!wasOpen) $menu.removeAttribute('hidden');
+      else $menu.setAttribute('hidden', '');
+    }
     return;
   }
   // Escolha de item
@@ -3024,7 +3032,14 @@ document.addEventListener('click', (e) => {
   if (item) {
     publishProjectId = item.dataset.projectId;
     document.querySelector('[data-bind="fe-publish-project-label"]').textContent = item.dataset.projectName;
-    document.querySelector('[data-bind="fe-publish-project-menu"]').setAttribute('hidden', '');
+    $sel.classList.remove('is-open');
+    if ($menu) $menu.setAttribute('hidden', '');
+    return;
+  }
+  // Click fora do dropdown: fecha.
+  if ($sel.classList.contains('is-open') && !e.target.closest('[data-bind="fe-publish-project-select"]')) {
+    $sel.classList.remove('is-open');
+    if ($menu) $menu.setAttribute('hidden', '');
   }
 });
 
