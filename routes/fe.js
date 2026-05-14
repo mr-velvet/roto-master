@@ -1108,7 +1108,7 @@ router.post('/tirinhas/:id/publicar-asset', requireUser, async (req, res) => {
 
       const { rows: novoArr } = await client.query(
         `INSERT INTO assets (project_id, video_id, owner_sub, name, status, gcs_path, gcs_url, version)
-         VALUES ($1, NULL, 'frame-editor', $2, 'done', '', '', 1)
+         VALUES ($1, NULL, 'frame-editor', $2, 'pending', '', '', 1)
          RETURNING id`,
         [projectId, nome]
       );
